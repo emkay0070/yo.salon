@@ -1,0 +1,311 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-card: var(--color-card);
+  --color-obsidian: var(--color-obsidian);
+  --color-noir: var(--color-noir);
+  --color-dark-surface: var(--color-dark-surface);
+  --color-gold: var(--color-gold);
+  --color-dark-gold: var(--color-dark-gold);
+  --color-champagne: var(--color-champagne);
+  --color-emerald: var(--color-emerald);
+  --color-amber: var(--color-amber);
+  --color-terracotta: var(--color-terracotta);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-border-light: var(--color-border-light);
+  --color-border-medium: var(--color-border-medium);
+  --color-overlay: var(--color-overlay);
+}
+
+:root {
+  --font-inter: var(--font-inter);
+  --font-playfair: var(--font-playfair);
+}
+
+/* ─────────────────────────────────────────────────────────
+   BASE THEME  (Noir / Dark — Default)
+   Design rule: near-invisible borders, depth via shadows
+───────────────────────────────────────────────────────── */
+[data-theme] {
+  /* Palette constants */
+  --color-obsidian: #0A0A0A;
+  --color-noir: #0A0A0A;
+  --color-dark-surface: #1A1A1A;
+  --color-gold: #FFD700;
+  --color-dark-gold: #C9A227;
+  --color-champagne: #C8A96A;
+  --color-emerald: #2F7A5C;
+  --color-amber: #D89B2D;
+  --color-terracotta: #C55A4A;
+
+  /* Typography */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #8A8A8A;
+  --color-text-muted: #555555;
+
+  /* Borders — whisper subtle, just enough to sense edges */
+  --color-border-light:  rgba(255, 255, 255, 0.05);   /* hairline */
+  --color-border-medium: rgba(255, 255, 255, 0.09);   /* standard divider */
+
+  /* Surfaces */
+  --color-background: #0D0D0D; 
+  --color-surface:    #151515;   
+  --color-card:       #1C1C1C;
+  --color-overlay: rgba(0, 0, 0, 0.7);  /* solid, readable card */
+
+  /* Shadows (dark → nearly invisible, depth is ambient) */
+  --shadow-sm: 0 2px 8px  rgba(0,0,0,0.40);
+  --shadow-md: 0 6px 18px rgba(0,0,0,0.50);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.60);
+  --shadow-xl: 0 20px 48px rgba(0,0,0,0.70);
+
+  /* Controls */
+  --texture-opacity: 0.04;   /* subtle bg texture in dark mode */
+}
+
+/* Noir Theme (Default Dark) */
+[data-theme="noir"] {
+  /* Inherits defaults from above */
+}
+
+/* ─────────────────────────────────────────────────────────
+   LIGHT THEME
+   Design rule: page = warm grey, cards = white, 
+   borders = invisible, shadows carry the hierarchy.
+   (Linear / Apple / Figma convention)
+───────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  /* Palette overrides */
+  --color-obsidian: #1A1A1A;
+  --color-noir: #1A1A1A;
+  --color-dark-surface: #EEEEEE;
+  --color-gold: #B8941F;
+  --color-dark-gold: #9A7B18;
+
+  /* Typography */
+  --color-text-primary: #111111;
+  --color-text-secondary: #5A5A5A;
+  --color-text-muted: #9A9A9A;
+
+  /* Borders — barely there, just a hint */
+  --color-border-light:  rgba(0, 0, 0, 0.05);   /* hairline */
+  --color-border-medium: rgba(0, 0, 0, 0.08);   /* divider */
+
+  /* Surfaces — the key hierarchy:
+     background (page) = warm grey
+     surface = lighter grey (sidebar, sub-panels)
+     card = pure white (the "paper" on top)          */
+  --color-background: #F1F1F1;   /* warm page grey  */
+  --color-surface:    #F8F8F8;   /* lighter panels   */
+  --color-card:       #FFFFFF;   /* white card paper */
+  --color-overlay: rgba(255, 255, 255, 0.6);
+
+  /* Shadows (light → soft, elevation via blur) */
+  --shadow-sm: 0 1px 4px  rgba(0,0,0,0.06), 0 2px 8px  rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.05);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.06);
+  --shadow-xl: 0 12px 36px rgba(0,0,0,0.12), 0 24px 56px rgba(0,0,0,0.08);
+
+  /* Controls */
+  --texture-opacity: 0;   /* hide dark bg texture in light mode */
+}
+
+/* Example: Glass Theme */
+[data-theme="glass"] {
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-card: rgba(30, 41, 59, 0.4);
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-border-light: rgba(255,255,255,0.08);
+  --color-border-medium: rgba(255,255,255,0.16);
+  --color-gold: #38bdf8;
+  --color-dark-gold: #0284c7;
+}
+
+@layer base {
+  html, body {
+    font-family: var(--font-inter), system-ui, sans-serif;
+    background-color: var(--color-background) !important;
+    color: var(--color-text-primary) !important;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    transition: background-color 0.4s ease, color 0.4s ease;
+    
+    /* Native App Feel */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+  }
+
+  /* Custom scrollbar for all elements */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-background);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-dark-gold);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gold);
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-dark-gold) var(--color-background);
+  }
+
+  /* Disable text selection on UI elements to feel like native app */
+  a, button, [role="button"], .nav-item, .card {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: -0.02em;
+  }
+  
+  .text-number {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--color-border-light);
+    border-radius: 20px;
+    /* Shadow carries the elevation — borders are just a whisper */
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  @media (hover: hover) {
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+  }
+
+  /* Buttons */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--color-gold) 0%, var(--color-dark-gold) 100%);
+    color: #0A0A0A;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  
+  @media (hover: hover) {
+    .btn-primary:hover {
+      transform: scale(1.02);
+      filter: brightness(1.1);
+    }
+  }
+  
+  .btn-secondary {
+    background-color: var(--color-card);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border-light);
+    border-radius: 12px;
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  @media (hover: hover) {
+    .btn-secondary:hover {
+      transform: scale(1.02);
+      box-shadow: var(--shadow-md);
+    }
+  }
+
+  /* Linear-inspired inputs */
+  .input {
+    background-color: rgba(255,255,255,0.03);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--color-border-light);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: var(--color-text-primary);
+    font-size: 16px; /* Prevents iOS zoom */
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .input::placeholder {
+    color: var(--color-text-muted);
+  }
+  
+  .input:focus {
+    outline: none;
+    border-color: var(--color-gold);
+    background-color: rgba(255,255,255,0.06);
+    box-shadow: 0 0 0 1px var(--color-gold), inset 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  /* Badges */
+  .badge-success {
+    background-color: rgba(47, 122, 92, 0.15);
+    color: var(--color-emerald);
+    border: 1px solid rgba(47, 122, 92, 0.3);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  
+  .badge-warning {
+    background-color: rgba(216, 155, 45, 0.15);
+    color: var(--color-amber);
+    border: 1px solid rgba(216, 155, 45, 0.3);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  
+  .badge-error {
+    background-color: rgba(197, 90, 74, 0.15);
+    color: var(--color-terracotta);
+    border: 1px solid rgba(197, 90, 74, 0.3);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-weight: 500;
+    font-size: 13px;
+  }
+  
+  /* Hide scrollbar for a cleaner look */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
