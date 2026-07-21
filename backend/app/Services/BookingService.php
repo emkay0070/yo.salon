@@ -1,0 +1,206 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Booking;
+use App\Models\Customer;
+use App\Models\PortalAccount;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * BookingService
+ * 
+ * Responsible for creating bookings and orchestrating the customer resolution flow.
+ * This is where Journey 4 (Website booking + "Create an account") belongs.
+ * 
+ * Principle: Booking is a business event that creates or resolves customers.
+ * Authentication (portal account creation) is optional and secondary to the booking.
+ */
+class BookingService
+{
+    private CustomerService $customerService;
+    private PortalAuthService $portalAuthService;
+
+    public function __construct(
+        CustomerService $customerService,
+        PortalAuthService $portalAuthService
+    ) {
+        $this->customerService = $customerService;
+        $this->portalAuthService = $portalAuthService;
+    }
+
+    /**
+     * Create a guest booking (Journey 3)
+     * 
+     * Flow: Booking → Customer (created if needed) → No portal account
+     * 
+     * @param array $data Booking data including customer details
+     * @return Booking
+     */
+    public function createGuestBooking(array $data): Booking
+    {
+        return DB::transaction(function () use ($data) {
+            // Resolve or create customer (business event)
+            $customerResult = $this->customerService->resolveOrCreateForBusiness(
+                [
+                    'name' => $data['customer_name'],
+                    'phone' => $data['customer_phone'],
+                    'email' => $data['customer_email'] ?? null,
+                ],
+                $data['salon_id'],
+                true // Create customer if not found
+            );
+
+            $customer = $customerResult['customer'];
+
+            // Create booking
+            $booking = Booking::create([
+                'salon_id' => $data['salon_id'],
+                'customer_id' => $customer->id,
+                'staff_id' => $data['staff_id'] ?? null,
+                'service_id' => $data['service_id'],
+                'date' => $data['date'],
+                'time' => $data['time'],
+                'status' => $data['status'] ?? 'pending',
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            return $booking->load(['salon', 'customer', 'staff', 'service']);
+        });
+    }
+
+    /**
+     * Create booking with portal account (Journey 4)
+     * 
+     * Flow: Booking → Customer → Portal Account → Linked
+     * 
+     * @param array $data Booking data including customer and account details
+     * @return array ['booking' => Booking, 'customer' => Customer, 'portal_account' => PortalAccount|null]
+     */
+    public function createBookingWithAccount(array $data): array
+    {
+        return DB::transaction(function () use ($data) {
+            // Resolve or create customer (business event)
+            $customerResult = $this->customerService->resolveOrCreateForBusiness(
+                [
+                    'name' => $data['customer_name'],
+                    'phone' => $data['customer_phone'],
+                    'email' => $data['customer_email'] ?? null,
+                ],
+                $data['salon_id'],
+                true // Create customer if not found
+            );
+
+            $customer = $customerResult['customer'];
+
+            // Create booking
+            $booking = Booking::create([
+                'salon_id' => $data['salon_id'],
+                'customer_id' => $customer->id,
+                'staff_id' => $data['staff_id'] ?? null,
+                'service_id' => $data['service_id'],
+                'date' => $data['date'],
+                'time' => $data['time'],
+                'status' => $data['status'] ?? 'pending',
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            // Create portal account if requested and customer doesn't have one
+            $portalAccount = null;
+            if (!empty($data['create_account']) && !$customer->hasPortalAccount()) {
+                $portalAccount = PortalAccount::create([
+                    'customer_id' => $customer->id,
+                    'email' => $data['account_email'] ?? $data['customer_email'],
+                    'password' => Hash::make($data['account_password']),
+                ]);
+            }
+
+            return [
+                'booking' => $booking->load(['salon', 'customer', 'staff', 'service']),
+                'customer' => $customer,
+                'portal_account' => $portalAccount,
+                'is_new_customer' => $customerResult['is_new'],
+            ];
+        });
+    }
+
+    /**
+     * Create booking for existing portal account
+     * 
+     * Flow: Portal Account (authenticated) → Customer → Booking
+     * 
+     * @param array $data Booking data
+     * @param PortalAccount $portalAccount Authenticated portal account
+     * @return Booking
+     */
+    public function createBookingForPortalUser(array $data, PortalAccount $portalAccount): Booking
+    {
+        return DB::transaction(function () use ($data, $portalAccount) {
+            $customer = $portalAccount->customer;
+
+            // Ensure customer has relationship with this salon
+            if (!$customer->salons()->where('salon_id', $data['salon_id'])->exists()) {
+                $this->customerService->addSalonRelationship($customer, $data['salon_id']);
+            }
+
+            // Create booking
+            $booking = Booking::create([
+                'salon_id' => $data['salon_id'],
+                'customer_id' => $customer->id,
+                'staff_id' => $data['staff_id'] ?? null,
+                'service_id' => $data['service_id'],
+                'date' => $data['date'],
+                'time' => $data['time'],
+                'status' => $data['status'] ?? 'pending',
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            return $booking->load(['salon', 'customer', 'staff', 'service']);
+        });
+    }
+
+    /**
+     * Update booking
+     * 
+     * @param Booking $booking
+     * @param array $data
+     * @return Booking
+     */
+    public function updateBooking(Booking $booking, array $data): Booking
+    {
+        $booking->update($data);
+        return $booking->load(['salon', 'customer', 'staff', 'service']);
+    }
+
+    /**
+     * Cancel booking
+     * 
+     * @param Booking $booking
+     * @return Booking
+     */
+    public function cancelBooking(Booking $booking): Booking
+    {
+        $booking->update(['status' => 'cancelled']);
+        return $booking->fresh();
+    }
+
+    /**
+     * Complete booking
+     * 
+     * @param Booking $booking
+     * @return Booking
+     */
+    public function completeBooking(Booking $booking): Booking
+    {
+        return DB::transaction(function () use ($booking) {
+            $booking->update(['status' => 'completed']);
+            
+            // Increment customer visit count
+            $this->customerService->incrementVisit($booking->customer, $booking->salon_id);
+            
+            return $booking->fresh();
+        });
+    }
+}
