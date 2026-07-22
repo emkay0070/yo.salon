@@ -1,6 +1,6 @@
 'use client';
 
-import type { Stylist } from '@/app/booking/page';
+import type { Stylist } from '@/app/booking/BookingContent';
 
 interface TimePickerProps {
   selectedTime: string;
