@@ -139,7 +139,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
             <div className="flex gap-2">
               {publicBookingUrl && (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   className="gap-1.5 h-8 text-xs border-gold/30 text-gold hover:bg-gold/10"
                   onClick={() => setBookingModalOpen(true)}
