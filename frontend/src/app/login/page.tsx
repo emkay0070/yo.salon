@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Eye, EyeOff, Scissors, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Scissors, ArrowRight, Palette } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import { portalApiClient } from '@/lib/portal-api-client';
 import { motion } from 'framer-motion';
 
 export default function LoginPage() {
@@ -20,12 +21,18 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // 1. Try Owner/Staff Dashboard Login
       const data = await apiClient.login(email, password);
-      // Follow the backend's instruction — it knows where this user belongs
       router.push(data.next_route || '/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
-      console.error(err);
+      try {
+        // 2. Try Client Portal Login
+        await portalApiClient.login(email, password);
+        router.push('/portal/home');
+      } catch (portalErr: any) {
+        setError('Login failed. Please check your credentials.');
+        console.error(portalErr);
+      }
     } finally {
       setLoading(false);
     }
@@ -109,12 +116,17 @@ export default function LoginPage() {
         {/* Noise texture overlay */}
         <div className="absolute inset-0 bg-[#070707]/95" />
 
-        {/* Mobile logo */}
-        <div className="lg:hidden absolute top-6 left-6 flex items-center gap-3 z-10">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FFD700] to-[#C9A227] flex items-center justify-center">
-            <Scissors className="w-4 h-4 text-black" />
+        {/* Mobile logo & Theme Switcher */}
+        <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FFD700] to-[#C9A227] flex items-center justify-center">
+              <Scissors className="w-4 h-4 text-black" />
+            </div>
+            <span className="text-white font-bold tracking-tight">Yo Salon</span>
           </div>
-          <span className="text-text-primary font-bold tracking-tight">Yo Salon</span>
+          <button className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition-colors">
+            <Palette className="w-5 h-5" />
+          </button>
         </div>
 
         <motion.div
@@ -125,10 +137,10 @@ export default function LoginPage() {
         >
           {/* Header */}
           <div className="mb-10">
-            <h1 className="text-4xl font-bold text-text-primary tracking-tight mb-2">
+            <h1 className="text-4xl font-bold text-white tracking-tight mb-2">
               Welcome back
             </h1>
-            <p className="text-text-primary/40 text-base">
+            <p className="text-white/50 text-base">
               Sign in to your salon dashboard
             </p>
           </div>

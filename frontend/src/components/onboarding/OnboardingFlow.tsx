@@ -2,8 +2,9 @@
 
 import { useOnboarding, SCENES, SCENE_META } from '@/contexts/OnboardingContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Crown, Cloud, Smartphone } from 'lucide-react';
+import { Crown, Cloud, Smartphone, Palette } from 'lucide-react';
 import { useState } from 'react';
+import { useTheme } from 'next-themes';
 
 // Scene components
 import WelcomeScene from './scenes/WelcomeScene';
@@ -34,6 +35,7 @@ const sceneComponents: Record<string, any> = {
 export default function OnboardingFlow() {
   const { scene, progress, isSaving, salonData, services, staff } = useOnboarding();
   const [showMobilePreview, setShowMobilePreview] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   const CurrentScene = sceneComponents[scene];
   const meta = SCENE_META[scene];
@@ -98,6 +100,14 @@ export default function OnboardingFlow() {
               </div>
 
               <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setTheme(theme === 'light' ? 'noir' : 'light')}
+                  className="p-1 rounded bg-white/5 border border-white/10 text-white/50 hover:text-white transition-colors"
+                  title="Toggle Theme"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
                 <AnimatePresence>
                   {isSaving && (
                     <motion.div

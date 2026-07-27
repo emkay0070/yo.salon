@@ -7,23 +7,47 @@ use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Service;
 use App\Models\Staff;
+use App\Models\Transaction;
+use App\Services\IntelligenceEngine;
+use App\Services\Intelligence\IntelligenceEngine as NewIntelligenceEngine;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class AnalyticsController extends Controller
 {
+    protected IntelligenceEngine $intelligenceEngine;
+    protected NewIntelligenceEngine $newIntelligenceEngine;
+
+    public function __construct(IntelligenceEngine $intelligenceEngine, NewIntelligenceEngine $newIntelligenceEngine)
+    {
+        $this->intelligenceEngine = $intelligenceEngine;
+        $this->newIntelligenceEngine = $newIntelligenceEngine;
+    }
+    public function intelligence(Request $request): JsonResponse
+    {
+        $salon = auth()->user()->currentSalon();
+        if (!$salon) {
+            return response()->json(['error' => 'Salon not found'], 404);
+        }
+        
+        $dto = $this->newIntelligenceEngine->generate($salon);
+        
+        return response()->json($dto);
+    }
+
     public function index(Request $request): JsonResponse
     {
         // salon_id is automatically applied by BelongsToSalon global scope from authenticated user
         // Get bookings for the current salon
-        $bookings = Booking::with(['customer', 'staff', 'service'])
+        $bookings = Booking::with(['customer', 'staff', 'service'])->get();
+        $transactions = Transaction::where('salon_id', auth()->user()->currentSalon()?->id)
+            ->whereIn('status', ['completed', 'paid'])
             ->get();
 
-        // Calculate analytics
+        // Calculate analytics based on Ledger (Transactions)
         $totalBookings = $bookings->count();
-        $totalRevenue = $bookings->sum(function ($booking) {
-            return $booking->service?->price ?? 0;
-        });
+        $totalGrossRevenue = $transactions->sum('gross_amount');
+        $totalNetRevenue = $transactions->sum('net_amount');
 
         $statusCounts = $bookings->groupBy('status')->mapWithKeys(function ($group, $status) {
             return [$status => $group->count()];
@@ -33,9 +57,12 @@ class AnalyticsController extends Controller
             return $booking->date === now()->toDateString();
         });
 
-        $todayRevenue = $todayBookings->sum(function ($booking) {
-            return $booking->service?->price ?? 0;
+        $todayTransactions = $transactions->filter(function ($tx) {
+            return date('Y-m-d', strtotime($tx->created_at)) === now()->toDateString();
         });
+
+        $todayGrossRevenue = $todayTransactions->sum('gross_amount');
+        $todayNetRevenue = $todayTransactions->sum('net_amount');
 
         // Service analytics
         $serviceStats = $bookings->groupBy('service_id')->map(function ($group) {
@@ -65,29 +92,34 @@ class AnalyticsController extends Controller
 
         return response()->json([
             'total_bookings' => $totalBookings,
-            'total_revenue' => $totalRevenue,
+            'total_revenue' => $totalGrossRevenue, // kept for backward compatibility if needed
+            'total_gross_revenue' => $totalGrossRevenue,
+            'total_net_revenue' => $totalNetRevenue,
             'status_counts' => $statusCounts,
             'today_bookings' => $todayBookings->count(),
-            'today_revenue' => $todayRevenue,
+            'today_revenue' => $todayGrossRevenue,
+            'today_gross_revenue' => $todayGrossRevenue,
+            'today_net_revenue' => $todayNetRevenue,
             'service_stats' => $serviceStats,
             'staff_stats' => $staffStats,
-            'revenue_trend' => $this->getRevenueTrend($bookings),
+            'revenue_trend' => $this->getRevenueTrend($transactions),
             'weekly_bookings' => $this->getWeeklyBookings($bookings),
-            'insights' => $this->generateInsights($bookings, $totalRevenue),
+            'insights' => $this->intelligenceEngine->generateInsights($transactions, $bookings),
+            'executive_summary' => $this->intelligenceEngine->generateExecutiveSummary($transactions, $bookings),
+            'basic_insights' => $this->generateInsights($bookings, $totalGrossRevenue), // Kept for the Overview Hero
         ]);
     }
 
-    private function getRevenueTrend($bookings): array
+    private function getRevenueTrend($transactions): array
     {
-        // Group bookings by date for last 30 days
-        $trend = $bookings->groupBy(function ($booking) {
-            return $booking->date;
+        // Group transactions by date for last 30 days
+        $trend = $transactions->groupBy(function ($tx) {
+            return date('Y-m-d', strtotime($tx->created_at));
         })->map(function ($group) {
             return [
-                'date' => $group->first()->date,
-                'revenue' => $group->sum(function ($booking) {
-                    return $booking->service?->price ?? 0;
-                }),
+                'date' => date('Y-m-d', strtotime($group->first()->created_at)),
+                'revenue' => $group->sum('gross_amount'),
+                'net_revenue' => $group->sum('net_amount'),
             ];
         })->sortBy('date')->values()->take(30);
 

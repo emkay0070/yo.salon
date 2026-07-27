@@ -5,9 +5,10 @@ import { useRef } from 'react';
 import {
   Users, Search, Plus, Phone, Mail, Calendar, X, Star, Scissors,
   Clock, DollarSign, MessageSquare, Edit, ArrowUpRight, Activity,
-  Sparkles, ChevronRight, ChevronLeft, MoreVertical, Upload, Crown
+  Sparkles, ChevronRight, ChevronLeft, MoreVertical, Upload, Crown, Link2, Loader2
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import { CopyLinkModal } from '@/components/ui/CopyLinkModal';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useQuery } from '@tanstack/react-query';
@@ -80,6 +81,8 @@ function CustomerDrawer({
   onSendInvitation: (customerId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'notes'>('overview');
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState('');
   const gradient = getAvatarGradient(customer.id);
   const headerPhoto = getHeaderPhoto(customer.id);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -217,18 +220,9 @@ function CustomerDrawer({
           </div>
 
           {/* ── Quick Actions ───────────────────────────────────── */}
-
-        {/* ── Quick Actions ───────────────────────────────────── */}
         <div className="px-5 py-4 flex gap-2 shrink-0">
           <button className="flex-1 py-2.5 bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-black rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[#FFD700]/10">
             Book Appointment
-          </button>
-          <button 
-            onClick={() => onSendInvitation(customer.id)}
-            className="p-2.5 bg-blue-500/10 border border-blue-500/25 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-colors"
-            title="Invite to Client Portal"
-          >
-            <Mail className="w-5 h-5" />
           </button>
           <button className="p-2.5 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-xl hover:bg-[var(--color-card)] hover:text-[var(--color-text-primary)] transition-colors border border-[var(--color-border-medium)]">
             <Phone className="w-5 h-5" />
@@ -238,6 +232,36 @@ function CustomerDrawer({
           </button>
           <button className="p-2.5 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-xl hover:bg-[var(--color-card)] hover:text-[var(--color-text-primary)] transition-colors border border-[var(--color-border-medium)]">
             <MoreVertical className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* ── Portal Invite Banner ─────────────────────────────── */}
+        <div className="mx-5 mb-2 p-4 rounded-2xl border border-blue-500/25 bg-blue-500/5 flex items-center gap-3">
+          <div className="p-2 rounded-full bg-blue-500/15 flex-shrink-0">
+            <Link2 className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Invite to Client Portal</p>
+            <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">Send a secure one-time link for them to create their account</p>
+            {inviteError && <p className="text-xs text-red-400 mt-1">{inviteError}</p>}
+          </div>
+          <button
+            onClick={async () => {
+              setInviting(true);
+              setInviteError('');
+              try {
+                await onSendInvitation(customer.id);
+              } catch {
+                setInviteError('Failed to generate link. Try again.');
+              } finally {
+                setInviting(false);
+              }
+            }}
+            disabled={inviting}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-60"
+          >
+            {inviting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+            {inviting ? 'Generating…' : 'Generate Link'}
           </button>
         </div>
 
@@ -455,6 +479,11 @@ export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // State for invite modal
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -520,12 +549,29 @@ export default function CustomersPage() {
 
   const handleSendInvitation = async (customerId: string) => {
     try {
-      const result = await apiClient.sendPortalInvitation(customerId);
-      alert('Invitation sent successfully!');
-      console.log('Invitation result:', result);
+      const result = await apiClient.createInvitation({ role: 'customer', target_id: customerId });
+      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
+      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
+      const inviteUrl = `${protocol}://${rootDomain}/portal/invite/${result.invitation.token}`;
+      setInviteLink(inviteUrl);
+      setInviteModalOpen(true);
     } catch (err) {
-      console.error('Failed to send invitation:', err);
-      alert('Failed to send invitation. Please try again.');
+      console.error('Failed to create invitation:', err);
+      alert('Failed to create invitation. Please try again.');
+    }
+  };
+
+  const handleGenerateGeneralInvite = async () => {
+    try {
+      const result = await apiClient.createInvitation({ role: 'customer' });
+      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
+      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
+      const inviteUrl = `${protocol}://${rootDomain}/portal/invite/${result.invitation.token}`;
+      setInviteLink(inviteUrl);
+      setInviteModalOpen(true);
+    } catch (err) {
+      console.error('Failed to create invitation:', err);
+      alert('Failed to create invitation. Please try again.');
     }
   };
 
@@ -546,6 +592,13 @@ export default function CustomersPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleGenerateGeneralInvite}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl font-medium hover:bg-blue-500/25 transition-colors text-sm"
+            >
+              <Link2 className="w-4 h-4" />
+              <span>Invite via Link</span>
+            </button>
             <button className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-card)] text-[var(--color-text-primary)] border border-[var(--color-border-light)] rounded-xl font-medium hover:bg-white/8 transition-colors text-sm">
               <Upload className="w-4 h-4" />
               <span className="hidden sm:inline">Export</span>
@@ -888,6 +941,14 @@ export default function CustomersPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      
+      <CopyLinkModal 
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        title="Invite Client to Portal"
+        description="Share this secure invitation link with your client. When they sign up, their portal account will be automatically linked to their historical profile."
+        link={inviteLink}
+      />
     </DashboardLayout>
   );
 }

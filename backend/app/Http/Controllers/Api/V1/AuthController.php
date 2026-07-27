@@ -45,7 +45,15 @@ class AuthController extends Controller
 
         $user = \App\Models\User::where('email', $validated['email'])->first();
 
-        if (!$user || !Hash::check($validated['password'], $user->password)) {
+        if (!$user) {
+            \Illuminate\Support\Facades\Log::info("Login failed: User not found for email " . $validated['email']);
+            throw ValidationException::withMessages([
+                'email' => ['The provided credentials are incorrect.'],
+            ]);
+        }
+
+        if (!Hash::check($validated['password'], $user->password)) {
+            \Illuminate\Support\Facades\Log::info("Login failed: Password hash mismatch for user " . $user->email);
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);

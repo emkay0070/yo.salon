@@ -62,6 +62,31 @@ class CustomerController extends Controller
         return response()->json($customer, 201);
     }
 
+    public function lookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'phone' => 'required|string',
+            'salon_id' => 'required|uuid|exists:salons,id',
+        ]);
+
+        $customer = Customer::withoutSalonScope()
+            ->where('phone', $validated['phone'])
+            ->where('salon_id', $validated['salon_id'])
+            ->first();
+
+        if ($customer) {
+            return response()->json([
+                'found' => true,
+                'customer' => [
+                    'name' => $customer->name,
+                    'email' => $customer->email,
+                ]
+            ]);
+        }
+
+        return response()->json(['found' => false]);
+    }
+
     public function show(Customer $customer): JsonResponse
     {
         return response()->json($customer->load('bookings'));

@@ -7,9 +7,17 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
+use App\Services\FeeEngine;
 
 class TransactionController extends Controller
 {
+    protected FeeEngine $feeEngine;
+
+    public function __construct(FeeEngine $feeEngine)
+    {
+        $this->feeEngine = $feeEngine;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $salonId = auth()->user()->currentSalon()?->id;
@@ -55,7 +63,7 @@ class TransactionController extends Controller
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'payment_method'    => 'nullable|string',
             'type'              => 'required|in:payment,refund,adjustment,payout',
-            'amount'            => 'required|numeric|min:0',
+            'amount'            => 'required|numeric|min:0', // Still accept 'amount' from client but map to gross
             'currency'          => 'sometimes|string|max:10',
             'notes'             => 'nullable|string',
             'provider_reference'=> 'nullable|string',
@@ -72,7 +80,11 @@ class TransactionController extends Controller
                 ]
             );
             $paymentMethodId = $pm->id;
+            $paymentMethodId = $pm->id;
         }
+
+        $paymentMethod = $paymentMethodId ? \App\Models\PaymentMethod::find($paymentMethodId) : null;
+        $fees = $this->feeEngine->calculateFees((float) $validated['amount'], $paymentMethod);
 
         $transaction = Transaction::create([
             'salon_id'           => $salonId,
@@ -80,7 +92,11 @@ class TransactionController extends Controller
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
             'type'               => $validated['type'],
-            'amount'             => $validated['amount'],
+            'gross_amount'       => $fees['gross_amount'],
+            'gateway_fee'        => $fees['gateway_fee'],
+            'platform_fee'       => $fees['platform_fee'],
+            'tax_amount'         => $fees['tax_amount'],
+            'net_amount'         => $fees['net_amount'],
             'currency'           => $validated['currency'] ?? 'UGX',
             'notes'              => $validated['notes'] ?? null,
             'provider_reference' => $validated['provider_reference'] ?? null,
@@ -128,18 +144,20 @@ class TransactionController extends Controller
             ->where('status', 'completed')
             ->get();
 
-        $totalReceived     = $todayTransactions->where('type', 'payment')->sum('amount');
-        $totalRefunds      = $todayTransactions->where('type', 'refund')->sum('amount');
+        $totalReceived     = $todayTransactions->where('type', 'payment')->sum('gross_amount');
+        $totalNetReceived  = $todayTransactions->where('type', 'payment')->sum('net_amount');
+        $totalRefunds      = $todayTransactions->where('type', 'refund')->sum('gross_amount');
         $transactionCount  = $todayTransactions->where('type', 'payment')->count();
         $averageSale       = $transactionCount > 0 ? $totalReceived / $transactionCount : 0;
 
-        $prevReceived      = $yesterdayTransactions->where('type', 'payment')->sum('amount');
-        $prevRefunds       = $yesterdayTransactions->where('type', 'refund')->sum('amount');
+        $prevReceived      = $yesterdayTransactions->where('type', 'payment')->sum('gross_amount');
+        $prevRefunds       = $yesterdayTransactions->where('type', 'refund')->sum('gross_amount');
         $prevCount         = $yesterdayTransactions->where('type', 'payment')->count();
 
         return response()->json([
             'date'              => $date,
             'total_received'    => $totalReceived,
+            'total_net_received'=> $totalNetReceived,
             'transaction_count' => $transactionCount,
             'average_sale'      => round($averageSale, 0),
             'total_refunds'     => $totalRefunds,

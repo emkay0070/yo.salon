@@ -24,15 +24,22 @@ use App\Http\Controllers\Api\V1\CustomerBookingController;
 use App\Http\Controllers\Api\V1\WalletController;
 use App\Http\Controllers\Api\V1\ServicePackageController;
 use App\Http\Controllers\Api\V1\GiftCardController;
+use App\Http\Controllers\Api\V1\PulseController;
+use App\Http\Controllers\Api\V1\CopilotController;
+use App\Http\Controllers\Api\V1\InvitationController;
 
 Route::prefix('v1')->group(function () {
     // Public routes
+    Route::get('/salons', [SalonController::class, 'index']);
     Route::get('/salons/{slug}', [SalonController::class, 'showBySlug']);
     Route::get('/salons/{slug}/services', [SalonController::class, 'services']);
     Route::get('/salons/{slug}/staff', [SalonController::class, 'staff']);
     
     // Public booking route (Journey 4: Booking + Create Account)
     Route::post('/bookings/with-account', [BookingController::class, 'storeWithAccount']);
+    
+    // Public customer lookup
+    Route::post('/customers/lookup', [CustomerController::class, 'lookup']);
     
     // Authentication routes
     Route::post('/auth/register', [AuthController::class, 'register']);
@@ -42,11 +49,15 @@ Route::prefix('v1')->group(function () {
     Route::post('/portal/create', [PortalAccountController::class, 'store']);
     Route::post('/portal/login', [PortalAccountController::class, 'login']);
     Route::post('/portal/accept-invitation', [PortalAccountController::class, 'acceptInvitation']);
+    // Invitations (public validation and acceptance)
+    Route::get('/invitations/{token}', [InvitationController::class, 'show']);
+    Route::post('/invitations/{token}/accept', [InvitationController::class, 'accept']);
 
     // Portal protected routes (require portal authentication)
     Route::middleware(['auth:portal'])->group(function () {
         // Portal context middleware resolves salon through customer relationship
         Route::middleware(['portal.context'])->group(function () {
+
             // Portal home - returns everything needed for initial app load
             Route::get('/portal/context', [PortalAccountController::class, 'context']);
             Route::get('/portal/me', [PortalAccountController::class, 'me']);
@@ -112,9 +123,10 @@ Route::prefix('v1')->group(function () {
 
         // Protected routes requiring salon context
         Route::middleware(['salon.context'])->group(function () {
-        // Salons
+        // Pulse Operational Center
+        Route::get('/pulse', [PulseController::class, 'index']);
         Route::get('/salons/check-slug', [SalonController::class, 'checkSlug']);
-        Route::apiResource('salons', SalonController::class);
+        Route::apiResource('salons', SalonController::class)->except(['index']);
         
         // Customers
         Route::apiResource('customers', CustomerController::class);
@@ -166,9 +178,16 @@ Route::prefix('v1')->group(function () {
 
         // Analytics
         Route::get('/analytics', [AnalyticsController::class, 'index']);
+        Route::get('/analytics/intelligence', [AnalyticsController::class, 'intelligence']);
         
-        // Portal account routes (protected - salon sends invitations)
+        // AI Copilot
+        Route::post('/copilot/chat', [CopilotController::class, 'chat']);
+        
+        // Portal account routes (legacy - deprecated in favor of explicit invites)
         Route::post('/portal/send-invitation', [PortalAccountController::class, 'sendInvitation']);
+        
+        // Invitations (admin creates them)
+        Route::post('/invitations', [InvitationController::class, 'store']);
         
         // Feature Flags (admin)
         Route::get('/features', [FeatureFlagController::class, 'index']);

@@ -307,8 +307,8 @@ export default function ServicesPage() {
 
   const openEditModal = (service: Service) => {
     setFormData({
-      name: service.name,
-      description: service.description,
+      name: service.name ?? '',
+      description: service.description ?? '',
       price: service.price.toString(),
       duration: service.duration.toString(),
       category: service.category,
@@ -790,7 +790,7 @@ export default function ServicesPage() {
                     <label className="block text-[var(--color-text-secondary)] text-xs font-semibold uppercase tracking-wider mb-1.5">Description</label>
                     <textarea
                       required
-                      value={formData.description}
+                      value={formData.description ?? ''}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       rows={2}
                       className="w-full px-3 py-2 bg-black/20 border border-[var(--color-border-light)] rounded-xl text-[var(--color-text-primary)] placeholder-white/20 focus:outline-none focus:border-[var(--color-gold)]/50 transition-colors resize-none text-sm"

@@ -119,24 +119,51 @@ export default function ServicesScene() {
                     <div className="px-5 py-3 space-y-2">
                       {cat.services.map((svc) => {
                         const selected = isEnabled(svc.id);
+                        const currentService = services.find((s) => s.id === svc.id);
+                        const currentPrice = currentService ? currentService.price : svc.defaultPrice;
+
                         return (
-                          <button
+                          <div
                             key={svc.id}
-                            onClick={() => toggle(cat, svc)}
-                            className={`w-full flex items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-150 ${
-                              selected ? 'bg-[#FFD700]/[0.08]' : 'hover:bg-white/[0.03]'
+                            className={`flex flex-col md:flex-row md:items-center justify-between p-3.5 rounded-xl border transition-all duration-150 gap-3 ${
+                              selected ? 'bg-[#FFD700]/[0.08] border-[#FFD700]/30' : 'hover:bg-white/[0.03] border-transparent'
                             }`}
                           >
-                            <span className={`text-sm ${selected ? 'text-white' : 'text-white/50'}`}>{svc.name}</span>
                             <div className="flex items-center gap-3">
-                              <span className="text-xs text-white/25">{svc.defaultDuration} min</span>
-                              <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
-                                selected ? 'bg-[#FFD700] border-[#FFD700]' : 'border-white/20'
-                              }`}>
+                              <button
+                                type="button"
+                                onClick={() => toggle(cat, svc)}
+                                className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                                  selected ? 'bg-[#FFD700] border-[#FFD700]' : 'border-white/20'
+                                }`}
+                              >
                                 {selected && <Check className="w-3 h-3 text-black" />}
+                              </button>
+                              <div className="flex flex-col">
+                                <span className={`text-sm font-medium ${selected ? 'text-white' : 'text-white/50'}`}>{svc.name}</span>
+                                <span className="text-xs text-white/25">{svc.defaultDuration} min</span>
                               </div>
                             </div>
-                          </button>
+                            
+                            {selected && (
+                              <div className="flex items-center gap-2 pl-8 md:pl-0">
+                                <span className="text-xs text-[#FFD700]/70 font-semibold">UGX</span>
+                                <input
+                                  type="number"
+                                  value={currentPrice}
+                                  onChange={(e) => {
+                                    const newPrice = Math.max(0, parseInt(e.target.value) || 0);
+                                    setServices(
+                                      services.map((s) =>
+                                        s.id === svc.id ? { ...s, price: newPrice } : s
+                                      )
+                                    );
+                                  }}
+                                  className="w-24 px-2 py-1 rounded bg-white/[0.04] border border-white/[0.1] text-white focus:outline-none focus:border-[#FFD700]/40 text-sm font-semibold text-right"
+                                />
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

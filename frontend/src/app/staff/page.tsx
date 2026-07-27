@@ -5,10 +5,11 @@ import {
   Users, Search, Plus, Calendar, Clock, Star,
   MessageSquare, MoreVertical, X, CalendarDays,
   CheckCircle2, AlertCircle, TrendingUp, Scissors,
-  ChevronRight, Zap, Upload
+  ChevronRight, Zap, Upload, Mail
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { Avatar } from '@/components/ui/Avatar';
+import { CopyLinkModal } from '@/components/ui/CopyLinkModal';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useQuery } from '@tanstack/react-query';
@@ -157,8 +158,6 @@ function StatusBadge({ member }: { member: StaffMember }) {
     </div>
   );
 }
-
-// ─── Staff Card ───────────────────────────────────────────────────────────────
 
 function StaffCard({ member, onClick }: { member: StaffMember; onClick: () => void }) {
   const cfg = STATUS_CONFIG[member.status];
@@ -669,6 +668,10 @@ export default function StaffPage() {
   });
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
 
+  // Create state for invite modal
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+
   const { data, isLoading } = useQuery({
     queryKey: ['staff', salonId],
     queryFn: () => apiClient.getStaff({ salon_id: salonId }),
@@ -812,6 +815,20 @@ export default function StaffPage() {
     }
   };
 
+  const handleInviteStaff = async () => {
+    try {
+      const result = await apiClient.createInvitation({ role: 'staff' });
+      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
+      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
+      const inviteUrl = `${protocol}://${rootDomain}/invite/${result.invitation.token}`;
+      setInviteLink(inviteUrl);
+      setInviteModalOpen(true);
+    } catch (err) {
+      console.error('Failed to create invitation:', err);
+      alert('Failed to create invitation. Please try again.');
+    }
+  };
+
   // ── Derived counts ──────────────────────────────────────────────────────────
   const counts = useMemo(() => ({
     available: staff.filter(s => s.status === 'available').length,
@@ -883,26 +900,35 @@ export default function StaffPage() {
             </div>
           </div>
 
-          <button 
-            onClick={() => {
-              setEditingStaffId(null);
-              setFormData({
-                name: '',
-                role: '',
-                phone: '',
-                email: '',
-                specializations: '',
-                active: true,
-                photo: null,
-                photo_preview: '',
-              });
-              setIsModalOpen(true);
-            }}
-            className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[var(--color-gold)] to-[var(--color-dark-gold)] text-black rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[var(--color-gold)]/10 text-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Add Staff Member
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button 
+              onClick={handleInviteStaff}
+              className="flex items-center gap-2 px-4 py-2.5 bg-card border border-border-light text-text-primary rounded-xl font-semibold hover:bg-white/5 transition-colors text-sm"
+            >
+              <Mail className="w-4 h-4" />
+              Invite Staff
+            </button>
+            <button 
+              onClick={() => {
+                setEditingStaffId(null);
+                setFormData({
+                  name: '',
+                  role: '',
+                  phone: '',
+                  email: '',
+                  specializations: '',
+                  active: true,
+                  photo: null,
+                  photo_preview: '',
+                });
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[var(--color-gold)] to-[var(--color-dark-gold)] text-black rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[var(--color-gold)]/10 text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Staff
+            </button>
+          </div>
         </div>
 
         {/* ── Filter Chips + Search ────────────────────────────────────────── */}
@@ -1198,6 +1224,13 @@ export default function StaffPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      <CopyLinkModal 
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        title="Invite Staff Member"
+        description="Share this secure invitation link with your team member. When they sign up, they will automatically be linked to your salon dashboard."
+        link={inviteLink}
+      />
     </DashboardLayout>
   );
 }

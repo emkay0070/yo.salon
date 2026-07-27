@@ -19,6 +19,8 @@ class Salon extends Model
         'email',
         'address',
         'city',
+        'lat',
+        'lng',
         'opening_hours',
     ];
 

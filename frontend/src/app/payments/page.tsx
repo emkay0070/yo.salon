@@ -11,6 +11,7 @@ import {
 import DashboardLayout from '@/components/DashboardLayout';
 import RequestPaymentModal from '@/components/payments/RequestPaymentModal';
 import AddMethodWizard from '@/components/payments/AddMethodWizard';
+import LedgerTable from '@/components/payments/LedgerTable';
 import { apiClient } from '@/lib/api-client';
 import { useRole } from '@/contexts/RoleContext';
 
@@ -141,7 +142,7 @@ export default function PaymentsPage() {
         <div className="max-w-[1400px] mx-auto pb-20 overflow-x-hidden">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-6">
             <div>
-              <h1 className="text-3xl font-bold text-text-primary tracking-tight">Wallet</h1>
+              <h1 className="text-3xl font-bold text-text-primary tracking-tight">Financials & Ledger</h1>
               <p className="text-text-secondary text-sm mt-1">Configure your payment channels.</p>
             </div>
           </div>
@@ -181,7 +182,7 @@ export default function PaymentsPage() {
   // Derive stats for the active card based on fetched transactions
   const activeTodayCollected = transactions
     .filter((tx: any) => tx.status === 'completed' || tx.status === 'paid')
-    .reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
+    .reduce((sum: number, tx: any) => sum + Number(tx.gross_amount), 0);
   const activeTodayCount = transactions.length;
 
   return (
@@ -191,8 +192,8 @@ export default function PaymentsPage() {
       <div className="max-w-[1400px] mx-auto pb-20 overflow-x-hidden">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-6">
           <div>
-            <h1 className="text-3xl font-bold text-text-primary tracking-tight">Wallet</h1>
-            <p className="text-text-secondary text-sm mt-1">Monitor channels, activity, and settlements.</p>
+            <h1 className="text-3xl font-bold text-text-primary tracking-tight">Financials & Ledger</h1>
+            <p className="text-text-secondary text-sm mt-1">Monitor channels, track net profits, and manage settlements.</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <button 
@@ -208,8 +209,8 @@ export default function PaymentsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
           
-          {/* ── Left: Interactive Wallet Stack ─────────────────────────────── */}
-          <div className="lg:col-span-5 flex flex-col gap-6">
+          {/* ── Top section: Wallet Stack & Summary ─────────────────────────────── */}
+          <div className="lg:col-span-4 flex flex-col gap-6">
             <div className="bg-card border border-border-light rounded-3xl p-8 flex flex-col items-center">
               
               <div
@@ -279,7 +280,7 @@ export default function PaymentsPage() {
                           {method.type.replace('_', ' ')}
                         </p>
                         
-                        {/* Only show "Today's Collections" if active to prevent fetching 5 channels data at once without API bulk support */}
+                        {/* Only show "Today's Collections" if active */}
                         {isActive ? (
                           <div className="flex items-end justify-between mt-2">
                             <div>
@@ -342,149 +343,19 @@ export default function PaymentsPage() {
                   className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-[#6C5CE7]/10 border border-[#6C5CE7]/30 hover:bg-[#6C5CE7]/20 transition-colors text-[#A29BFE] font-medium text-sm"
                 >
                   <ArrowUpRight className="w-4 h-4" />
-                  Request via {activeMethod.display_name.split(' ')[0]}
+                  Request
                 </button>
                 <button className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-card border border-border-light hover:bg-white/10 transition-colors text-text-primary font-medium text-sm">
                   <Settings className="w-4 h-4 text-text-primary/70" />
-                  Channel Settings
+                  Settings
                 </button>
               </div>
             </div>
           </div>
 
-          {/* ── Right: Contextual Activity Feed ────────────────────────────── */}
-          <div className="lg:col-span-7">
-            <div className="bg-card border border-border-light rounded-3xl p-8 h-full flex flex-col">
-              
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeMethod.id}
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center justify-between mb-6"
-                >
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center border ${activeConfig?.border}`}
-                      style={{ background: activeConfig?.gradient }}
-                    >
-                      <ActiveIcon className="w-4 h-4 text-text-primary" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-text-primary tracking-tight">{activeMethod.display_name}</h2>
-                      <p className="text-text-secondary text-xs">{activeTodayCount} transactions today</p>
-                    </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`stats-${activeMethod.id}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="grid grid-cols-2 gap-4 mb-6 p-4 rounded-2xl bg-white/[0.02] border border-white/5"
-                >
-                  <div>
-                    <p className="text-text-secondary text-xs mb-1">Today's Volume</p>
-                    <p className="text-text-primary font-semibold text-lg">{formatCurrency(activeTodayCollected)}</p>
-                  </div>
-                  <div>
-                    <p className="text-text-secondary text-xs mb-1">Transactions</p>
-                    <p className="text-text-primary font-semibold text-lg">{activeTodayCount}</p>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-
-              <div className="flex-1 space-y-5 overflow-y-auto">
-                <AnimatePresence mode="wait">
-                  {transactions.length === 0 ? (
-                    <motion.div
-                      key="empty"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="relative flex flex-col items-center justify-center py-16 text-center rounded-2xl overflow-hidden border border-border-light"
-                    >
-                      <div className="absolute inset-0 z-0">
-                        <img src="/images/salon_reception.png" alt="Reception" className="w-full h-full object-cover opacity-20" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-[#121212]/80 to-transparent"></div>
-                      </div>
-                      <div className="relative z-10">
-                        <div className="w-14 h-14 mx-auto rounded-2xl bg-card border border-border-light flex items-center justify-center mb-4 shadow-xl backdrop-blur-md">
-                          <ActiveIcon className="w-6 h-6 text-text-secondary" />
-                        </div>
-                        <p className="text-text-primary font-medium mb-1">No transactions today</p>
-                        <p className="text-text-secondary text-sm">Transactions via {activeMethod.display_name} will appear here.</p>
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key={`list-${activeMethod.id}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="space-y-5"
-                    >
-                      {transactions.map((tx: any, i: number) => {
-                        const isPaid = tx.status === 'completed' || tx.status === 'paid';
-                        const isRefund = tx.status === 'refunded';
-                        const isSettlement = tx.type === 'settlement';
-
-                        return (
-                          <motion.div
-                            key={tx.id}
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="flex items-center justify-between group"
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center flex-shrink-0">
-                                {isSettlement
-                                  ? <Banknote className="w-5 h-5 text-[#6C5CE7]" />
-                                  : <User className="w-5 h-5 text-text-secondary" />
-                                }
-                              </div>
-                              <div>
-                                <h4 className="text-text-primary font-medium group-hover:text-[#6C5CE7] transition-colors">
-                                  {tx.customer?.first_name ? `${tx.customer.first_name} ${tx.customer.last_name || ''}` : (isSettlement ? 'Settlement' : 'Walk-in')}
-                                </h4>
-                                <p className="text-text-secondary text-sm">{tx.booking?.service?.name || tx.notes || 'Payment'}</p>
-                              </div>
-                            </div>
-
-                            <div className="hidden sm:block text-right">
-                              <span className="text-text-secondary text-sm">
-                                {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-4 min-w-[140px] justify-end">
-                              <div className={`px-2.5 py-1 rounded-md text-xs font-medium uppercase tracking-wider ${
-                                isPaid    ? 'bg-emerald-500/10 text-emerald-400' :
-                                isRefund  ? 'bg-red-500/10 text-red-400' :
-                                            'bg-yellow-500/10 text-yellow-400'
-                              }`}>
-                                {tx.status}
-                              </div>
-                              <span className={`font-semibold min-w-[90px] text-right ${isRefund ? 'text-red-400' : 'text-text-primary'}`}>
-                                {isRefund ? '-' : ''}{formatCurrency(Number(tx.amount))}
-                              </span>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+          {/* ── Main content: Ledger Table ────────────────────────────── */}
+          <div className="lg:col-span-8">
+            <LedgerTable transactions={transactions} />
           </div>
         </div>
 
@@ -500,10 +371,10 @@ export default function PaymentsPage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
               {[
-                { label: 'Total Received', value: formatCurrency(summary?.total_received || 0), trend: '+18%', up: true,  Icon: Banknote,       color: 'bg-[#6C5CE7]/20 text-[#6C5CE7]' },
-                { label: 'Transactions',   value: summary?.count || 0,                          trend: '+12%', up: true,  Icon: CreditCard,     color: 'bg-blue-500/20 text-blue-400'   },
-                { label: 'Average Sale',   value: formatCurrency(summary?.average_sale || 0),   trend: '-5%',  up: false, Icon: Clock,          color: 'bg-orange-500/20 text-orange-400'},
-                { label: 'Refunds',        value: formatCurrency(summary?.refunds || 0),        trend: '-8%',  up: false, Icon: ArrowDownRight, color: 'bg-red-500/20 text-red-400'     },
+                { label: 'Gross Received', value: formatCurrency(summary?.total_received || 0), trend: '+18%', up: true,  Icon: Banknote,       color: 'bg-text-secondary/20 text-text-secondary' },
+                { label: 'Net Profit',     value: formatCurrency(summary?.total_net_received || 0), trend: '+20%', up: true,  Icon: Wallet,         color: 'bg-[#6C5CE7]/20 text-[#6C5CE7]'   },
+                { label: 'Transactions',   value: summary?.transaction_count || 0,              trend: '+12%', up: true,  Icon: CreditCard,     color: 'bg-blue-500/20 text-blue-400'   },
+                { label: 'Avg Sale',       value: formatCurrency(summary?.average_sale || 0),   trend: '-5%',  up: false, Icon: Clock,          color: 'bg-orange-500/20 text-orange-400'},
               ].map(stat => (
                 <div key={stat.label}>
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-3 ${stat.color}`}>

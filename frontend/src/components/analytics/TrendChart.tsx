@@ -4,21 +4,28 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 interface TrendChartProps {
   data: any[];
   dataKey: string;
+  dataKeySecondary?: string;
   xAxisKey: string;
   height?: number;
   formatTooltip?: (value: number) => string;
 }
 
-export function TrendChart({ data, dataKey, xAxisKey, height = 300, formatTooltip }: TrendChartProps) {
+export function TrendChart({ data, dataKey, dataKeySecondary, xAxisKey, height = 300, formatTooltip }: TrendChartProps) {
   return (
     <div style={{ height: `${height}px` }} className="w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#FFD700" stopOpacity={0.3}/>
-              <stop offset="95%" stopColor="#FFD700" stopOpacity={0}/>
+              <stop offset="5%" stopColor="#6C5CE7" stopOpacity={0.3}/>
+              <stop offset="95%" stopColor="#6C5CE7" stopOpacity={0}/>
             </linearGradient>
+            {dataKeySecondary && (
+              <linearGradient id="colorValueSecondary" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#A29BFE" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#A29BFE" stopOpacity={0}/>
+              </linearGradient>
+            )}
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-medium)" vertical={false} />
           <XAxis 
@@ -51,11 +58,23 @@ export function TrendChart({ data, dataKey, xAxisKey, height = 300, formatToolti
           <Area 
             type="monotone" 
             dataKey={dataKey} 
-            stroke="#FFD700" 
+            stroke="#6C5CE7" 
             strokeWidth={2}
             fillOpacity={1} 
             fill="url(#colorValue)" 
+            name="Gross"
           />
+          {dataKeySecondary && (
+            <Area 
+              type="monotone" 
+              dataKey={dataKeySecondary} 
+              stroke="#A29BFE" 
+              strokeWidth={2}
+              fillOpacity={1} 
+              fill="url(#colorValueSecondary)" 
+              name="Net"
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -30,9 +30,13 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Handle unauthorized - clear token and redirect to login
-          localStorage.removeItem('auth_token');
-          window.location.href = '/login';
+          // Only redirect to login when on a protected route, not public pages like /book
+          const publicPaths = ['/book', '/welcome', '/login', '/register', '/forgot-password'];
+          const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+          if (!isPublicPage) {
+            localStorage.removeItem('auth_token');
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }
@@ -134,6 +138,11 @@ class ApiClient {
   }
 
   // Customer endpoints
+  async lookupCustomer(phone: string, salonId: string) {
+    const response = await this.client.post('/v1/customers/lookup', { phone, salon_id: salonId });
+    return response.data;
+  }
+
   async getCustomers(params?: Record<string, any>) {
     const response = await this.client.get('/v1/customers', { params });
     return response.data;
@@ -341,9 +350,18 @@ class ApiClient {
     return response.data;
   }
 
+  async getPulseData(params?: { salon_id?: string }) {
+    const response = await this.client.get('/v1/pulse', { params });
+    return response.data;
+  }
+
   async getTransactions(params?: Record<string, any>) {
     const response = await this.client.get('/v1/transactions', { params });
     return response.data;
+  }
+
+  async getIntelligence(): Promise<any> {
+    return this.get('/v1/analytics/intelligence');
   }
 
   async getTransactionSummary(params?: Record<string, any>) {
@@ -514,6 +532,28 @@ class ApiClient {
 
   async delete(url: string) {
     const response = await this.client.delete(url);
+    return response.data;
+  }
+
+  // AI Copilot
+  async copilotChat(message: string, context?: any) {
+    const response = await this.client.post('/v1/copilot/chat', { message, context });
+    return response.data;
+  }
+
+  // Invitations
+  async createInvitation(data: { role: 'customer' | 'staff', email?: string, target_id?: string }) {
+    const response = await this.client.post('/v1/invitations', data);
+    return response.data;
+  }
+
+  async getInvitation(token: string) {
+    const response = await this.client.get(`/v1/invitations/${token}`);
+    return response.data;
+  }
+
+  async acceptInvitation(token: string, data: any) {
+    const response = await this.client.post(`/v1/invitations/${token}/accept`, data);
     return response.data;
   }
 }

@@ -33,6 +33,8 @@ class OnboardingService
                 'phone' => $onboardingData['salon']['phone'] ?? null,
                 'email' => $onboardingData['salon']['email'] ?? null,
                 'address' => $onboardingData['salon']['address'] ?? null,
+                'lat' => $onboardingData['salon']['lat'] ?? null,
+                'lng' => $onboardingData['salon']['lng'] ?? null,
                 'city' => $onboardingData['salon']['city'] ?? null,
                 'opening_hours' => $onboardingData['wallet']['openingHours'] ?? [],
             ]);

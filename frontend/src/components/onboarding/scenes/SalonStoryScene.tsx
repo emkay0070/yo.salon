@@ -88,7 +88,7 @@ export default function SalonStoryScene() {
               Description (Optional)
             </label>
             <textarea
-              value={salonData.description}
+              value={salonData.description ?? ''}
               onChange={(e) => handleChange('description', e.target.value)}
               placeholder="A short bio about what makes your salon special..."
               rows={3}

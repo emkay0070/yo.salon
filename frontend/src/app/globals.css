@@ -19,18 +19,19 @@
   --color-border-light: var(--color-border-light);
   --color-border-medium: var(--color-border-medium);
   --color-overlay: var(--color-overlay);
+
+  --font-inter: var(--font-inter), system-ui, sans-serif;
+  --font-playfair: var(--font-playfair), Georgia, serif;
+  --font-sora: var(--font-sora), sans-serif;
+  --font-poppins: var(--font-poppins), sans-serif;
 }
 
-:root {
-  --font-inter: var(--font-inter);
-  --font-playfair: var(--font-playfair);
-}
 
 /* ─────────────────────────────────────────────────────────
    BASE THEME  (Noir / Dark — Default)
    Design rule: near-invisible borders, depth via shadows
 ───────────────────────────────────────────────────────── */
-[data-theme] {
+:root, [data-theme] {
   /* Palette constants */
   --color-obsidian: #0A0A0A;
   --color-noir: #0A0A0A;
@@ -130,7 +131,7 @@
 
 @layer base {
   html, body {
-    font-family: var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-poppins), system-ui, sans-serif;
     background-color: var(--color-background) !important;
     color: var(--color-text-primary) !important;
     margin: 0;
@@ -178,6 +179,7 @@
   }
   
   h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sora), system-ui, sans-serif;
     font-weight: 600;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;

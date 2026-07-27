@@ -128,10 +128,10 @@ class BookingController extends Controller
             'service_id' => 'required|uuid|exists:services,id',
             'staff_id' => 'nullable|uuid|exists:staff,id',
             'date' => 'required|date',
-            'time' => 'required|string',
+            'time' => 'nullable|string',
             'create_account' => 'boolean',
-            'account_email' => 'required_if:create_account,true|email',
-            'account_password' => 'required_if:create_account,true|string|min:8',
+            'account_email' => 'required_if:create_account,true|nullable|email',
+            'account_password' => 'required_if:create_account,true|nullable|string|min:8',
         ]);
 
         try {

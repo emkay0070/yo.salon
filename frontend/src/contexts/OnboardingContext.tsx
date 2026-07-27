@@ -9,6 +9,8 @@ interface SalonData {
   phone: string;
   email: string;
   address: string;
+  lat?: number;
+  lng?: number;
   timezone: string;
   currency: string;
   description: string;

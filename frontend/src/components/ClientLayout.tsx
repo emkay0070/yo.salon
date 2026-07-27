@@ -28,6 +28,12 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
     router.push('/portal/login');
   };
 
+  const isAuthPage = ['/portal/login', '/portal/create-account'].includes(pathname);
+
+  if (isAuthPage) {
+    return <main className="min-h-screen bg-[#070707] font-sans text-text-primary selection:bg-gold/30">{children}</main>;
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-[100dvh] bg-background flex items-center justify-center">

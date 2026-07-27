@@ -16,7 +16,18 @@ export default function CelebrationScene() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const salonLink = `yosalon.com/${salonData.draftSlug || 'your-salon'}`;
+  // Resolve the domain dynamically based on current window location
+  const getSalonLink = () => {
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin; // e.g. http://localhost:3000
+      // Strip protocol to match the display aesthetic
+      const cleanDomain = origin.replace(/https?:\/\//, '');
+      return `${cleanDomain}/book/${salonData.draftSlug || 'your-salon'}`;
+    }
+    return `yosalon.com/book/${salonData.draftSlug || 'your-salon'}`;
+  };
+
+  const salonLink = getSalonLink();
 
   // Optional things they might have skipped
   const finishLater = [

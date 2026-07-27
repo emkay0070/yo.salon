@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, User, Eye, EyeOff, Scissors, ArrowRight, CheckCircle } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, Scissors, ArrowRight, CheckCircle, Palette } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { motion } from 'framer-motion';
 
@@ -111,12 +111,17 @@ export default function RegisterPage() {
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 relative overflow-y-auto">
         <div className="absolute inset-0 bg-[#070707]/95" />
 
-        {/* Mobile logo */}
-        <div className="lg:hidden absolute top-6 left-6 flex items-center gap-3 z-10">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FFD700] to-[#C9A227] flex items-center justify-center">
-            <Scissors className="w-4 h-4 text-black" />
+        {/* Mobile logo & Theme Switcher */}
+        <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FFD700] to-[#C9A227] flex items-center justify-center">
+              <Scissors className="w-4 h-4 text-black" />
+            </div>
+            <span className="text-white font-bold tracking-tight">Yo Salon</span>
           </div>
-          <span className="text-text-primary font-bold tracking-tight">Yo Salon</span>
+          <button className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white transition-colors">
+            <Palette className="w-5 h-5" />
+          </button>
         </div>
 
         <motion.div
@@ -126,10 +131,10 @@ export default function RegisterPage() {
           className="w-full max-w-md relative z-10 py-16 lg:py-0"
         >
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-text-primary tracking-tight mb-2">
+            <h1 className="text-4xl font-bold text-white tracking-tight mb-2">
               Create account
             </h1>
-            <p className="text-text-primary/40 text-base">
+            <p className="text-white/50 text-base">
               Start your free salon management journey
             </p>
           </div>

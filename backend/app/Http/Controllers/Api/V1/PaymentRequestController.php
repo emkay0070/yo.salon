@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentRequest;
 use App\Models\Booking;
+use App\Services\FeeEngine;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -12,6 +13,12 @@ use Carbon\Carbon;
 
 class PaymentRequestController extends Controller
 {
+    protected FeeEngine $feeEngine;
+
+    public function __construct(FeeEngine $feeEngine)
+    {
+        $this->feeEngine = $feeEngine;
+    }
     public function index(Request $request): JsonResponse
     {
         $salonId = auth()->user()->currentSalon()?->id;
@@ -107,6 +114,12 @@ class PaymentRequestController extends Controller
 
         // If paid, create a completed transaction and mark booking as paid
         if ($validated['status'] === 'paid') {
+            $paymentMethod = $paymentRequest->payment_method_id
+                ? \App\Models\PaymentMethod::find($paymentRequest->payment_method_id)
+                : null;
+
+            $fees = $this->feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
+
             $transaction = \App\Models\Transaction::create([
                 'salon_id'           => $paymentRequest->salon_id,
                 'booking_id'         => $paymentRequest->booking_id,
@@ -114,7 +127,11 @@ class PaymentRequestController extends Controller
                 'payment_method_id'  => $paymentRequest->payment_method_id,
                 'type'               => 'payment',
                 'status'             => 'completed',
-                'amount'             => $paymentRequest->amount,
+                'gross_amount'       => $fees['gross_amount'],
+                'gateway_fee'        => $fees['gateway_fee'],
+                'platform_fee'       => $fees['platform_fee'],
+                'tax_amount'         => $fees['tax_amount'],
+                'net_amount'         => $fees['net_amount'],
                 'currency'           => 'UGX',
                 'internal_reference' => 'TXN-' . strtoupper(Str::random(10)),
                 'provider_reference' => $validated['provider_reference'] ?? null,

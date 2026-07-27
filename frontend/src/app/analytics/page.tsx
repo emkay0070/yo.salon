@@ -4,7 +4,8 @@ import { TrendChart } from '@/components/analytics/TrendChart';
 import { InsightHero } from '@/components/analytics/InsightHero';
 import { BusinessSignal } from '@/components/analytics/BusinessSignal';
 import { BarChart } from '@/components/analytics/BarChart';
-import { Users, Clock, Sparkles } from 'lucide-react';
+import { RecommendationCard } from '@/components/analytics/RecommendationCard';
+import { Users, Clock, Sparkles, Brain } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { useRole } from '@/contexts/RoleContext';
 
@@ -37,23 +38,48 @@ export default function AnalyticsOverview() {
     bookings: item.bookings,
   })) || [];
 
-  const insights = analyticsData?.insights || {};
+  const basicInsights = analyticsData?.basic_insights || {};
+  const executiveSummary = analyticsData?.executive_summary || "Your business intelligence hub is analyzing your data...";
+  const aiInsights = analyticsData?.insights || [];
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-6 sm:space-y-10">
+      
+      {/* Top Level BI Hero */}
       <InsightHero 
-        title="Salon Pulse"
-        narrative={insights.narrative || "Your salon performance overview"}
-        metric={insights.metric || "UGX 0"}
+        title="Business Intelligence Hub"
+        narrative={executiveSummary}
+        metric={basicInsights.metric || "UGX 0"}
         trend={{ 
-          value: insights.trend_value || "+0% vs last month", 
-          isPositive: insights.trend_positive ?? true 
+          value: basicInsights.trend_value || "+0% vs last month", 
+          isPositive: basicInsights.trend_positive ?? true 
         }}
         imagePath="/images/salon-mirror.jpg"
       />
       
+      {/* AI Dynamic Actionable Insights */}
+      {aiInsights.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-6">
+            <Brain className="w-5 h-5 text-[#6C5CE7]" />
+            <h3 className="text-lg font-medium text-text-primary">Intelligence Engine Signals</h3>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {aiInsights.map((insight: any, i: number) => (
+              <RecommendationCard 
+                key={i}
+                title={insight.title}
+                description={insight.description}
+                actionText={insight.action_text}
+                isPredictive={insight.is_predictive}
+                onAction={() => console.log('BI action clicked')}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <div>
-        <h3 className="text-lg font-medium text-text-primary mb-6">Revenue Trend (30 Days)</h3>
+        <h3 className="text-base sm:text-lg font-medium text-text-primary mb-4 sm:mb-6">Revenue Trend (30 Days)</h3>
         <TrendChart 
           data={revenueData}
           dataKey="revenue"
@@ -66,29 +92,29 @@ export default function AnalyticsOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <BusinessSignal 
           title="Customer Retention"
-          value={insights.retention || "N/A"}
-          narrative={insights.retention_narrative || "Data not available"}
+          value={basicInsights.retention || "N/A"}
+          narrative={basicInsights.retention_narrative || "Data not available"}
           icon={Users}
-          trend={insights.retention_trend || "neutral"}
+          trend={basicInsights.retention_trend || "neutral"}
         />
         <BusinessSignal 
           title="Peak Hours"
-          value={insights.peak_hours || "N/A"}
-          narrative={insights.peak_hours_narrative || "Data not available"}
+          value={basicInsights.peak_hours || "N/A"}
+          narrative={basicInsights.peak_hours_narrative || "Data not available"}
           icon={Clock}
-          trend={insights.peak_hours_trend || "neutral"}
+          trend={basicInsights.peak_hours_trend || "neutral"}
         />
         <BusinessSignal 
           title="Growth Opportunity"
-          value={insights.growth_opportunity || "N/A"}
-          narrative={insights.growth_opportunity_narrative || "Data not available"}
+          value={basicInsights.growth_opportunity || "N/A"}
+          narrative={basicInsights.growth_opportunity_narrative || "Data not available"}
           icon={Sparkles}
-          trend={insights.growth_opportunity_trend || "neutral"}
+          trend={basicInsights.growth_opportunity_trend || "neutral"}
         />
       </div>
 
       <div>
-        <h3 className="text-lg font-medium text-text-primary mb-6">Week at a Glance (Bookings)</h3>
+        <h3 className="text-base sm:text-lg font-medium text-text-primary mb-4 sm:mb-6">Week at a Glance (Bookings)</h3>
         <BarChart 
           data={weeklyBookings}
           dataKey="bookings"

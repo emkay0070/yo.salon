@@ -14,7 +14,9 @@ import {
   LogOut,
   X,
   UserCheck,
-  MoreHorizontal
+  MoreHorizontal,
+  Activity,
+  Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -32,7 +34,9 @@ const navItems = [
   { icon: Scissors, label: 'Services', href: '/services' },
   { icon: UserCheck, label: 'Staff', href: '/staff' },
   { icon: TrendingUp, label: 'Analytics', href: '/analytics' },
+  { icon: Brain, label: 'Intelligence', href: '/analytics/intelligence' },
   { icon: CreditCard, label: 'Payments', href: '/payments' },
+  { icon: Activity, label: 'Pulse', href: '/pulse' },
   { icon: Settings, label: 'Settings', href: '/settings' },
 ];
 

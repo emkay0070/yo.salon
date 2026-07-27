@@ -18,7 +18,7 @@ export function InsightHero({ title, narrative, metric, trend, imagePath }: Insi
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`mb-8 relative overflow-hidden rounded-3xl ${imagePath ? 'p-8 sm:p-10' : ''}`}
+      className={`mb-4 sm:mb-8 relative overflow-hidden rounded-2xl sm:rounded-3xl ${imagePath ? 'p-5 sm:p-8 md:p-10' : ''}`}
     >
       {imagePath && (
         <>
@@ -35,12 +35,12 @@ export function InsightHero({ title, narrative, metric, trend, imagePath }: Insi
       <div className="relative z-10">
         <h2 className={`${imagePath ? 'text-gold' : 'text-text-secondary'} text-xs font-semibold mb-3 tracking-[0.2em] uppercase`}>{title}</h2>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <p className="text-3xl md:text-4xl font-semibold text-text-primary leading-tight max-w-2xl text-balance tracking-tight">
+          <p className="text-base sm:text-xl md:text-3xl font-semibold text-text-primary leading-snug sm:leading-tight max-w-2xl tracking-tight">
             {narrative}
           </p>
           {(metric || trend) && (
-            <div className="flex flex-col items-start md:items-end flex-shrink-0 bg-card border border-border-light p-5 rounded-2xl backdrop-blur-md">
-              {metric && <div className="text-4xl font-bold text-gold tracking-tight">{metric}</div>}
+            <div className="flex flex-col items-start md:items-end flex-shrink-0 bg-card border border-border-light p-3 sm:p-5 rounded-xl sm:rounded-2xl backdrop-blur-md">
+              {metric && <div className="text-2xl sm:text-4xl font-bold text-gold tracking-tight">{metric}</div>}
               {trend && (
                 <div className={`flex items-center gap-1.5 text-sm font-medium mt-2 ${trend.isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {trend.isPositive ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}

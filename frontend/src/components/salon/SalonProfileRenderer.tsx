@@ -107,7 +107,7 @@ export default function SalonProfileRenderer({ mode, salonData, services, team }
                     <span className="text-xs text-white/50">{service.category} • {service.duration} min</span>
                   </div>
                   <span className="font-semibold text-[#FFD700]">
-                    {service.price === 0 ? 'Free' : `$${service.price}`}
+                    {service.price === 0 ? 'Free' : `UGX ${service.price.toLocaleString()}`}
                   </span>
                 </div>
               ))}

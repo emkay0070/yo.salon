@@ -28,8 +28,10 @@ const config: Config = {
         "border-medium": "var(--color-border-medium)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        sans: ["var(--font-poppins)", "var(--font-inter)", "system-ui", "sans-serif"],
         serif: ["var(--font-playfair)", "Georgia", "serif"],
+        sora: ["var(--font-sora)", "sans-serif"],
+        poppins: ["var(--font-poppins)", "sans-serif"],
       },
     },
   },
