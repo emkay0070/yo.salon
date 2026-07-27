@@ -149,7 +149,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                 </Button>
               )}
               <Link href="/analytics/intelligence">
-                <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs">
                   <Brain className="w-3.5 h-3.5" />
                   Full Intelligence
                   <ChevronRight className="w-3 h-3" />
@@ -206,7 +206,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                     tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'var(--color-card)', borderRadius: 12, border: '1px solid var(--color-border-medium)' }}
-                    formatter={(v: any, name: string) => [`UGX ${Number(v).toLocaleString()}`, name === 'revenue' ? 'Gross' : 'Net']}
+                    formatter={(v: any, name: any) => [`UGX ${Number(v).toLocaleString()}`, String(name) === 'revenue' ? 'Gross' : 'Net']}
                     labelStyle={{ color: 'var(--color-text-secondary)', fontSize: 11 }}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#6C5CE7" strokeWidth={2} fill="url(#gradGross)" name="revenue" />

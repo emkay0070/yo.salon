@@ -73,7 +73,7 @@ export default function ChurnRadar({ risks }: ChurnRadarProps) {
                 </p>
               </div>
 
-              <Button size="sm" variant="glass" className="h-8 px-3 text-xs gap-1.5 bg-white/5 hover:bg-white/10">
+              <Button size="sm" variant="ghost" className="h-8 px-3 text-xs gap-1.5 bg-white/5 hover:bg-white/10">
                 <MessageCircle className="w-3.5 h-3.5" />
                 Action
               </Button>
