@@ -82,6 +82,32 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet
   });
 
+  // Apply brand fonts to document
+  useEffect(() => {
+    if (brand?.brand) {
+      const root = document.documentElement;
+      
+      // Map font IDs to CSS variable names
+      const fontMap: Record<string, string> = {
+        sora: 'var(--font-sora)',
+        playfair: 'var(--font-playfair)',
+        inter: 'var(--font-inter)',
+        poppins: 'var(--font-poppins)',
+      };
+      
+      // Apply heading font
+      root.style.setProperty('--brand-font-heading', fontMap[brand.brand.font_heading] || 'var(--font-sora)');
+      
+      // Apply body font
+      root.style.setProperty('--brand-font-body', fontMap[brand.brand.font_body] || 'var(--font-inter)');
+      
+      // Apply brand colors as CSS variables for global use
+      root.style.setProperty('--brand-primary', brand.brand.primary_color);
+      root.style.setProperty('--brand-secondary', brand.brand.secondary_color);
+      root.style.setProperty('--brand-accent', brand.brand.accent_color);
+    }
+  }, [brand]);
+
   return (
     <BrandContext.Provider value={{ brand, isLoading, error, refetch }}>
       {children}
