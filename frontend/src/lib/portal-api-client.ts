@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend/api/v1';
 
 const SALON_STORAGE_KEY = 'portal_active_salon_id';
 
