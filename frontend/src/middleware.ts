@@ -21,24 +21,36 @@ export function middleware(req: NextRequest) {
   // Get hostname of request (e.g. doe-beauty-palor.localhost:3000)
   const hostname = req.headers.get('host') || '';
   
-  // Get the main root domain (e.g. localhost:3000 or yosalon.app)
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
+  // Define our known platform domains
+  const rootDomains = [
+    process.env.NEXT_PUBLIC_ROOT_DOMAIN, 
+    'yosalon.vercel.app', 
+    'yo.salon',
+    'localhost:3000'
+  ].filter(Boolean) as string[];
 
-  // Extract the subdomain (if it exists)
-  // For example: doe-beauty-palor.localhost:3000 -> doe-beauty-palor
-  // For localhost:3000 -> ""
-  const subdomain = hostname
-    .replace(`.${rootDomain}`, '')
-    .replace(rootDomain, '');
+  // Check if the current hostname is exactly one of our root domains
+  const isRootDomain = rootDomains.some(domain => hostname === domain || hostname === `www.${domain}`);
 
-  // If there is a subdomain and it's not "www"
+  // If it's a root domain, let it hit the platform pages (/login, /register, etc.)
+  if (isRootDomain) {
+    return NextResponse.next();
+  }
+
+  // Otherwise, extract the tenant slug (e.g. freshcuts.yosalon.vercel.app -> freshcuts)
+  let subdomain = hostname;
+  for (const domain of rootDomains) {
+    if (hostname.endsWith(`.${domain}`)) {
+      subdomain = hostname.replace(`.${domain}`, '');
+      break;
+    }
+  }
+
+  // If there is a valid subdomain, rewrite to the hidden /salons/[slug] route
   if (subdomain && subdomain !== 'www') {
-    // We rewrite the URL to point to our hidden /salons/[slug] route
-    // e.g., if path is /book, we rewrite to /salons/doe-beauty-palor/book
     const newPath = `/salons/${subdomain}${url.pathname}${url.search}`;
     return NextResponse.rewrite(new URL(newPath, req.url));
   }
 
-  // Otherwise, let the request pass through to the main domain
   return NextResponse.next();
 }
