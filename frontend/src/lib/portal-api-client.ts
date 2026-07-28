@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000/api` : 'http://localhost:8000/api');
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend/api';
 
 const SALON_STORAGE_KEY = 'portal_active_salon_id';
 
@@ -70,7 +70,7 @@ class PortalApiClient {
     salon_id: string;
     name?: string;
   }) {
-    const response = await this.client.post('/v1/portal/create', data);
+    const response = await this.client.post('/portal/create', data);
     const { portal_account, customer, token } = response.data;
     if (token) {
       localStorage.setItem('portal_auth_token', token);
@@ -79,7 +79,7 @@ class PortalApiClient {
   }
 
   async login(email: string, password: string) {
-    const response = await this.client.post('/v1/portal/login', { email, password });
+    const response = await this.client.post('/portal/login', { email, password });
     const { token, context } = response.data;
     localStorage.setItem('portal_auth_token', token);
 
@@ -93,7 +93,7 @@ class PortalApiClient {
 
   async logout() {
     try {
-      await this.client.post('/v1/portal/logout');
+      await this.client.post('/portal/logout');
     } finally {
       localStorage.removeItem('portal_auth_token');
       this.clearActiveSalonId();
@@ -101,7 +101,7 @@ class PortalApiClient {
   }
 
   async getMe() {
-    const response = await this.client.get('/v1/portal/me');
+    const response = await this.client.get('/portal/me');
     return response.data;
   }
 
