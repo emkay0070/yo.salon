@@ -26,27 +26,27 @@ composer install --no-dev --optimize-autoloader
 
 # Clear and cache config
 echo "⚙️  Optimizing configuration..."
-php artisan config:clear
-php artisan config:cache
+sudo -u www-data php artisan config:clear
+sudo -u www-data php artisan config:cache
 
 # Clear and cache routes
 echo "🛣️  Optimizing routes..."
-php artisan route:clear
-php artisan route:cache
+sudo -u www-data php artisan route:clear
+sudo -u www-data php artisan route:cache
 
 # Clear and cache views
 echo "🎨 Optimizing views..."
-php artisan view:clear
-php artisan view:cache
+sudo -u www-data php artisan view:clear
+sudo -u www-data php artisan view:cache
 
 # Run migrations
 echo "🗄️  Running database migrations..."
-php artisan migrate --force
+sudo -u www-data php artisan migrate --force
 
 # Clear and cache events
 echo "📡 Optimizing events..."
-php artisan event:clear
-php artisan event:cache
+sudo -u www-data php artisan event:clear
+sudo -u www-data php artisan event:cache
 
 # Copy Supervisor config
 echo "🔧 Setting up Supervisor configuration..."
