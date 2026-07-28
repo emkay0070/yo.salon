@@ -12,69 +12,81 @@ class BrandExperienceController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $salon = $request->get('salon');
-        
-        // Get or create brand experience
-        $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
-        
-        // Load experience family config
-        $experienceFamily = config('experience_families.' . $brand->experience_family, config('experience_families.luxury_noir'));
-        
-        // Merge brand colors with experience family defaults
-        $colors = array_merge(
-            $experienceFamily['default_colors'],
-            [
-                'primary' => $brand->primary_color,
-                'secondary' => $brand->secondary_color,
-                'accent' => $brand->accent_color,
-            ]
-        );
-        
-        // Build complete brand response
-        $brandResponse = [
-            'salon' => [
-                'id' => $salon->id,
-                'name' => $salon->name,
-                'slug' => $salon->slug,
-                'logo' => $brand->logo ?? $salon->logo,
-            ],
-            'brand' => [
-                'logo' => $brand->logo,
-                'primary_color' => $brand->primary_color,
-                'secondary_color' => $brand->secondary_color,
-                'accent_color' => $brand->accent_color,
-                'font_heading' => $brand->font_heading,
-                'font_body' => $brand->font_body,
-                'background_image' => $brand->background_image,
-                'custom_domain' => $brand->custom_domain,
-                'white_label_enabled' => $brand->white_label_enabled,
-            ],
-            'experience' => [
-                'family' => $brand->experience_family,
-                'name' => $experienceFamily['name'],
-                'description' => $experienceFamily['description'],
-                'glass_opacity' => $experienceFamily['glass_opacity'],
-                'glass_blur' => $experienceFamily['glass_blur'],
-                'shadow_style' => $experienceFamily['shadow_style'],
-                'shadow_intensity' => $experienceFamily['shadow_intensity'],
-                'border_radius' => $experienceFamily['border_radius'],
-                'border_radius_unit' => $experienceFamily['border_radius_unit'],
-                'card_style' => $experienceFamily['card_style'],
-                'motion_preset' => $experienceFamily['motion_preset'],
-                'animation_speed' => $experienceFamily['animation_speed'],
-                'spring_stiffness' => $experienceFamily['spring_stiffness'],
-                'spring_damping' => $experienceFamily['spring_damping'],
-                'icon_style' => $experienceFamily['icon_style'],
-                'icon_weight' => $experienceFamily['icon_weight'],
-                'background_type' => $experienceFamily['background_type'],
-                'cursor_style' => $experienceFamily['cursor_style'],
-                'sidebar_style' => $experienceFamily['sidebar_style'],
-                'button_style' => $experienceFamily['button_style'],
-            ],
-            'colors' => $colors,
-        ];
-        
-        return response()->json($brandResponse);
+        try {
+            $salon = $request->get('salon');
+            
+            if (!$salon) {
+                return response()->json(['error' => 'Salon context not found'], 400);
+            }
+            
+            // Get or create brand experience
+            $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
+            
+            // Load experience family config
+            $experienceFamily = config('experience_families.' . $brand->experience_family, config('experience_families.luxury_noir'));
+            
+            if (!$experienceFamily) {
+                return response()->json(['error' => 'Experience family config not found'], 500);
+            }
+            
+            // Merge brand colors with experience family defaults
+            $colors = array_merge(
+                $experienceFamily['default_colors'] ?? [],
+                [
+                    'primary' => $brand->primary_color,
+                    'secondary' => $brand->secondary_color,
+                    'accent' => $brand->accent_color,
+                ]
+            );
+            
+            // Build complete brand response
+            $brandResponse = [
+                'salon' => [
+                    'id' => $salon->id,
+                    'name' => $salon->name,
+                    'slug' => $salon->slug,
+                    'logo' => $brand->logo ?? $salon->logo,
+                ],
+                'brand' => [
+                    'logo' => $brand->logo,
+                    'primary_color' => $brand->primary_color,
+                    'secondary_color' => $brand->secondary_color,
+                    'accent_color' => $brand->accent_color,
+                    'font_heading' => $brand->font_heading,
+                    'font_body' => $brand->font_body,
+                    'background_image' => $brand->background_image,
+                    'custom_domain' => $brand->custom_domain,
+                    'white_label_enabled' => $brand->white_label_enabled,
+                ],
+                'experience' => [
+                    'family' => $brand->experience_family,
+                    'name' => $experienceFamily['name'],
+                    'description' => $experienceFamily['description'],
+                    'glass_opacity' => $experienceFamily['glass_opacity'],
+                    'glass_blur' => $experienceFamily['glass_blur'],
+                    'shadow_style' => $experienceFamily['shadow_style'],
+                    'shadow_intensity' => $experienceFamily['shadow_intensity'],
+                    'border_radius' => $experienceFamily['border_radius'],
+                    'border_radius_unit' => $experienceFamily['border_radius_unit'],
+                    'card_style' => $experienceFamily['card_style'],
+                    'motion_preset' => $experienceFamily['motion_preset'],
+                    'animation_speed' => $experienceFamily['animation_speed'],
+                    'spring_stiffness' => $experienceFamily['spring_stiffness'],
+                    'spring_damping' => $experienceFamily['spring_damping'],
+                    'icon_style' => $experienceFamily['icon_style'],
+                    'icon_weight' => $experienceFamily['icon_weight'],
+                    'background_type' => $experienceFamily['background_type'],
+                    'cursor_style' => $experienceFamily['cursor_style'],
+                    'sidebar_style' => $experienceFamily['sidebar_style'],
+                    'button_style' => $experienceFamily['button_style'],
+                ],
+                'colors' => $colors,
+            ];
+            
+            return response()->json($brandResponse);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
     
     public function update(Request $request): JsonResponse
