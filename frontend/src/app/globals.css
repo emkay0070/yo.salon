@@ -200,7 +200,8 @@
     border-radius: var(--brand-border-radius, 20px);
     /* Shadow carries the elevation — borders are just a whisper */
     box-shadow: var(--brand-shadow-sm, var(--shadow-sm));
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--brand-animation-speed, 0.4s) var(--brand-spring-easing, cubic-bezier(0.16, 1, 0.3, 1)), 
+                box-shadow var(--brand-animation-speed, 0.4s) var(--brand-spring-easing, cubic-bezier(0.16, 1, 0.3, 1));
   }
   
   @media (hover: hover) {
@@ -217,7 +218,7 @@
     color: #0A0A0A;
     border-radius: 12px;
     font-weight: 600;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all var(--brand-animation-speed, 0.4s) var(--brand-spring-easing, cubic-bezier(0.16, 1, 0.3, 1));
     box-shadow: var(--brand-shadow-sm, 0 4px 12px rgba(0,0,0,0.1));
   }
   
@@ -238,7 +239,7 @@
     border-radius: 12px;
     font-weight: 600;
     box-shadow: var(--brand-shadow-sm, var(--shadow-sm));
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all var(--brand-animation-speed, 0.4s) var(--brand-spring-easing, cubic-bezier(0.16, 1, 0.3, 1));
   }
   
   @media (hover: hover) {

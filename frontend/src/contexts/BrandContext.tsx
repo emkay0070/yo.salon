@@ -137,6 +137,20 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--brand-shadow-sm', shadows.sm);
       root.style.setProperty('--brand-shadow-md', shadows.md);
       root.style.setProperty('--brand-shadow-lg', shadows.lg);
+      
+      // Apply experience family motion settings
+      const animationSpeed = brand.experience.animation_speed;
+      const springStiffness = brand.experience.spring_stiffness;
+      const springDamping = brand.experience.spring_damping;
+      
+      // Set motion CSS variables
+      root.style.setProperty('--brand-animation-speed', `${animationSpeed}s`);
+      root.style.setProperty('--brand-spring-stiffness', springStiffness.toString());
+      root.style.setProperty('--brand-spring-damping', springDamping.toString());
+      
+      // Build spring bezier curve
+      const springBezier = `cubic-bezier(0.16, 1, ${springDamping / 100}, 1)`;
+      root.style.setProperty('--brand-spring-easing', springBezier);
     }
   }, [brand]);
 
