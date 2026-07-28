@@ -42,6 +42,12 @@ echo "📡 Optimizing events..."
 php artisan event:clear
 php artisan event:cache
 
+# Copy Supervisor config
+echo "🔧 Setting up Supervisor configuration..."
+sudo cp supervisor.conf /etc/supervisor/conf.d/laravel.conf
+sudo supervisorctl reread
+sudo supervisorctl update
+
 # Restart queue workers via Supervisor
 echo "🔄 Restarting queue workers..."
 sudo supervisorctl reread
