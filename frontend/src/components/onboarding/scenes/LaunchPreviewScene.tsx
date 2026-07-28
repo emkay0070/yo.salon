@@ -6,7 +6,7 @@ import { Check, Sparkles, Eye } from 'lucide-react';
 import SceneLayout from './SceneLayout';
 
 export default function LaunchPreviewScene() {
-  const { salonData } = useOnboarding();
+  const { salonData, setShowMobilePreview } = useOnboarding();
 
   const benefits = [
     'Discover your salon online',
@@ -54,8 +54,11 @@ export default function LaunchPreviewScene() {
         {/* On mobile, we show a preview hint */}
         <div className="lg:hidden text-center flex flex-col items-center gap-3">
           <p className="text-xs text-white/40">Tap the preview button below to see your site</p>
-          <div className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center animate-bounce">
-            <Eye className="w-4 h-4 text-white/40" />
+          <div 
+            onClick={() => setShowMobilePreview(true)}
+            className="w-12 h-12 rounded-full border border-white/20 bg-white/5 flex items-center justify-center animate-bounce cursor-pointer hover:bg-white/10 active:scale-95 transition-all"
+          >
+            <Eye className="w-5 h-5 text-white/60" />
           </div>
         </div>
       </div>

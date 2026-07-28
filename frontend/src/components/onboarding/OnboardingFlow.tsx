@@ -33,8 +33,7 @@ const sceneComponents: Record<string, any> = {
 };
 
 export default function OnboardingFlow() {
-  const { scene, progress, isSaving, salonData, services, staff } = useOnboarding();
-  const [showMobilePreview, setShowMobilePreview] = useState(false);
+  const { scene, progress, isSaving, salonData, services, staff, showMobilePreview, setShowMobilePreview } = useOnboarding();
   const { theme, setTheme } = useTheme();
 
   const CurrentScene = sceneComponents[scene];
@@ -100,14 +99,6 @@ export default function OnboardingFlow() {
               </div>
 
               <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => setTheme(theme === 'light' ? 'noir' : 'light')}
-                  className="p-1 rounded bg-white/5 border border-white/10 text-white/50 hover:text-white transition-colors"
-                  title="Toggle Theme"
-                >
-                  <Palette className="w-3.5 h-3.5" />
-                </button>
                 <AnimatePresence>
                   {isSaving && (
                     <motion.div
@@ -149,7 +140,7 @@ export default function OnboardingFlow() {
       <div className="relative z-10 flex-1 flex flex-col lg:flex-row w-full h-full overflow-hidden">
         
         {/* Left pane: Forms */}
-      <div className="flex-1 flex flex-col h-full relative z-10 overflow-y-auto overflow-x-hidden relative scroll-smooth">
+      <div className="flex-1 flex flex-col h-full relative z-10 overflow-y-auto overflow-x-hidden relative scroll-smooth lg:items-center">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={scene}
@@ -157,7 +148,7 @@ export default function OnboardingFlow() {
               animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, x: -32, filter: 'blur(4px)' }}
               transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-              className="flex-1 flex flex-col min-h-full"
+              className="flex-1 flex flex-col min-h-full w-full lg:max-w-2xl"
             >
               {CurrentScene && <CurrentScene />}
             </motion.div>

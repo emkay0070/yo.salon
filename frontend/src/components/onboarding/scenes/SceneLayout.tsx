@@ -32,9 +32,9 @@ export default function SceneLayout({
   const handleBack = onBack ?? goPrev;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 pt-24 min-h-[calc(100vh-80px)]">
+    <div className="flex-1 flex flex-col items-center px-4 py-8 lg:py-12 min-h-full">
       {/* Content card */}
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-xl my-auto flex flex-col">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}

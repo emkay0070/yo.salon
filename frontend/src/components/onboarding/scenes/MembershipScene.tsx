@@ -4,10 +4,11 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { motion } from 'framer-motion';
-import { Check, Star, Loader2, Zap, Shield, Building2, Crown } from 'lucide-react';
+import { Check, Star, Loader2, Zap, Shield, Building2, Crown, Gift } from 'lucide-react';
 import SceneLayout from './SceneLayout';
 
 const planIcons: Record<string, any> = {
+  'free-trial': Gift,
   starter:      Zap,
   professional: Star,
   premium:      Crown,
@@ -15,6 +16,7 @@ const planIcons: Record<string, any> = {
 };
 
 const planColors: Record<string, string> = {
+  'free-trial': 'from-emerald-400 to-teal-500',
   starter:      'from-slate-400 to-slate-500',
   professional: 'from-blue-400 to-indigo-500',
   premium:      'from-[#FFD700] to-[#C9A227]',

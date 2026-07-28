@@ -113,6 +113,8 @@ interface OnboardingContextType {
   autoSave: (step: string, data: any) => void;
   completeOnboarding: () => Promise<any>;
   resetOnboarding: () => void;
+  showMobilePreview: boolean;
+  setShowMobilePreview: (show: boolean) => void;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -158,6 +160,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
 
   // Debounce timer ref for autosave
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,6 +289,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         autoSave,
         completeOnboarding,
         resetOnboarding,
+        showMobilePreview,
+        setShowMobilePreview,
       }}
     >
       {children}
