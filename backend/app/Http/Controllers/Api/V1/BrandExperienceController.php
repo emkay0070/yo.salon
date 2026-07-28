@@ -13,10 +13,16 @@ class BrandExperienceController extends Controller
     public function show(Request $request): JsonResponse
     {
         try {
-            $salon = $request->get('salon');
+            $salonId = $request->attributes->get('salon_id');
+            
+            if (!$salonId) {
+                return response()->json(['error' => 'Salon context not found'], 400);
+            }
+            
+            $salon = Salon::find($salonId);
             
             if (!$salon) {
-                return response()->json(['error' => 'Salon context not found'], 400);
+                return response()->json(['error' => 'Salon not found'], 404);
             }
             
             // Get or create brand experience
@@ -91,7 +97,17 @@ class BrandExperienceController extends Controller
     
     public function update(Request $request): JsonResponse
     {
-        $salon = $request->get('salon');
+        $salonId = $request->attributes->get('salon_id');
+        
+        if (!$salonId) {
+            return response()->json(['error' => 'Salon context not found'], 400);
+        }
+        
+        $salon = Salon::find($salonId);
+        
+        if (!$salon) {
+            return response()->json(['error' => 'Salon not found'], 404);
+        }
         
         $validated = $request->validate([
             'experience_family' => 'sometimes|in:luxury_noir,modern_glass,urban_pulse,minimal_zen,organic,classic_barber,neon_future,executive',
