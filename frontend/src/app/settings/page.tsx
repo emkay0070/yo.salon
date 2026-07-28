@@ -27,6 +27,7 @@ export default function SettingsPage() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Security', icon: Lock },
     { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'branding', label: 'Branding', icon: Globe },
     { id: 'membership', label: 'Membership', icon: Crown },
   ];
 
@@ -230,6 +231,89 @@ export default function SettingsPage() {
                           }}
                         />
                       ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeTab === 'branding' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="space-y-6"
+                >
+                  <h2 className="text-xl font-semibold text-text-primary mb-6">Salon Branding</h2>
+
+                  <div className="bg-gradient-to-br from-[#FF622B]/10 via-[#FF622B]/5 to-transparent border border-[#FF622B]/25 rounded-xl p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF622B] to-[#FF8C5A] flex items-center justify-center flex-shrink-0">
+                        <Globe className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-text-primary font-semibold mb-1">Brand Experience</h3>
+                        <p className="text-text-secondary text-sm mb-4">Customize your salon's visual identity with colors, fonts, and experience families.</p>
+                        <Link
+                          href="/settings/branding"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#FF622B] to-[#FF8C5A] text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+                        >
+                          Customize Branding
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between py-3 border-b border-border-light">
+                      <div>
+                        <p className="text-text-primary font-medium">Experience Family</p>
+                        <p className="text-text-secondary text-xs">Choose your design language</p>
+                      </div>
+                      <Link href="/settings/branding" className="text-[#FF622B] text-sm font-medium hover:underline">
+                        Customize →
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3 border-b border-border-light">
+                      <div>
+                        <p className="text-text-primary font-medium">Brand Colors</p>
+                        <p className="text-text-secondary text-xs">Primary, secondary, and accent colors</p>
+                      </div>
+                      <Link href="/settings/branding" className="text-[#FF622B] text-sm font-medium hover:underline">
+                        Customize →
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3 border-b border-border-light">
+                      <div>
+                        <p className="text-text-primary font-medium">Typography</p>
+                        <p className="text-text-secondary text-xs">Heading and body fonts</p>
+                      </div>
+                      <Link href="/settings/branding" className="text-[#FF622B] text-sm font-medium hover:underline">
+                        Customize →
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3 border-b border-border-light">
+                      <div>
+                        <p className="text-text-primary font-medium">Logo & Images</p>
+                        <p className="text-text-secondary text-xs">Upload your salon logo and background</p>
+                      </div>
+                      <Link href="/settings/branding" className="text-[#FF622B] text-sm font-medium hover:underline">
+                        Customize →
+                      </Link>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3">
+                      <div>
+                        <p className="text-text-primary font-medium">White Label</p>
+                        <p className="text-text-secondary text-xs">Custom domain and white-label mode</p>
+                      </div>
+                      <Link href="/settings/branding" className="text-[#FF622B] text-sm font-medium hover:underline">
+                        Customize →
+                      </Link>
                     </div>
                   </div>
                 </motion.div>
