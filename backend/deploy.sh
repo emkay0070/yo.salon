@@ -14,6 +14,12 @@ cd /var/www/yo.salon/backend
 echo "📥 Pulling latest changes from git..."
 git pull origin main
 
+# Check if .env exists
+if [ ! -f .env ]; then
+    echo "❌ .env file not found. Please create it from .env.example with production values."
+    exit 1
+fi
+
 # Install dependencies
 echo "📦 Installing composer dependencies..."
 composer install --no-dev --optimize-autoloader
