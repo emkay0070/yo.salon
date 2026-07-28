@@ -79,6 +79,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     queryFn: () => apiClient.get('/brand-experience'),
     enabled: !!salonId,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: false, // Don't retry on 404 - endpoint may not be deployed yet
   });
 
   return (
