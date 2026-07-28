@@ -12,7 +12,7 @@ export interface SalonProfileProps {
     phone?: string;
     address?: string;
   };
-  services: { id: string; name: string; category: string; price: number; duration: number; enabled?: boolean }[];
+  services: { id: string; name: string; category: string; price: number | string; duration: number; enabled?: boolean }[];
   team: { id: string; name: string; role: string; photo?: string }[];
 }
 
@@ -107,7 +107,7 @@ export default function SalonProfileRenderer({ mode, salonData, services, team }
                     <span className="text-xs text-white/50">{service.category} • {service.duration} min</span>
                   </div>
                   <span className="font-semibold text-[#FFD700]">
-                    {service.price === 0 ? 'Free' : `UGX ${service.price.toLocaleString()}`}
+                    {service.price === 0 ? 'Free' : (service.price === '' ? 'TBD' : `UGX ${Number(service.price).toLocaleString()}`)}
                   </span>
                 </div>
               ))}

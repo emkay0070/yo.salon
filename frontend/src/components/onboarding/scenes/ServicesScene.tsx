@@ -10,44 +10,44 @@ const serviceCategories = [
   {
     id: 'hair', name: 'Hair', icon: Scissors,
     services: [
-      { id: 'haircut',        name: 'Haircut',        defaultPrice: 25000, defaultDuration: 30 },
-      { id: 'hair-wash',      name: 'Hair Wash',      defaultPrice: 15000, defaultDuration: 20 },
-      { id: 'hair-coloring',  name: 'Hair Coloring',  defaultPrice: 80000, defaultDuration: 90 },
-      { id: 'blow-dry',       name: 'Blow Dry',       defaultPrice: 20000, defaultDuration: 30 },
-      { id: 'hair-treatment', name: 'Hair Treatment', defaultPrice: 50000, defaultDuration: 45 },
+      { id: 'haircut',        name: 'Haircut',        defaultPrice: '', defaultDuration: 30 },
+      { id: 'hair-wash',      name: 'Hair Wash',      defaultPrice: '', defaultDuration: 20 },
+      { id: 'hair-coloring',  name: 'Hair Coloring',  defaultPrice: '', defaultDuration: 90 },
+      { id: 'blow-dry',       name: 'Blow Dry',       defaultPrice: '', defaultDuration: 30 },
+      { id: 'hair-treatment', name: 'Hair Treatment', defaultPrice: '', defaultDuration: 45 },
     ],
   },
   {
     id: 'beard', name: 'Beard', icon: Scissors,
     services: [
-      { id: 'beard-trim',  name: 'Beard Trim',  defaultPrice: 15000, defaultDuration: 20 },
-      { id: 'beard-shape', name: 'Beard Shape', defaultPrice: 20000, defaultDuration: 25 },
-      { id: 'beard-color', name: 'Beard Color', defaultPrice: 30000, defaultDuration: 30 },
+      { id: 'beard-trim',  name: 'Beard Trim',  defaultPrice: '', defaultDuration: 20 },
+      { id: 'beard-shape', name: 'Beard Shape', defaultPrice: '', defaultDuration: 25 },
+      { id: 'beard-color', name: 'Beard Color', defaultPrice: '', defaultDuration: 30 },
     ],
   },
   {
     id: 'nails', name: 'Nails', icon: Sparkles,
     services: [
-      { id: 'manicure', name: 'Manicure',    defaultPrice: 30000, defaultDuration: 45 },
-      { id: 'pedicure', name: 'Pedicure',    defaultPrice: 40000, defaultDuration: 60 },
-      { id: 'gel-nails', name: 'Gel Nails',  defaultPrice: 50000, defaultDuration: 60 },
-      { id: 'acrylic',  name: 'Acrylic',     defaultPrice: 70000, defaultDuration: 90 },
+      { id: 'manicure', name: 'Manicure',    defaultPrice: '', defaultDuration: 45 },
+      { id: 'pedicure', name: 'Pedicure',    defaultPrice: '', defaultDuration: 60 },
+      { id: 'gel-nails', name: 'Gel Nails',  defaultPrice: '', defaultDuration: 60 },
+      { id: 'acrylic',  name: 'Acrylic',     defaultPrice: '', defaultDuration: 90 },
     ],
   },
   {
     id: 'spa', name: 'Spa', icon: Sparkles,
     services: [
-      { id: 'facial',    name: 'Facial',     defaultPrice: 60000, defaultDuration: 60 },
-      { id: 'massage',   name: 'Massage',    defaultPrice: 80000, defaultDuration: 60 },
-      { id: 'body-scrub',name: 'Body Scrub', defaultPrice: 50000, defaultDuration: 45 },
+      { id: 'facial',    name: 'Facial',     defaultPrice: '', defaultDuration: 60 },
+      { id: 'massage',   name: 'Massage',    defaultPrice: '', defaultDuration: 60 },
+      { id: 'body-scrub',name: 'Body Scrub', defaultPrice: '', defaultDuration: 45 },
     ],
   },
   {
     id: 'makeup', name: 'Makeup', icon: Sparkles,
     services: [
-      { id: 'bridal-makeup',   name: 'Bridal Makeup',   defaultPrice: 200000, defaultDuration: 120 },
-      { id: 'party-makeup',    name: 'Party Makeup',    defaultPrice: 80000,  defaultDuration: 60 },
-      { id: 'everyday-makeup', name: 'Everyday Makeup', defaultPrice: 40000,  defaultDuration: 30 },
+      { id: 'bridal-makeup',   name: 'Bridal Makeup',   defaultPrice: '', defaultDuration: 120 },
+      { id: 'party-makeup',    name: 'Party Makeup',    defaultPrice: '',  defaultDuration: 60 },
+      { id: 'everyday-makeup', name: 'Everyday Makeup', defaultPrice: '',  defaultDuration: 30 },
     ],
   },
 ];
@@ -151,8 +151,9 @@ export default function ServicesScene() {
                                 <input
                                   type="number"
                                   value={currentPrice}
+                                  placeholder="-"
                                   onChange={(e) => {
-                                    const newPrice = Math.max(0, parseInt(e.target.value) || 0);
+                                    const newPrice = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
                                     setServices(
                                       services.map((s) =>
                                         s.id === svc.id ? { ...s, price: newPrice } : s

@@ -35,7 +35,7 @@ interface Service {
   id: string;
   name: string;
   category: string;
-  price: number;
+  price: number | string;
   duration: number;
   enabled: boolean;
 }
