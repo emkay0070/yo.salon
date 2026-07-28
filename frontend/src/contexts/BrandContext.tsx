@@ -109,6 +109,34 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       // Apply experience family border radius
       const borderRadius = `${brand.experience.border_radius}${brand.experience.border_radius_unit}`;
       root.style.setProperty('--brand-border-radius', borderRadius);
+      
+      // Apply experience family shadows
+      const intensity = brand.experience.shadow_intensity;
+      const shadowStyle = brand.experience.shadow_style;
+      
+      // Map shadow styles to CSS values
+      const shadowMap: Record<string, { sm: string; md: string; lg: string }> = {
+        deep: {
+          sm: `0 2px 8px rgba(0,0,0,${0.4 * intensity})`,
+          md: `0 6px 18px rgba(0,0,0,${0.5 * intensity})`,
+          lg: `0 12px 32px rgba(0,0,0,${0.6 * intensity})`,
+        },
+        soft: {
+          sm: `0 1px 4px rgba(0,0,0,${0.3 * intensity})`,
+          md: `0 4px 12px rgba(0,0,0,${0.4 * intensity})`,
+          lg: `0 8px 24px rgba(0,0,0,${0.5 * intensity})`,
+        },
+        colored: {
+          sm: `0 2px 8px ${brand.brand.primary_color}${Math.round(intensity * 20).toString(16)}`,
+          md: `0 6px 18px ${brand.brand.primary_color}${Math.round(intensity * 30).toString(16)}`,
+          lg: `0 12px 32px ${brand.brand.primary_color}${Math.round(intensity * 40).toString(16)}`,
+        },
+      };
+      
+      const shadows = shadowMap[shadowStyle] || shadowMap.deep;
+      root.style.setProperty('--brand-shadow-sm', shadows.sm);
+      root.style.setProperty('--brand-shadow-md', shadows.md);
+      root.style.setProperty('--brand-shadow-lg', shadows.lg);
     }
   }, [brand]);
 
