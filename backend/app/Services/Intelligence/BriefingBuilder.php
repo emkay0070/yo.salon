@@ -66,9 +66,10 @@ class BriefingBuilder
         $demandByDay = $data['analytics']['demand']['by_day_of_week'] ?? [];
         if (!empty($demandByDay)) {
             $sortedByIntensity = collect($demandByDay)->sortBy('intensity')->values();
-            $slowestDay = $sortedByIntensity->first()['day'] ?? null;
-            if ($slowestDay) {
-                $parts[] = "**{$slowestDay}** remains your weakest-performing day.";
+            $slowestDay = $sortedByIntensity->first();
+            // Only show if there are actual bookings (not all zeros)
+            if ($slowestDay && ($slowestDay['bookings'] ?? 0) > 0) {
+                $parts[] = "**{$slowestDay['day']}** remains your weakest-performing day.";
             }
         }
         

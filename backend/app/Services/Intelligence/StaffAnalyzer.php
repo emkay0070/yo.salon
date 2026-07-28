@@ -69,9 +69,9 @@ class StaffAnalyzer implements AnalyzerInterface
 
         // Build bookings-by-day for the dashboard bar chart
         $bookingsByDay = [];
-        foreach (['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] as $day) {
+        foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day) {
             $bookingsByDay[$day] = $bookings->filter(
-                fn($b) => date('D', strtotime($b->date ?? 'now')) === $day
+                fn($b) => \Carbon\Carbon::parse($b->date ?? 'now')->format('l') === $day
             )->count();
         }
 

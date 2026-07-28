@@ -73,9 +73,12 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
   /* ── Weekly bookings for bar chart ───────────────── */
-  const weeklyData = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => ({
-    day,
+  const todayIndex = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const weeklyData = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((day, i) => ({
+    day: day.substring(0, 3), // Display as Mon, Tue, etc.
+    fullDay: day,
     bookings: (intelligence.analytics?.bookings_by_day?.[day]) ?? 0,
+    isToday: i === (todayIndex === 0 ? 6 : todayIndex - 1), // Adjust for Monday=0
   }));
 
   return (
@@ -308,8 +311,8 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                   labelStyle={{ color: 'var(--color-text-secondary)', fontSize: 11 }}
                 />
                 <Bar dataKey="bookings" radius={[6, 6, 0, 0]} barSize={28}>
-                  {weeklyData.map((_, i) => (
-                    <Cell key={i} fill={i === 0 ? '#FFD700' : 'rgba(255,215,0,0.35)'} />
+                  {weeklyData.map((entry, i) => (
+                    <Cell key={i} fill={entry.isToday ? '#FFD700' : 'rgba(255,215,0,0.35)'} />
                   ))}
                 </Bar>
               </BarChart>
