@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import RoleSwitcher from './RoleSwitcher';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { useSalonBranding } from '@/hooks/useSalonBranding';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -52,6 +53,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { sidebarOpen, setSidebarOpen } = useSidebar();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { salon, colors, isWhiteLabel } = useSalonBranding();
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
@@ -65,7 +67,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <div
         className="fixed inset-0 bg-cover bg-center pointer-events-none z-0"
         style={{ 
-          backgroundImage: `url('/images/salon-dark.jpg')`,
+          backgroundImage: `url('${salon?.logo || '/images/salon-dark.jpg'}')`,
           opacity: 'var(--texture-opacity, 0.04)',
         }}
       />
@@ -84,11 +86,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="flex items-center justify-between mb-6 overflow-hidden">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold to-dark-gold flex items-center justify-center flex-shrink-0 shadow-lg">
-              <Scissors className="w-6 h-6 text-obsidian" />
-            </div>
+            {salon?.logo ? (
+              <img 
+                src={salon.logo} 
+                alt={salon.name} 
+                className="w-10 h-10 rounded-xl object-cover flex-shrink-0 shadow-lg"
+              />
+            ) : (
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
+                style={{ 
+                  background: `linear-gradient(135deg, ${colors?.primary || '#FF622B'}, ${colors?.accent || '#FFD700'})` 
+                }}
+              >
+                <Scissors className="w-6 h-6 text-white" />
+              </div>
+            )}
             {sidebarOpen && (
-              <span className="text-xl font-bold text-text-primary tracking-tight whitespace-nowrap">Yo Salon</span>
+              <span className="text-xl font-bold text-text-primary tracking-tight whitespace-nowrap">
+                {isWhiteLabel ? salon?.name : salon?.name}
+              </span>
             )}
           </div>
         </div>
@@ -96,26 +113,34 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {sidebarOpen && <RoleSwitcher />}
 
         <nav className="flex-1 space-y-2 overflow-y-auto mt-4 scrollbar-hide">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all duration-300 ${
-                pathname.startsWith(item.href)
-                  ? 'bg-gold/10 border border-gold/20 shadow-sm'
-                  : 'hover:bg-text-primary/5'
-              }`}
-            >
-              <item.icon
-                className={`w-6 h-6 flex-shrink-0 ${pathname.startsWith(item.href) ? 'text-gold' : 'text-text-secondary'}`}
-              />
-              {sidebarOpen && (
-                <span className={`font-medium whitespace-nowrap ${pathname.startsWith(item.href) ? 'text-text-primary' : 'text-text-secondary'}`}>
-                  {item.label}
-                </span>
-              )}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all duration-300"
+                style={{
+                  backgroundColor: isActive ? `${colors?.primary}20` : 'transparent',
+                  border: isActive ? `1px solid ${colors?.primary}40` : '1px solid transparent',
+                  boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                <item.icon
+                  className="w-6 h-6 flex-shrink-0"
+                  style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                />
+                {sidebarOpen && (
+                  <span 
+                    className="font-medium whitespace-nowrap"
+                    style={{ color: isActive ? '#FFFFFF' : '#A0A0A0' }}
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="mt-auto space-y-2 pt-4 border-t border-border-light">
@@ -164,8 +189,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 className="flex-1 flex flex-col items-center justify-center gap-1 h-full select-none"
               >
                 <motion.div whileTap={{ scale: 0.9 }} className="flex flex-col items-center gap-1">
-                  <item.icon className={`w-6 h-6 ${isActive ? 'text-gold' : 'text-text-secondary'}`} />
-                  <span className={`text-[10px] font-medium ${isActive ? 'text-gold' : 'text-text-secondary'}`}>
+                  <item.icon 
+                    className="w-6 h-6" 
+                    style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                  />
+                  <span 
+                    className="text-[10px] font-medium"
+                    style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                  >
                     {item.label}
                   </span>
                 </motion.div>
@@ -224,11 +255,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     >
                       <motion.div 
                         whileTap={{ scale: 0.9 }}
-                        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${isActive ? 'bg-gold/10 border border-gold/20' : 'bg-surface border border-border-light shadow-sm'}`}
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center transition-colors"
+                        style={{
+                          backgroundColor: isActive ? `${colors?.primary}20` : 'var(--color-surface)',
+                          border: isActive ? `1px solid ${colors?.primary}40` : '1px solid var(--color-border-light)',
+                          boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.1)' : '0 2px 8px rgba(0,0,0,0.05)',
+                        }}
                       >
-                        <item.icon className={`w-6 h-6 ${isActive ? 'text-gold' : 'text-text-secondary'}`} />
+                        <item.icon 
+                          className="w-6 h-6" 
+                          style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                        />
                       </motion.div>
-                      <span className={`text-[11px] font-medium text-center ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}>
+                      <span 
+                        className="text-[11px] font-medium text-center"
+                        style={{ color: isActive ? '#FFFFFF' : '#A0A0A0' }}
+                      >
                         {item.label}
                       </span>
                     </Link>

@@ -7,6 +7,7 @@ import { ThemeProvider } from 'next-themes';
 import { RoleProvider } from '@/contexts/RoleContext';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { PortalAuthProvider } from '@/contexts/PortalAuthContext';
+import { BrandProvider } from '@/contexts/BrandContext';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -23,9 +24,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SidebarProvider>
         <RoleProvider>
           <ThemeProvider attribute="data-theme" defaultTheme="noir" enableSystem={false}>
-            <PortalAuthProvider>
-              {children}
-            </PortalAuthProvider>
+            <BrandProvider>
+              <PortalAuthProvider>
+                {children}
+              </PortalAuthProvider>
+            </BrandProvider>
           </ThemeProvider>
         </RoleProvider>
       </SidebarProvider>

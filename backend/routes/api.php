@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\GiftCardController;
 use App\Http\Controllers\Api\V1\PulseController;
 use App\Http\Controllers\Api\V1\CopilotController;
 use App\Http\Controllers\Api\V1\InvitationController;
+use App\Http\Controllers\Api\V1\BrandExperienceController;
 
 Route::prefix('v1')->group(function () {
     // Public routes
@@ -202,6 +203,10 @@ Route::prefix('v1')->group(function () {
         
         // Loyalty (admin/internal)
         Route::post('/loyalty/award', [LoyaltyController::class, 'award']);
+        
+        // Brand Experience
+        Route::get('/brand-experience', [BrandExperienceController::class, 'show']);
+        Route::put('/brand-experience', [BrandExperienceController::class, 'update']);
         });
     });
 });

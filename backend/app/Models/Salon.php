@@ -72,4 +72,9 @@ class Salon extends Model
     {
         return $this->hasOne(Subscription::class);
     }
+
+    public function brandExperience()
+    {
+        return $this->hasOne(BrandExperience::class);
+    }
 }
