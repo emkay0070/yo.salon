@@ -38,12 +38,9 @@ const SIGNAL_COLOR: Record<string, string> = {
 export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
   const { salonId, user } = useRole();
   const salonSlug = user?.salons?.[0]?.slug;
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
-  // Use http for localhost, https for production domains (simple check)
-  const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
   
   const publicBookingUrl = salonSlug
-    ? `${protocol}://${salonSlug}.${rootDomain}`
+    ? `${window.location.origin}/salons/${salonSlug}`
     : null;
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
 

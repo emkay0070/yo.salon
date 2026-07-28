@@ -550,9 +550,7 @@ export default function CustomersPage() {
   const handleSendInvitation = async (customerId: string) => {
     try {
       const result = await apiClient.createInvitation({ role: 'customer', target_id: customerId });
-      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
-      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
-      const inviteUrl = `${protocol}://${rootDomain}/portal/invite/${result.invitation.token}`;
+      const inviteUrl = `${window.location.origin}/portal/invite/${result.invitation.token}`;
       setInviteLink(inviteUrl);
       setInviteModalOpen(true);
     } catch (err) {
@@ -564,9 +562,7 @@ export default function CustomersPage() {
   const handleGenerateGeneralInvite = async () => {
     try {
       const result = await apiClient.createInvitation({ role: 'customer' });
-      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
-      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
-      const inviteUrl = `${protocol}://${rootDomain}/portal/invite/${result.invitation.token}`;
+      const inviteUrl = `${window.location.origin}/portal/invite/${result.invitation.token}`;
       setInviteLink(inviteUrl);
       setInviteModalOpen(true);
     } catch (err) {

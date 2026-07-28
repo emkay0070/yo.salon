@@ -818,9 +818,7 @@ export default function StaffPage() {
   const handleInviteStaff = async () => {
     try {
       const result = await apiClient.createInvitation({ role: 'staff' });
-      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'localhost:3000';
-      const protocol = rootDomain.includes('localhost') ? 'http' : 'https';
-      const inviteUrl = `${protocol}://${rootDomain}/invite/${result.invitation.token}`;
+      const inviteUrl = `${window.location.origin}/invite/${result.invitation.token}`;
       setInviteLink(inviteUrl);
       setInviteModalOpen(true);
     } catch (err) {
