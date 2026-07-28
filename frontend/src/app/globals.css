@@ -131,7 +131,7 @@
 
 @layer base {
   html, body {
-    font-family: var(--font-poppins), system-ui, sans-serif;
+    font-family: var(--brand-font-body, var(--font-poppins)), system-ui, sans-serif;
     background-color: var(--color-background) !important;
     color: var(--color-text-primary) !important;
     margin: 0;
@@ -158,18 +158,18 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-dark-gold);
+    background: var(--brand-primary, var(--color-dark-gold));
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-gold);
+    background: var(--brand-accent, var(--color-gold));
   }
 
   /* Firefox */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-dark-gold) var(--color-background);
+    scrollbar-color: var(--brand-primary, var(--color-dark-gold)) var(--color-background);
   }
 
   /* Disable text selection on UI elements to feel like native app */
@@ -179,7 +179,7 @@
   }
   
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-sora), system-ui, sans-serif;
+    font-family: var(--brand-font-heading, var(--font-sora)), system-ui, sans-serif;
     font-weight: 600;
     color: var(--color-text-primary);
     letter-spacing: -0.02em;
@@ -196,8 +196,8 @@
     background-color: var(--color-card);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--color-border-light);
-    border-radius: 20px;
+    border: 1px solid var(--brand-primary, var(--color-border-light));
+    border-radius: var(--brand-border-radius, 20px);
     /* Shadow carries the elevation — borders are just a whisper */
     box-shadow: var(--shadow-sm);
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -207,12 +207,13 @@
     .card:hover {
       transform: translateY(-2px);
       box-shadow: var(--shadow-md);
+      border-color: var(--brand-secondary, var(--color-border-medium));
     }
   }
 
   /* Buttons */
   .btn-primary {
-    background: linear-gradient(135deg, var(--color-gold) 0%, var(--color-dark-gold) 100%);
+    background: linear-gradient(135deg, var(--brand-primary, var(--color-gold)) 0%, var(--brand-secondary, var(--color-dark-gold)) 100%);
     color: #0A0A0A;
     border-radius: 12px;
     font-weight: 600;
@@ -224,6 +225,7 @@
     .btn-primary:hover {
       transform: scale(1.02);
       filter: brightness(1.1);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
     }
   }
   
@@ -232,7 +234,7 @@
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     color: var(--color-text-primary);
-    border: 1px solid var(--color-border-light);
+    border: 1px solid var(--brand-primary, var(--color-border-light));
     border-radius: 12px;
     font-weight: 600;
     box-shadow: var(--shadow-sm);
@@ -243,6 +245,7 @@
     .btn-secondary:hover {
       transform: scale(1.02);
       box-shadow: var(--shadow-md);
+      border-color: var(--brand-secondary, var(--color-border-medium));
     }
   }
 

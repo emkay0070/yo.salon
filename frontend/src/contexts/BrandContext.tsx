@@ -84,7 +84,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
 
   // Apply brand fonts to document
   useEffect(() => {
-    if (brand?.brand) {
+    if (brand?.brand && brand?.experience) {
       const root = document.documentElement;
       
       // Map font IDs to CSS variable names
@@ -105,6 +105,10 @@ export function BrandProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--brand-primary', brand.brand.primary_color);
       root.style.setProperty('--brand-secondary', brand.brand.secondary_color);
       root.style.setProperty('--brand-accent', brand.brand.accent_color);
+      
+      // Apply experience family border radius
+      const borderRadius = `${brand.experience.border_radius}${brand.experience.border_radius_unit}`;
+      root.style.setProperty('--brand-border-radius', borderRadius);
     }
   }, [brand]);
 
