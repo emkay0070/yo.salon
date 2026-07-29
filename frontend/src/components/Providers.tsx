@@ -9,6 +9,7 @@ import { SidebarProvider } from '@/contexts/SidebarContext';
 import { PortalAuthProvider } from '@/contexts/PortalAuthContext';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { PortalBrandProvider } from '@/contexts/PortalBrandContext';
+import { ThemeProvider as CustomThemeProvider } from '@/contexts/ThemeContext';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -25,13 +26,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <SidebarProvider>
         <RoleProvider>
           <ThemeProvider attribute="data-theme" defaultTheme="noir" enableSystem={false}>
-            <BrandProvider>
-              <PortalAuthProvider>
-                <PortalBrandProvider>
-                  {children}
-                </PortalBrandProvider>
-              </PortalAuthProvider>
-            </BrandProvider>
+            <CustomThemeProvider>
+              <BrandProvider>
+                <PortalAuthProvider>
+                  <PortalBrandProvider>
+                    {children}
+                  </PortalBrandProvider>
+                </PortalAuthProvider>
+              </BrandProvider>
+            </CustomThemeProvider>
           </ThemeProvider>
         </RoleProvider>
       </SidebarProvider>

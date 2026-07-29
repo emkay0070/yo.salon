@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { Settings, User, Bell, Lock, Globe, Palette, Save, CheckCircle, Crown, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
-import { useTheme } from 'next-themes';
+import { useTheme as useNextTheme } from 'next-themes';
 import Link from 'next/link';
 import { useRole } from '@/contexts/RoleContext';
 import { Avatar } from '@/components/ui/Avatar';
+import ThemeSwitcher from '@/components/ThemeSwitcher';
 
 export default function SettingsPage() {
   const { user } = useRole();
@@ -20,7 +21,7 @@ export default function SettingsPage() {
     pushUpdates: false,
     weeklyReports: true,
   });
-  const { theme, setTheme } = useTheme();
+  const { theme: nextTheme, setTheme: setNextTheme } = useNextTheme();
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -199,22 +200,8 @@ export default function SettingsPage() {
                   <h2 className="text-xl font-semibold text-text-primary mb-6">Appearance Settings</h2>
 
                   <div>
-                    <label className="block text-text-secondary font-medium mb-3">Theme</label>
-                    <div className="grid grid-cols-3 gap-4">
-                      {['noir', 'light', 'system'].map((themeOption) => (
-                        <button
-                          key={themeOption}
-                          onClick={() => setTheme(themeOption)}
-                          className={`px-4 py-3 rounded-xl border transition-all capitalize ${
-                            theme === themeOption
-                              ? 'bg-gold border-gold text-obsidian'
-                              : 'bg-surface border-border-light text-text-primary hover:border-border-medium'
-                          }`}
-                        >
-                          {themeOption === 'noir' ? 'Dark' : themeOption}
-                        </button>
-                      ))}
-                    </div>
+                    <label className="block text-text-secondary font-medium mb-3">Theme Preset</label>
+                    <ThemeSwitcher />
                   </div>
 
                   <div>

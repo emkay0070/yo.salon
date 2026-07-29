@@ -81,59 +81,150 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
   return (
     <div className="space-y-5">
 
-      {/* ═══ HERO BRIEFING ════════════════════════════════════════════════ */}
+      {/* ═══ CINEMATIC HERO BRIEFING ═══════════════════════════════════════ */}
       <motion.section
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl border border-[var(--color-border-light)] bg-[var(--color-surface)]"
-        style={{ boxShadow: '0 1px 16px 0 rgba(0,0,0,0.06)' }}
+        initial={{ opacity: 0, y: -20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="relative overflow-hidden rounded-[32px] border border-white/[0.08] bg-gradient-to-br from-white/[0.03] via-white/[0.01] to-transparent backdrop-blur-2xl"
+        style={{ 
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.05)',
+        }}
       >
-        {/* Top gold accent line */}
-        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent opacity-60" />
-
-        {/* Watermark */}
-        <div className="absolute -bottom-8 -right-8 opacity-[0.04] pointer-events-none">
-          <Brain className="w-64 h-64 text-gold" />
+        {/* Animated gradient background */}
+        <div className="absolute inset-0 overflow-hidden">
+          <motion.div
+            animate={{
+              backgroundPosition: ['0% 0%', '100% 100%', '0% 0%'],
+            }}
+            transition={{
+              duration: 20,
+              repeat: Infinity,
+              ease: 'linear',
+            }}
+            className="absolute inset-0 opacity-30"
+            style={{
+              background: 'radial-gradient(circle at 30% 20%, rgba(255,215,0,0.15) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(108,92,231,0.1) 0%, transparent 50%)',
+              backgroundSize: '200% 200%',
+            }}
+          />
         </div>
 
-        <div className="relative z-10 p-7 sm:p-9">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        {/* Floating particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(6)].map((_, i) => (
+            <motion.div
+              key={i}
+              animate={{
+                y: [0, -20, 0],
+                opacity: [0.3, 0.6, 0.3],
+              }}
+              transition={{
+                duration: 4 + i * 0.5,
+                repeat: Infinity,
+                ease: 'easeInOut',
+                delay: i * 0.3,
+              }}
+              className="absolute w-1 h-1 rounded-full bg-gold/40"
+              style={{
+                left: `${10 + i * 15}%`,
+                top: `${20 + i * 12}%`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Top accent line with animation */}
+        <motion.div
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent opacity-80 origin-left"
+        />
+
+        {/* Watermark with subtle animation */}
+        <motion.div
+          animate={{ 
+            rotate: [0, 5, 0],
+            scale: [1, 1.02, 1],
+          }}
+          transition={{
+            duration: 8,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+          className="absolute -bottom-12 -right-12 opacity-[0.03] pointer-events-none"
+        >
+          <Brain className="w-80 h-80 text-gold" />
+        </motion.div>
+
+        <div className="relative z-10 p-8 sm:p-10">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
             <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-widest text-gold mb-2">
-                Intelligence Briefing
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-[var(--color-text-primary)] tracking-tight leading-snug mb-3">
-                {intelligence.briefing?.greeting || `Good afternoon, ${userName}.`}
-              </h1>
-              <p
-                className="text-[var(--color-text-secondary)] text-base leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: narrative }}
-              />
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold/80 mb-3 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                  Intelligence Briefing
+                </p>
+                <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight leading-[1.2] mb-4 bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent">
+                  {intelligence.briefing?.greeting || `Good afternoon, ${userName}.`}
+                </h1>
+                <p
+                  className="text-white/60 text-base leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: narrative }}
+                />
+              </motion.div>
             </div>
 
-            {/* KPI Pills */}
-            <div className="flex sm:flex-col gap-3 flex-wrap">
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gold/10 border border-gold/20">
-                <DollarSign className="w-4 h-4 text-gold flex-shrink-0" />
+            {/* Floating KPI Pills */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.5 }}
+              className="flex sm:flex-col gap-3 flex-wrap"
+            >
+              <motion.div
+                whileHover={{ scale: 1.02, y: -2 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-gradient-to-br from-gold/20 to-gold/5 border border-gold/20 backdrop-blur-sm"
+              >
+                <div className="p-2 rounded-xl bg-gold/20">
+                  <DollarSign className="w-4 h-4 text-gold" />
+                </div>
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-secondary)] uppercase tracking-wide">Net Revenue</p>
+                  <p className="text-[10px] text-white/50 uppercase tracking-wide">Net Revenue</p>
                   <p className="text-sm font-bold text-gold">{formatUGX(rev.net || 0)}</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--color-card)] border border-[var(--color-border-light)]">
-                <TrendingUp className="w-4 h-4 text-emerald flex-shrink-0" />
-                <div>
-                  <p className="text-[10px] text-[var(--color-text-secondary)] uppercase tracking-wide">Gross</p>
-                  <p className="text-sm font-bold text-[var(--color-text-primary)]">{formatUGX(rev.gross || 0)}</p>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.02, y: -2 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm"
+              >
+                <div className="p-2 rounded-xl bg-emerald/20">
+                  <TrendingUp className="w-4 h-4 text-emerald" />
                 </div>
-              </div>
-            </div>
+                <div>
+                  <p className="text-[10px] text-white/50 uppercase tracking-wide">Gross</p>
+                  <p className="text-sm font-bold text-white">{formatUGX(rev.gross || 0)}</p>
+                </div>
+              </motion.div>
+            </motion.div>
           </div>
 
           {/* Footer bar */}
-          <div className="mt-6 pt-4 border-t border-[var(--color-border-light)] flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald animate-pulse" />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+            className="mt-8 pt-5 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3"
+          >
+            <span className="text-xs text-white/40 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
               Live · Generated {new Date(intelligence.generated_at).toLocaleTimeString()}
             </span>
             <div className="flex gap-2">
@@ -141,7 +232,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="gap-1.5 h-8 text-xs border-gold/30 text-gold hover:bg-gold/10"
+                  className="gap-1.5 h-9 text-xs border-gold/30 text-gold hover:bg-gold/10 hover:border-gold/50 transition-all duration-200"
                   onClick={() => setBookingModalOpen(true)}
                 >
                   <Briefcase className="w-3.5 h-3.5" />
@@ -149,14 +240,14 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                 </Button>
               )}
               <Link href="/analytics/intelligence">
-                <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-9 text-xs hover:bg-white/[0.05] transition-all duration-200">
                   <Brain className="w-3.5 h-3.5" />
                   Full Intelligence
                   <ChevronRight className="w-3 h-3" />
                 </Button>
               </Link>
             </div>
-          </div>
+          </motion.div>
         </div>
       </motion.section>
 

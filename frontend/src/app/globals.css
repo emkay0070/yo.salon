@@ -20,10 +20,10 @@
   --color-border-medium: var(--color-border-medium);
   --color-overlay: var(--color-overlay);
 
-  --font-inter: var(--font-inter), system-ui, sans-serif;
-  --font-playfair: var(--font-playfair), Georgia, serif;
-  --font-sora: var(--font-sora), sans-serif;
-  --font-poppins: var(--font-poppins), sans-serif;
+  --font-inter: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-playfair: Georgia, 'Times New Roman', serif;
+  --font-sora: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-poppins: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 
@@ -115,7 +115,103 @@
   --texture-opacity: 0;   /* hide dark bg texture in light mode */
 }
 
-/* Example: Glass Theme */
+/* Apple Store Theme */
+[data-theme="apple-store"] {
+  --color-obsidian: #1D1D1F;
+  --color-noir: #1D1D1F;
+  --color-dark-surface: #F5F5F7;
+  --color-gold: #0071E3;
+  --color-dark-gold: #005BB5;
+  --color-champagne: #6E6E73;
+  --color-emerald: #34C759;
+  --color-amber: #FF9500;
+  --color-terracotta: #FF3B30;
+
+  --color-text-primary: #1D1D1F;
+  --color-text-secondary: #6E6E73;
+  --color-text-muted: #86868B;
+
+  --color-border-light: rgba(0, 0, 0, 0.08);
+  --color-border-medium: rgba(0, 0, 0, 0.12);
+
+  --color-background: #F5F5F7;
+  --color-surface: #FFFFFF;
+  --color-card: #FFFFFF;
+  --color-overlay: rgba(255, 255, 255, 0.8);
+
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.16);
+
+  --texture-opacity: 0;
+}
+
+/* Vision Pro Theme */
+[data-theme="vision-pro"] {
+  --color-obsidian: #000000;
+  --color-noir: #000000;
+  --color-dark-surface: rgba(255,255,255,0.05);
+  --color-gold: #0A84FF;
+  --color-dark-gold: #0066CC;
+  --color-champagne: #8E8E93;
+  --color-emerald: #30D158;
+  --color-amber: #FF9F0A;
+  --color-terracotta: #FF453A;
+
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: rgba(255,255,255,0.5);
+  --color-text-muted: rgba(255,255,255,0.3);
+
+  --color-border-light: rgba(255,255,255,0.15);
+  --color-border-medium: rgba(255,255,255,0.25);
+
+  --color-background: #000000;
+  --color-surface: rgba(255,255,255,0.05);
+  --color-card: rgba(255,255,255,0.08);
+  --color-overlay: rgba(0, 0, 0, 0.8);
+
+  --shadow-sm: 0 0 20px rgba(0,0,0,0.3);
+  --shadow-md: 0 0 40px rgba(0,0,0,0.4);
+  --shadow-lg: 0 0 60px rgba(0,0,0,0.5);
+  --shadow-xl: 0 0 80px rgba(0,0,0,0.6);
+
+  --texture-opacity: 0;
+}
+
+/* Modern Glass Theme */
+[data-theme="modern-glass"] {
+  --color-obsidian: #0F172A;
+  --color-noir: #0F172A;
+  --color-dark-surface: rgba(30,41,59,0.8);
+  --color-gold: #38BDF8;
+  --color-dark-gold: #0284C7;
+  --color-champagne: #94A3B8;
+  --color-emerald: #34D399;
+  --color-amber: #FBBF24;
+  --color-terracotta: #F87171;
+
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+
+  --color-border-light: rgba(148,163,184,0.1);
+  --color-border-medium: rgba(148,163,184,0.2);
+
+  --color-background: #0F172A;
+  --color-surface: rgba(30,41,59,0.8);
+  --color-card: rgba(51,65,85,0.6);
+  --color-overlay: rgba(15,23,42,0.8);
+
+  --shadow-sm: 0 4px 16px rgba(0,0,0,0.2);
+  --shadow-md: 0 8px 32px rgba(0,0,0,0.3);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.4);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.5);
+
+  --texture-opacity: 0.02;
+}
+
+/* Legacy Glass Theme (for compatibility) */
 [data-theme="glass"] {
   --color-background: #0f172a;
   --color-surface: #1e293b;
