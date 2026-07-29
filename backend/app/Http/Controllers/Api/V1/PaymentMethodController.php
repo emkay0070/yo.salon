@@ -134,21 +134,96 @@ class PaymentMethodController extends Controller
     {
         $validated = $request->validate([
             'provider'             => 'required|in:mtn,airtel,flutterwave',
-            'merchant_id'          => 'required|string|max:100',
+            'merchant_id'          => 'nullable|string|max:100',
             'api_key'              => 'required|string',
             'api_secret'           => 'required|string',
             'api_subscription_key' => 'nullable|string',
             'environment'          => 'required|in:sandbox,production',
+            'country'              => 'nullable|string|max:2',
+            'currency'             => 'nullable|string|max:3',
         ]);
 
-        // TODO: Implement actual provider connection test
-        // For now, return success (in production, call provider's test endpoint)
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Connection test successful',
-            'provider' => $validated['provider'],
+        $provider = $validated['provider'];
+        $credentials = [
+            'api_key' => $validated['api_key'],
+            'api_secret' => $validated['api_secret'],
+            'api_subscription_key' => $validated['api_subscription_key'] ?? null,
+            'merchant_id' => $validated['merchant_id'] ?? null,
             'environment' => $validated['environment'],
-        ]);
+            'country' => $validated['country'] ?? 'UG',
+            'currency' => $validated['currency'] ?? 'UGX',
+        ];
+
+        try {
+            $providerInstance = $this->getProviderInstance($provider, $credentials);
+            
+            // Test by trying to get an access token (this validates credentials)
+            if ($provider === 'flutterwave') {
+                // For Flutterwave, we can test by making a simple API call
+                $testResult = $providerInstance->initializePayment([
+                    'amount' => 100,
+                    'currency' => 'UGX',
+                    'email' => 'test@example.com',
+                    'customer_name' => 'Test Customer',
+                    'reference' => 'TEST-' . time(),
+                ]);
+            } else {
+                // For MTN and Airtel, test token retrieval
+                $token = $this->getProviderToken($providerInstance);
+                
+                if (!$token) {
+                    throw new \Exception('Failed to obtain access token');
+                }
+                
+                $testResult = ['token_obtained' => true];
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Connection test successful',
+                'provider' => $provider,
+                'environment' => $validated['environment'],
+                'test_result' => $testResult,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Payment method connection test failed', [
+                'provider' => $provider,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Connection test failed: ' . $e->getMessage(),
+                'provider' => $provider,
+            ], 422);
+        }
+    }
+
+    /**
+     * Get provider instance based on provider name
+     */
+    private function getProviderInstance(string $provider, array $credentials): object
+    {
+        return match($provider) {
+            'mtn' => new \App\Services\Payments\MTNProvider($credentials),
+            'airtel' => new \App\Services\Payments\AirtelProvider($credentials),
+            'flutterwave' => new \App\Services\Payments\FlutterwaveProvider(),
+            default => throw new \Exception('Unsupported provider'),
+        };
+    }
+
+    /**
+     * Get provider access token (for MTN/Airtel)
+     */
+    private function getProviderToken(object $provider): ?string
+    {
+        // Use reflection to access private method or create a public method in providers
+        // For now, we'll implement a simple token test
+        if (method_exists($provider, 'getAccessToken')) {
+            return $provider->getAccessToken();
+        }
+        
+        return null;
     }
 }

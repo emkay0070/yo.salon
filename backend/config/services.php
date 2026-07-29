@@ -43,4 +43,23 @@ return [
         'base_url' => env('FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3'),
     ],
 
+    'mtn' => [
+        'subscription_key' => env('MTN_SUBSCRIPTION_KEY'),
+        'api_key' => env('MTN_API_KEY'),
+        'api_user' => env('MTN_API_USER'),
+        'environment' => env('MTN_ENVIRONMENT', 'sandbox'),
+        'callback_url' => env('MTN_CALLBACK_URL'),
+        'base_url' => env('MTN_BASE_URL'),
+    ],
+
+    'airtel' => [
+        'client_id' => env('AIRTEL_CLIENT_ID'),
+        'client_secret' => env('AIRTEL_CLIENT_SECRET'),
+        'country' => env('AIRTEL_COUNTRY', 'UG'),
+        'currency' => env('AIRTEL_CURRENCY', 'UGX'),
+        'environment' => env('AIRTEL_ENVIRONMENT', 'sandbox'),
+        'callback_url' => env('AIRTEL_CALLBACK_URL'),
+        'base_url' => env('AIRTEL_BASE_URL'),
+    ],
+
 ];
