@@ -40,16 +40,16 @@ export default function BrandingSettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   
   const [formData, setFormData] = useState({
-    experience_family: brand?.brand?.experience_family || 'luxury_noir',
-    primary_color: brand?.brand?.primary_color || '#FF622B',
-    secondary_color: brand?.brand?.secondary_color || '#FF8C5A',
-    accent_color: brand?.brand?.accent_color || '#FFD700',
-    font_heading: brand?.brand?.font_heading || 'sora',
-    font_body: brand?.brand?.font_body || 'inter',
-    logo: brand?.brand?.logo || '',
-    background_image: brand?.brand?.background_image || '',
-    custom_domain: brand?.brand?.custom_domain || '',
-    white_label_enabled: brand?.brand?.white_label_enabled || false,
+    experience_family: brand?.experience_family || 'luxury_noir',
+    primary_color: brand?.primary_color || '#FF622B',
+    secondary_color: brand?.secondary_color || '#FF8C5A',
+    accent_color: brand?.accent_color || '#FFD700',
+    font_heading: brand?.font_heading || 'sora',
+    font_body: brand?.font_body || 'inter',
+    logo: brand?.logo || '',
+    background_image: brand?.background_image || '',
+    custom_domain: brand?.custom_domain || '',
+    white_label_enabled: brand?.white_label_enabled || false,
   });
 
   const handleSave = async () => {
@@ -70,16 +70,16 @@ export default function BrandingSettingsPage() {
 
   const handleReset = () => {
     setFormData({
-      experience_family: brand?.brand?.experience_family || 'luxury_noir',
-      primary_color: brand?.brand?.primary_color || '#FF622B',
-      secondary_color: brand?.brand?.secondary_color || '#FF8C5A',
-      accent_color: brand?.brand?.accent_color || '#FFD700',
-      font_heading: brand?.brand?.font_heading || 'sora',
-      font_body: brand?.brand?.font_body || 'inter',
-      logo: brand?.brand?.logo || '',
-      background_image: brand?.brand?.background_image || '',
-      custom_domain: brand?.brand?.custom_domain || '',
-      white_label_enabled: brand?.brand?.white_label_enabled || false,
+      experience_family: brand?.experience_family || 'luxury_noir',
+      primary_color: brand?.primary_color || '#FF622B',
+      secondary_color: brand?.secondary_color || '#FF8C5A',
+      accent_color: brand?.accent_color || '#FFD700',
+      font_heading: brand?.font_heading || 'sora',
+      font_body: brand?.font_body || 'inter',
+      logo: brand?.logo || '',
+      background_image: brand?.background_image || '',
+      custom_domain: brand?.custom_domain || '',
+      white_label_enabled: brand?.white_label_enabled || false,
     });
   };
 

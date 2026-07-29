@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { useRole } from '@/contexts/RoleContext';
 
 interface SalonInfo {
   id: string;
@@ -63,24 +62,27 @@ interface BrandData {
   colors: ColorPalette;
 }
 
-interface BrandContextType {
+interface TenantBrandContextType {
   brand: BrandData | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
 }
 
-const BrandContext = createContext<BrandContextType | undefined>(undefined);
+const TenantBrandContext = createContext<TenantBrandContextType | undefined>(undefined);
 
-export function BrandProvider({ children }: { children: ReactNode }) {
-  const { salonId } = useRole();
-  
+interface TenantBrandProviderProps {
+  children: ReactNode;
+  slug: string;
+}
+
+export function TenantBrandProvider({ children, slug }: TenantBrandProviderProps) {
   const { data: brand, isLoading, error, refetch } = useQuery({
-    queryKey: ['brand-experience', salonId],
-    queryFn: () => apiClient.get('/brand-experience'),
-    enabled: !!salonId,
+    queryKey: ['tenant-brand-experience', slug],
+    queryFn: () => apiClient.get(`/v1/salons/${slug}/brand-experience`),
+    enabled: !!slug,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: false, // Don't retry on 404 - endpoint may not be deployed yet
+    retry: false,
   });
 
   // Apply brand fonts to document
@@ -156,16 +158,16 @@ export function BrandProvider({ children }: { children: ReactNode }) {
   }, [brand]);
 
   return (
-    <BrandContext.Provider value={{ brand, isLoading, error, refetch }}>
+    <TenantBrandContext.Provider value={{ brand, isLoading, error, refetch }}>
       {children}
-    </BrandContext.Provider>
+    </TenantBrandContext.Provider>
   );
 }
 
-export function useBrand(): BrandContextType {
-  const context = useContext(BrandContext);
+export function useTenantBrand(): TenantBrandContextType {
+  const context = useContext(TenantBrandContext);
   if (context === undefined) {
-    throw new Error('useBrand must be used within a BrandProvider');
+    throw new Error('useTenantBrand must be used within a TenantBrandProvider');
   }
   return context;
 }

@@ -35,6 +35,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/salons/{slug}', [SalonController::class, 'showBySlug']);
     Route::get('/salons/{slug}/services', [SalonController::class, 'services']);
     Route::get('/salons/{slug}/staff', [SalonController::class, 'staff']);
+    Route::get('/salons/{slug}/brand-experience', [BrandExperienceController::class, 'showBySlug']);
     
     // Public booking route (Journey 4: Booking + Create Account)
     Route::post('/bookings/with-account', [BookingController::class, 'storeWithAccount']);

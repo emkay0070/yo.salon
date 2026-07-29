@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Wallet, Calendar, User, Scissors, LogOut, Home, Sparkles } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
+import { usePortalBrand } from '@/contexts/PortalBrandContext';
 
 interface ClientLayoutProps {
   children: React.ReactNode;
@@ -22,6 +23,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { customer, salon, logout, isLoading } = usePortalAuth();
+  const { brand } = usePortalBrand();
 
   const handleLogout = async () => {
     await logout();
@@ -50,14 +52,29 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
           {/* Logo Area */}
           <Link href="/portal/home" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold to-dark-gold flex items-center justify-center shadow-md">
-              <Scissors className="w-5 h-5 text-obsidian" />
-            </div>
+            {brand?.brand?.logo ? (
+              <img 
+                src={brand.brand.logo} 
+                alt={salon?.name || 'Salon Logo'} 
+                className="w-10 h-10 rounded-xl object-cover shadow-md"
+              />
+            ) : (
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md"
+                style={{ 
+                  background: `linear-gradient(to bottom right, ${brand?.brand?.primary_color || '#FFD700'}, ${brand?.brand?.secondary_color || '#C9A227'})` 
+                }}
+              >
+                <Scissors className="w-5 h-5 text-white" />
+              </div>
+            )}
             <div className="flex flex-col">
-              <span className="text-xl font-bold tracking-tight text-text-primary">Yo Salon</span>
-              {salon && (
-                <span className="text-xs text-text-secondary">{salon.name}</span>
-              )}
+              <span 
+                className="text-xl font-bold tracking-tight"
+                style={{ color: 'var(--brand-primary, #FFD700)' }}
+              >
+                {salon?.name || 'Salon'}
+              </span>
             </div>
           </Link>
 
@@ -69,10 +86,23 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all ${isActive
-                      ? 'bg-gold/10 text-gold shadow-sm'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-text-primary/5'
-                    }`}
+                  className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: isActive ? 'var(--brand-primary, #FFD700)' : 'transparent',
+                    color: isActive ? '#000' : 'var(--text-secondary, #888)',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)20';
+                      e.currentTarget.style.color = 'var(--brand-primary, #FFD700)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-secondary, #888)';
+                    }
+                  }}
                 >
                   <item.icon className="w-4 h-4" />
                   {item.label}
@@ -126,8 +156,14 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
                 className="flex-1 flex flex-col items-center justify-center gap-1 h-full select-none"
               >
                 <motion.div whileTap={{ scale: 0.9 }} className="flex flex-col items-center gap-1">
-                  <item.icon className={`w-6 h-6 ${isActive ? 'text-gold' : 'text-text-secondary'}`} />
-                  <span className={`text-[10px] font-medium ${isActive ? 'text-gold' : 'text-text-secondary'}`}>
+                  <item.icon 
+                    className="w-6 h-6"
+                    style={{ color: isActive ? 'var(--brand-primary, #FFD700)' : 'var(--text-secondary, #888)' }}
+                  />
+                  <span 
+                    className="text-[10px] font-medium"
+                    style={{ color: isActive ? 'var(--brand-primary, #FFD700)' : 'var(--text-secondary, #888)' }}
+                  >
                     {item.label}
                   </span>
                 </motion.div>

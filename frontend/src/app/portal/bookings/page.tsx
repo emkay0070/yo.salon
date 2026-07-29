@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Calendar, Clock, Scissors, User, Plus } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
+import { usePortalBrand } from '@/contexts/PortalBrandContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
 import ClientLayout from '@/components/ClientLayout';
@@ -11,6 +12,7 @@ import { useState } from 'react';
 
 export default function BookingsPage() {
   const { customer, salon } = usePortalAuth();
+  const { brand } = usePortalBrand();
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'history'>('upcoming');
 
@@ -47,7 +49,17 @@ export default function BookingsPage() {
           </div>
           <Link
             href="/portal/bookings/new"
-            className="flex items-center gap-2 px-4 py-2 bg-gold text-obsidian rounded-full font-medium hover:bg-dark-gold transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-obsidian rounded-full font-medium transition-colors"
+            style={{ 
+              backgroundColor: 'var(--brand-primary, #FFD700)',
+              borderRadius: 'var(--brand-border-radius, 16px)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '0.9';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '1';
+            }}
           >
             <Plus className="w-4 h-4" />
             Book Now
@@ -58,24 +70,46 @@ export default function BookingsPage() {
         <div className="flex gap-4 border-b border-border-light">
           <button
             onClick={() => setActiveTab('upcoming')}
-            className={`pb-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'upcoming' ? 'text-gold' : 'text-text-secondary hover:text-text-primary'
-            }`}
+            className="pb-4 text-sm font-medium transition-colors relative"
+            style={{ 
+              color: activeTab === 'upcoming' ? 'var(--brand-primary, #FFD700)' : 'var(--text-secondary, #888)'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'upcoming') {
+                e.currentTarget.style.color = 'var(--brand-primary, #FFD700)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'upcoming') {
+                e.currentTarget.style.color = 'var(--text-secondary, #888)';
+              }
+            }}
           >
             Upcoming
             {activeTab === 'upcoming' && (
-              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />
+              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--brand-primary, #FFD700)' }} />
             )}
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`pb-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'history' ? 'text-gold' : 'text-text-secondary hover:text-text-primary'
-            }`}
+            className="pb-4 text-sm font-medium transition-colors relative"
+            style={{ 
+              color: activeTab === 'history' ? 'var(--brand-primary, #FFD700)' : 'var(--text-secondary, #888)'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'history') {
+                e.currentTarget.style.color = 'var(--brand-primary, #FFD700)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'history') {
+                e.currentTarget.style.color = 'var(--text-secondary, #888)';
+              }
+            }}
           >
             History
             {activeTab === 'history' && (
-              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold" />
+              <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: 'var(--brand-primary, #FFD700)' }} />
             )}
           </button>
         </div>
@@ -92,7 +126,13 @@ export default function BookingsPage() {
               <BookingCard key={booking.id} booking={booking} />
             ))
           ) : (
-            <div className="bg-surface border border-border-light rounded-2xl p-12 text-center">
+            <div 
+              className="bg-surface border border-border-light p-12 text-center"
+              style={{ 
+                borderRadius: 'var(--brand-border-radius, 16px)',
+                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              }}
+            >
               <Calendar className="w-16 h-16 text-text-secondary mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-text-primary mb-2">
                 {activeTab === 'upcoming' ? 'No upcoming bookings' : 'No booking history'}
@@ -103,7 +143,17 @@ export default function BookingsPage() {
               {activeTab === 'upcoming' && (
                 <Link
                   href="/portal/bookings/new"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gold text-obsidian rounded-full font-medium hover:bg-dark-gold transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3 text-obsidian rounded-full font-medium transition-colors"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
                 >
                   <Plus className="w-4 h-4" />
                   Book Now
@@ -126,11 +176,29 @@ function BookingCard({ booking }: { booking: any }) {
   };
 
   return (
-    <div className="bg-surface border border-border-light rounded-2xl p-6 hover:border-gold/30 transition-all">
+    <div 
+      className="bg-surface border border-border-light p-6 transition-all"
+      style={{ 
+        borderRadius: 'var(--brand-border-radius, 16px)',
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--brand-primary, #FFD700)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = '';
+      }}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gold/10 flex items-center justify-center">
-            <Calendar className="w-6 h-6 text-gold" />
+          <div 
+            className="w-12 h-12 rounded-xl flex items-center justify-center"
+            style={{ 
+              backgroundColor: 'var(--brand-primary, #FFD700)20',
+              borderRadius: 'var(--brand-border-radius, 16px)'
+            }}
+          >
+            <Calendar className="w-6 h-6" style={{ color: 'var(--brand-primary, #FFD700)' }} />
           </div>
           <div>
             <h3 className="font-semibold text-text-primary">{booking.service?.name}</h3>

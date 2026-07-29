@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Calendar, Sparkles, Wallet, User, Scissors, Clock, ChevronRight, Repeat, Gift, TrendingUp, Award, ArrowRight } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
+import { usePortalBrand } from '@/contexts/PortalBrandContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FeatureGuard } from '@/components/ui/FeatureGuard';
@@ -10,6 +11,7 @@ import { useRouter } from 'next/navigation';
 
 export default function PortalHomePage() {
   const { customer, salon, isLoading: authLoading } = usePortalAuth();
+  const { brand } = usePortalBrand();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -104,11 +106,21 @@ export default function PortalHomePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="bg-surface border border-border-light rounded-2xl p-6"
+          className="bg-surface border border-border-light p-6"
+          style={{ 
+            borderRadius: 'var(--brand-border-radius, 16px)',
+            boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+          }}
         >
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-gold" />
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ 
+                backgroundColor: 'var(--brand-primary, #FFD700)20',
+                borderRadius: 'var(--brand-border-radius, 16px)'
+              }}
+            >
+              <Clock className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
             </div>
             <h2 className="text-lg font-semibold text-text-primary">Next Appointment</h2>
           </div>
@@ -127,7 +139,19 @@ export default function PortalHomePage() {
               <div className="flex gap-2">
                 <button 
                   onClick={() => router.push(`/portal/bookings/new?reschedule=${upcomingBooking.id}`)}
-                  className="flex-1 px-4 py-2 bg-gold/10 text-gold rounded-lg text-sm font-medium hover:bg-gold/20 transition-colors">
+                  className="flex-1 px-4 py-2 text-sm font-medium transition-colors rounded-lg"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)20',
+                    color: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)30';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)20';
+                  }}
+                >
                   Reschedule
                 </button>
                 <button 
@@ -137,7 +161,9 @@ export default function PortalHomePage() {
                     }
                   }}
                   disabled={cancelMutation.isPending}
-                  className="flex-1 px-4 py-2 bg-red-500/10 text-red-500 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50">
+                  className="flex-1 px-4 py-2 bg-red-500/10 text-red-500 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                  style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                >
                   {cancelMutation.isPending ? 'Canceling...' : 'Cancel'}
                 </button>
               </div>
@@ -145,7 +171,19 @@ export default function PortalHomePage() {
           ) : (
             <div className="text-center py-8">
               <p className="text-text-secondary">No upcoming appointments</p>
-              <button className="mt-4 px-6 py-2 bg-gold text-white rounded-full text-sm font-medium hover:bg-gold/90 transition-colors">
+              <button 
+                className="mt-4 px-6 py-2 text-white text-sm font-medium transition-colors rounded-full"
+                style={{ 
+                  backgroundColor: 'var(--brand-primary, #FFD700)',
+                  borderRadius: 'var(--brand-border-radius, 16px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                }}
+              >
                 Book Now
               </button>
             </div>
@@ -159,11 +197,23 @@ export default function PortalHomePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.25 }}
-              className="bg-gradient-to-r from-gold/20 to-dark-gold/20 border border-gold/30 rounded-2xl p-6"
+              className="p-6"
+              style={{ 
+                background: `linear-gradient(to right, var(--brand-primary, #FFD700)20, var(--brand-secondary, #C9A227)20)`,
+                border: `1px solid var(--brand-primary, #FFD700)30`,
+                borderRadius: 'var(--brand-border-radius, 16px)',
+                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gold/20 flex items-center justify-center">
-                  <Repeat className="w-5 h-5 text-gold" />
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)20',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                >
+                  <Repeat className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                 </div>
                 <h2 className="text-lg font-semibold text-text-primary">Continue Last Service</h2>
               </div>
@@ -174,7 +224,19 @@ export default function PortalHomePage() {
                     {lastBooking.staff?.name} • ${lastBooking.service?.price}
                   </p>
                 </div>
-                <button className="px-4 py-2 bg-gold text-white rounded-lg text-sm font-medium hover:bg-gold/90 transition-colors flex items-center gap-2">
+                <button 
+                  className="px-4 py-2 text-white text-sm font-medium transition-colors rounded-lg flex items-center gap-2"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
                   Book Again <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -189,7 +251,11 @@ export default function PortalHomePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.3 }}
-              className="bg-surface border border-border-light rounded-2xl p-6"
+              className="bg-surface border border-border-light p-6"
+              style={{ 
+                borderRadius: 'var(--brand-border-radius, 16px)',
+                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              }}
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
@@ -199,7 +265,15 @@ export default function PortalHomePage() {
               </div>
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {offers.slice(0, 3).map((offer: any) => (
-                  <div key={offer.id} className="flex-shrink-0 w-64 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-xl p-4">
+                  <div 
+                    key={offer.id} 
+                    className="flex-shrink-0 w-64 border rounded-xl p-4"
+                    style={{ 
+                      background: 'linear-gradient(to bottom right, rgba(239, 68, 68, 0.1), rgba(249, 115, 22, 0.1))',
+                      borderColor: 'rgba(239, 68, 68, 0.2)',
+                      borderRadius: 'var(--brand-border-radius, 16px)'
+                    }}
+                  >
                     <p className="font-semibold text-text-primary mb-1">{offer.title}</p>
                     <p className="text-sm text-text-secondary mb-2">{offer.description}</p>
                     <p className="text-xs text-red-500 font-medium">
@@ -218,7 +292,11 @@ export default function PortalHomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.35 }}
-            className="bg-surface border border-border-light rounded-2xl p-6"
+            className="bg-surface border border-border-light p-6"
+            style={{ 
+              borderRadius: 'var(--brand-border-radius, 16px)',
+              boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+            }}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -227,7 +305,11 @@ export default function PortalHomePage() {
                 </div>
                 <h2 className="text-lg font-semibold text-text-primary">Recommended for You</h2>
               </div>
-              <a href="/portal/discover" className="text-sm text-gold hover:underline flex items-center gap-1">
+              <a 
+                href="/portal/discover" 
+                className="text-sm hover:underline flex items-center gap-1"
+                style={{ color: 'var(--brand-primary, #FFD700)' }}
+              >
                 See all <ChevronRight className="w-4 h-4" />
               </a>
             </div>
@@ -245,7 +327,11 @@ export default function PortalHomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.4 }}
-            className="bg-surface border border-border-light rounded-2xl p-6"
+            className="bg-surface border border-border-light p-6"
+            style={{ 
+              borderRadius: 'var(--brand-border-radius, 16px)',
+              boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+            }}
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
@@ -264,8 +350,11 @@ export default function PortalHomePage() {
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-gradient-to-r from-purple-500 to-purple-600 h-2 rounded-full transition-all"
-                  style={{ width: `${loyaltySummary?.tier_progress || 0}%` }}
+                  className="h-2 rounded-full transition-all"
+                  style={{ 
+                    width: `${loyaltySummary?.tier_progress || 0}%`,
+                    background: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`
+                  }}
                 />
               </div>
               {loyaltySummary?.points_to_next && loyaltySummary.points_to_next > 0 && (
@@ -284,7 +373,11 @@ export default function PortalHomePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.45 }}
-              className="bg-surface border border-border-light rounded-2xl p-6"
+              className="bg-surface border border-border-light p-6"
+              style={{ 
+                borderRadius: 'var(--brand-border-radius, 16px)',
+                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              }}
             >
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
@@ -294,7 +387,11 @@ export default function PortalHomePage() {
               </div>
               <div className="space-y-3">
                 {recentVisits.slice(0, 3).map((visit: any) => (
-                  <div key={visit.id} className="flex items-center justify-between p-3 bg-surface border border-border-light rounded-lg">
+                  <div 
+                    key={visit.id} 
+                    className="flex items-center justify-between p-3 bg-surface border border-border-light"
+                    style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                  >
                     <div>
                       <p className="font-medium text-text-primary text-sm">{visit.service?.name}</p>
                       <p className="text-xs text-text-secondary">{visit.staff?.name}</p>
@@ -317,17 +414,35 @@ export default function PortalHomePage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.5 }}
-              className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl p-6"
+              className="p-6"
+              style={{ 
+                background: `linear-gradient(to right, var(--brand-primary, #FFD700)10, var(--brand-secondary, #C9A227)10)`,
+                border: `1px solid var(--brand-primary, #FFD700)20`,
+                borderRadius: 'var(--brand-border-radius, 16px)',
+                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                  <User className="w-5 h-5 text-blue-500" />
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)20',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                >
+                  <User className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                 </div>
                 <h2 className="text-lg font-semibold text-text-primary">Your Stylist</h2>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                  <div 
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+                    style={{ 
+                      background: `linear-gradient(to bottom right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+                      borderRadius: 'var(--brand-border-radius, 16px)'
+                    }}
+                  >
                     {favoriteStylist.name?.charAt(0)}
                   </div>
                   <div>
@@ -335,7 +450,19 @@ export default function PortalHomePage() {
                     <p className="text-sm text-text-secondary">Preferred Stylist</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors">
+                <button 
+                  className="px-4 py-2 text-white text-sm font-medium transition-colors rounded-lg"
+                  style={{ 
+                    backgroundColor: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
                   Book with {favoriteStylist.name?.split(' ')[0]}
                 </button>
               </div>
@@ -374,9 +501,16 @@ function QuickActionCard({ icon: Icon, label, href, color }: { icon: any, label:
   return (
     <a
       href={href}
-      className="bg-surface border border-border-light rounded-2xl p-4 hover:border-gold/30 transition-all hover:shadow-lg group"
+      className="bg-surface border border-border-light p-4 hover:shadow-lg group transition-all"
+      style={{ 
+        borderRadius: 'var(--brand-border-radius, 16px)',
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+      }}
     >
-      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+      <div 
+        className={`w-12 h-12 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}
+        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+      >
         <Icon className="w-6 h-6 text-white" />
       </div>
       <p className="text-sm font-medium text-text-primary">{label}</p>
@@ -386,9 +520,15 @@ function QuickActionCard({ icon: Icon, label, href, color }: { icon: any, label:
 
 function StatCard({ icon: Icon, label, value }: { icon: any, label: string, value: string | number }) {
   return (
-    <div className="bg-surface border border-border-light rounded-2xl p-4">
+    <div 
+      className="bg-surface border border-border-light p-4"
+      style={{ 
+        borderRadius: 'var(--brand-border-radius, 16px)',
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+      }}
+    >
       <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-4 h-4 text-gold" />
+        <Icon className="w-4 h-4" style={{ color: 'var(--brand-primary, #FFD700)' }} />
         <p className="text-xs text-text-secondary">{label}</p>
       </div>
       <p className="text-2xl font-bold text-text-primary">{value}</p>
@@ -398,8 +538,23 @@ function StatCard({ icon: Icon, label, value }: { icon: any, label: string, valu
 
 function ServiceCard({ service }: { service: any }) {
   return (
-    <div className="bg-surface border border-border-light rounded-xl p-4 hover:border-gold/30 transition-all cursor-pointer">
-      <div className="w-full h-24 bg-surface border border-border-light rounded-lg mb-3 flex items-center justify-center">
+    <div 
+      className="bg-surface border border-border-light p-4 transition-all cursor-pointer"
+      style={{ 
+        borderRadius: 'var(--brand-border-radius, 16px)',
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--brand-primary, #FFD700)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = '';
+      }}
+    >
+      <div 
+        className="w-full h-24 bg-surface border border-border-light mb-3 flex items-center justify-center"
+        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+      >
         <Scissors className="w-8 h-8 text-text-secondary" />
       </div>
       <p className="font-medium text-text-primary text-sm mb-1">{service.name}</p>

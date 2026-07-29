@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
-import { useRole } from '@/contexts/RoleContext';
+import { portalApiClient } from '@/lib/portal-api-client';
+import { usePortalAuth } from '@/contexts/PortalAuthContext';
 
 interface SalonInfo {
   id: string;
@@ -63,25 +63,32 @@ interface BrandData {
   colors: ColorPalette;
 }
 
-interface BrandContextType {
+interface PortalBrandContextType {
   brand: BrandData | null;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
 }
 
-const BrandContext = createContext<BrandContextType | undefined>(undefined);
+const PortalBrandContext = createContext<PortalBrandContextType | undefined>(undefined);
 
-export function BrandProvider({ children }: { children: ReactNode }) {
-  const { salonId } = useRole();
+export function PortalBrandProvider({ children }: { children: ReactNode }) {
+  const { salon } = usePortalAuth();
   
   const { data: brand, isLoading, error, refetch } = useQuery({
-    queryKey: ['brand-experience', salonId],
-    queryFn: () => apiClient.get('/brand-experience'),
-    enabled: !!salonId,
+    queryKey: ['portal-brand-experience', salon?.id],
+    queryFn: () => portalApiClient.get('/brand-experience'),
+    enabled: !!salon?.id,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet
   });
+
+  // Refetch brand data when salon changes
+  useEffect(() => {
+    if (salon?.id) {
+      refetch();
+    }
+  }, [salon?.id, refetch]);
 
   // Apply brand fonts to document
   useEffect(() => {
@@ -156,16 +163,16 @@ export function BrandProvider({ children }: { children: ReactNode }) {
   }, [brand]);
 
   return (
-    <BrandContext.Provider value={{ brand, isLoading, error, refetch }}>
+    <PortalBrandContext.Provider value={{ brand, isLoading, error, refetch }}>
       {children}
-    </BrandContext.Provider>
+    </PortalBrandContext.Provider>
   );
 }
 
-export function useBrand(): BrandContextType {
-  const context = useContext(BrandContext);
+export function usePortalBrand(): PortalBrandContextType {
+  const context = useContext(PortalBrandContext);
   if (context === undefined) {
-    throw new Error('useBrand must be used within a BrandProvider');
+    throw new Error('usePortalBrand must be used within a PortalBrandProvider');
   }
   return context;
 }

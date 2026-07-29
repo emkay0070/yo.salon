@@ -37,7 +37,19 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Otherwise, extract the tenant slug (e.g. freshcuts.yosalon.vercel.app -> freshcuts)
+  // Check for custom domain (not a subdomain of our root domains)
+  const isCustomDomain = !rootDomains.some(domain => hostname.endsWith(`.${domain}`) || hostname === domain);
+
+  // For custom domains, we need to look up the salon by custom domain
+  // This will be handled in the page component via API call
+  if (isCustomDomain) {
+    // Add custom domain header for the page component to use
+    const response = NextResponse.next();
+    response.headers.set('x-custom-domain', hostname);
+    return response;
+  }
+
+  // Otherwise, extract the tenant slug from subdomain (e.g. freshcuts.yosalon.vercel.app -> freshcuts)
   let subdomain = hostname;
   for (const domain of rootDomains) {
     if (hostname.endsWith(`.${domain}`)) {

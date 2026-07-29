@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { User, Phone, Mail, MapPin, Calendar, Scissors, Edit, LogOut } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
+import { usePortalBrand } from '@/contexts/PortalBrandContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
 import ClientLayout from '@/components/ClientLayout';
@@ -10,6 +11,7 @@ import { useRouter } from 'next/navigation';
 
 export default function ProfilePage() {
   const { customer, salon, logout } = usePortalAuth();
+  const { brand } = usePortalBrand();
   const router = useRouter();
 
   const { data: profileData, isLoading, isError } = useQuery({
@@ -61,16 +63,39 @@ export default function ProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-surface border border-border-light rounded-2xl p-6"
+          className="bg-surface border border-border-light p-6"
+          style={{ 
+            borderRadius: 'var(--brand-border-radius, 16px)',
+            boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+          }}
         >
           <div className="flex items-start gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gold to-dark-gold flex items-center justify-center flex-shrink-0">
+            <div 
+              className="w-20 h-20 rounded-2xl flex items-center justify-center flex-shrink-0"
+              style={{ 
+                background: `linear-gradient(to bottom right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+                borderRadius: 'var(--brand-border-radius, 16px)'
+              }}
+            >
               <User className="w-10 h-10 text-obsidian" />
             </div>
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-text-primary mb-1">{customer?.name || 'Guest'}</h2>
               <p className="text-text-secondary mb-4">Member since {new Date().getFullYear()}</p>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gold/10 text-gold rounded-full text-sm font-medium hover:bg-gold/20 transition-colors">
+              <button 
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors rounded-full"
+                style={{ 
+                  backgroundColor: 'var(--brand-primary, #FFD700)20',
+                  color: 'var(--brand-primary, #FFD700)',
+                  borderRadius: 'var(--brand-border-radius, 16px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)30';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)20';
+                }}
+              >
                 <Edit className="w-4 h-4" />
                 Edit Profile
               </button>
@@ -83,7 +108,11 @@ export default function ProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-surface border border-border-light rounded-2xl p-6"
+          className="bg-surface border border-border-light p-6"
+          style={{ 
+            borderRadius: 'var(--brand-border-radius, 16px)',
+            boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+          }}
         >
           <h3 className="text-lg font-semibold text-text-primary mb-4">Contact Information</h3>
           <div className="space-y-4">
@@ -106,7 +135,11 @@ export default function ProfilePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-surface border border-border-light rounded-2xl p-6"
+            className="bg-surface border border-border-light p-6"
+            style={{ 
+              borderRadius: 'var(--brand-border-radius, 16px)',
+              boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+            }}
           >
             <h3 className="text-lg font-semibold text-text-primary mb-4">Salon Information</h3>
             <div className="space-y-4">
@@ -170,7 +203,10 @@ export default function ProfilePage() {
 function InfoRow({ icon: Icon, label, value }: { icon: any, label: string, value: string }) {
   return (
     <div className="flex items-center gap-4">
-      <div className="w-10 h-10 rounded-xl bg-surface border border-border-light flex items-center justify-center flex-shrink-0">
+      <div 
+        className="w-10 h-10 rounded-xl bg-surface border border-border-light flex items-center justify-center flex-shrink-0"
+        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+      >
         <Icon className="w-5 h-5 text-text-secondary" />
       </div>
       <div className="flex-1">
@@ -183,10 +219,22 @@ function InfoRow({ icon: Icon, label, value }: { icon: any, label: string, value
 
 function StatCard({ icon: Icon, label, value }: { icon: any, label: string, value: number }) {
   return (
-    <div className="bg-surface border border-border-light rounded-2xl p-6">
+    <div 
+      className="bg-surface border border-border-light p-6"
+      style={{ 
+        borderRadius: 'var(--brand-border-radius, 16px)',
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+      }}
+    >
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center">
-          <Icon className="w-5 h-5 text-gold" />
+        <div 
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ 
+            backgroundColor: 'var(--brand-primary, #FFD700)20',
+            borderRadius: 'var(--brand-border-radius, 16px)'
+          }}
+        >
+          <Icon className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
         </div>
         <span className="text-sm text-text-secondary">{label}</span>
       </div>

@@ -8,6 +8,7 @@ import { RoleProvider } from '@/contexts/RoleContext';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 import { PortalAuthProvider } from '@/contexts/PortalAuthContext';
 import { BrandProvider } from '@/contexts/BrandContext';
+import { PortalBrandProvider } from '@/contexts/PortalBrandContext';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -26,7 +27,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <ThemeProvider attribute="data-theme" defaultTheme="noir" enableSystem={false}>
             <BrandProvider>
               <PortalAuthProvider>
-                {children}
+                <PortalBrandProvider>
+                  {children}
+                </PortalBrandProvider>
               </PortalAuthProvider>
             </BrandProvider>
           </ThemeProvider>

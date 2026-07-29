@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, Phone, Mail, Clock, ArrowRight, Scissors, Star, Shield, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
+import { TenantBrandProvider, useTenantBrand } from '@/contexts/TenantBrandContext';
 
 interface SalonData {
   id: string;
@@ -31,8 +32,9 @@ interface StaffMember {
   role: string;
 }
 
-export default function SalonLandingPage({ params }: { params: { slug: string } }) {
+function SalonLandingPageContent({ params }: { params: { slug: string } }) {
   const router = useRouter();
+  const { brand } = useTenantBrand();
   const [salon, setSalon] = useState<SalonData | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -79,19 +81,30 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white selection:bg-gold/30">
+    <div className="min-h-screen text-white selection:bg-gold/30" style={{ backgroundColor: 'var(--brand-background, #050505)' }}>
       {/* ── HERO SECTION ─────────────────────────────────────────────── */}
       <section className="relative pt-32 pb-24 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
         <div className="absolute inset-0 z-0">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#1a1a1a,#050505_70%)]" />
-          <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#C9A227]/5 rounded-full blur-[120px] mix-blend-screen pointer-events-none" />
+          <div 
+            className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full blur-[120px] mix-blend-screen pointer-events-none"
+            style={{ 
+              backgroundColor: 'var(--brand-secondary, #C9A227)20',
+              background: `radial-gradient(ellipse, var(--brand-secondary, #C9A227)20, transparent)`
+            }}
+          />
         </div>
         
         <div className="container relative z-10 mx-auto px-6 max-w-5xl text-center">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gold/10 border border-gold/20 text-gold text-xs font-mono mb-8"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono mb-8"
+            style={{ 
+              backgroundColor: 'var(--brand-primary, #FFD700)20',
+              borderColor: 'var(--brand-primary, #FFD700)30',
+              color: 'var(--brand-primary, #FFD700)'
+            }}
           >
             <Star className="w-3.5 h-3.5 fill-current" />
             Premium Partner
@@ -102,9 +115,15 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="font-sora text-5xl md:text-7xl font-extrabold tracking-tight mb-6"
+            style={{ fontFamily: 'var(--brand-font-heading, var(--font-sora))' }}
           >
             Welcome to <br className="hidden md:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] via-[#C9A227] to-[#FFD700]">
+            <span 
+              className="text-transparent bg-clip-text bg-gradient-to-r"
+              style={{ 
+                backgroundImage: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227), var(--brand-primary, #FFD700))`
+              }}
+            >
               {salon.name}
             </span>
           </motion.h1>
@@ -114,6 +133,7 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             className="text-lg md:text-xl text-white/60 mb-10 max-w-2xl mx-auto leading-relaxed"
+            style={{ fontFamily: 'var(--brand-font-body, var(--font-inter))' }}
           >
             {salon.description || "Experience the pinnacle of beauty and wellness. Our master stylists and therapists are dedicated to elevating your personal style."}
           </motion.p>
@@ -123,7 +143,18 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             onClick={() => router.push('/book')}
-            className="px-8 py-4 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-2xl shadow-xl shadow-gold/20 flex items-center justify-center gap-3 mx-auto group cursor-pointer transition-all"
+            className="px-8 py-4 text-black font-semibold rounded-2xl shadow-xl flex items-center justify-center gap-3 mx-auto group cursor-pointer transition-all"
+            style={{ 
+              background: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+              borderRadius: 'var(--brand-border-radius, 16px)',
+              boxShadow: '0 12px 32px var(--brand-primary, #FFD700)30'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.filter = 'brightness(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.filter = 'brightness(1)';
+            }}
           >
             Book an Appointment
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -135,7 +166,12 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
       <section className="py-24 relative">
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="text-center mb-16">
-            <h2 className="font-sora text-3xl font-bold mb-4">Our Services</h2>
+            <h2 
+              className="font-sora text-3xl font-bold mb-4"
+              style={{ fontFamily: 'var(--brand-font-heading, var(--font-sora))' }}
+            >
+              Our Services
+            </h2>
             <p className="text-white/50">Curated treatments for your ultimate transformation.</p>
           </div>
           
@@ -147,13 +183,25 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.05 }}
-                className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl hover:bg-white/[0.04] hover:border-gold/30 transition-colors flex justify-between items-center"
+                className="bg-white/[0.02] border border-white/5 p-5 transition-colors flex justify-between items-center"
+                style={{ 
+                  borderRadius: 'var(--brand-border-radius, 16px)',
+                  boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
+                  e.currentTarget.style.borderColor = 'var(--brand-primary, #FFD700)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                }}
               >
                 <div>
                   <h4 className="font-sora font-semibold text-white mb-1">{service.name}</h4>
                   <p className="text-white/40 text-sm">{service.duration} mins • {service.category}</p>
                 </div>
-                <div className="text-gold font-mono font-medium">
+                <div className="font-mono font-medium" style={{ color: 'var(--brand-primary, #FFD700)' }}>
                   UGX {service.price.toLocaleString()}
                 </div>
               </motion.div>
@@ -173,7 +221,12 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
         <section className="py-24 bg-white/[0.01] border-y border-white/5">
           <div className="container mx-auto px-6 max-w-5xl">
             <div className="text-center mb-16">
-              <h2 className="font-sora text-3xl font-bold mb-4">Meet Our Experts</h2>
+              <h2 
+                className="font-sora text-3xl font-bold mb-4"
+                style={{ fontFamily: 'var(--brand-font-heading, var(--font-sora))' }}
+              >
+                Meet Our Experts
+              </h2>
               <p className="text-white/50">The masters behind the magic.</p>
             </div>
             
@@ -187,11 +240,18 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
                   transition={{ delay: i * 0.1 }}
                   className="text-center"
                 >
-                  <div className="w-24 h-24 mx-auto bg-gradient-to-br from-white/10 to-white/5 border border-white/10 rounded-full mb-4 flex items-center justify-center text-2xl font-bold text-white/50 uppercase">
+                  <div 
+                    className="w-24 h-24 mx-auto border rounded-full mb-4 flex items-center justify-center text-2xl font-bold text-white/50 uppercase"
+                    style={{ 
+                      background: 'linear-gradient(to bottom right, rgba(255,255,255,0.1), rgba(255,255,255,0.05))',
+                      borderColor: 'rgba(255,255,255,0.1)',
+                      borderRadius: 'var(--brand-border-radius, 16px)'
+                    }}
+                  >
                     {member.name.substring(0, 2)}
                   </div>
                   <h4 className="font-sora font-semibold text-white">{member.name}</h4>
-                  <p className="text-gold/80 text-xs mt-1">{member.role}</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--brand-primary, #FFD700)' }}>{member.role}</p>
                 </motion.div>
               ))}
             </div>
@@ -201,46 +261,81 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
 
       {/* ── ABOUT / CONTACT SECTION ──────────────────────────────────── */}
       <section className="py-24 relative overflow-hidden">
-        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-[#C9A227]/5 rounded-full blur-[100px] mix-blend-screen pointer-events-none" />
+        <div 
+          className="absolute bottom-0 left-0 w-[600px] h-[600px] rounded-full blur-[100px] mix-blend-screen pointer-events-none"
+          style={{ 
+            backgroundColor: 'var(--brand-secondary, #C9A227)5',
+            background: `radial-gradient(ellipse, var(--brand-secondary, #C9A227)5, transparent)`
+          }}
+        />
         
         <div className="container relative z-10 mx-auto px-6 max-w-5xl">
-          <div className="bg-gradient-to-br from-white/[0.04] to-transparent border border-white/10 rounded-3xl p-8 md:p-12">
+          <div 
+            className="bg-gradient-to-br from-white/[0.04] to-transparent border border-white/10 p-8 md:p-12"
+            style={{ 
+              borderRadius: 'var(--brand-border-radius, 24px)',
+              boxShadow: 'var(--brand-shadow-lg, 0 12px 32px rgba(0,0,0,0.6))'
+            }}
+          >
             <div className="grid md:grid-cols-2 gap-12">
               <div>
-                <h3 className="font-sora text-2xl font-bold mb-6">Visit Us</h3>
+                <h3 
+                  className="font-sora text-2xl font-bold mb-6"
+                  style={{ fontFamily: 'var(--brand-font-heading, var(--font-sora))' }}
+                >
+                  Visit Us
+                </h3>
                 <p className="text-white/60 mb-8 max-w-sm leading-relaxed">
                   Ready for your next treatment? Reach out to us or drop by our location.
                 </p>
                 <div className="space-y-4">
                   {salon.address && (
                     <div className="flex items-start gap-4">
-                      <div className="p-2 bg-white/5 rounded-xl text-gold shrink-0">
-                        <MapPin className="w-5 h-5" />
+                      <div 
+                        className="p-2 bg-white/5 rounded-xl shrink-0"
+                        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                      >
+                        <MapPin className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                       </div>
                       <div className="text-white/80 pt-1">{salon.address}</div>
                     </div>
                   )}
                   {salon.phone && (
                     <div className="flex items-center gap-4">
-                      <div className="p-2 bg-white/5 rounded-xl text-gold shrink-0">
-                        <Phone className="w-5 h-5" />
+                      <div 
+                        className="p-2 bg-white/5 rounded-xl shrink-0"
+                        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                      >
+                        <Phone className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                       </div>
                       <div className="text-white/80">{salon.phone}</div>
                     </div>
                   )}
                   {salon.email && (
                     <div className="flex items-center gap-4">
-                      <div className="p-2 bg-white/5 rounded-xl text-gold shrink-0">
-                        <Mail className="w-5 h-5" />
+                      <div 
+                        className="p-2 bg-white/5 rounded-xl shrink-0"
+                        style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                      >
+                        <Mail className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                       </div>
                       <div className="text-white/80">{salon.email}</div>
                     </div>
                   )}
                 </div>
               </div>
-              <div className="bg-black/50 p-6 rounded-2xl border border-white/5">
-                <h4 className="font-sora font-semibold text-white mb-6 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-gold" />
+              <div 
+                className="bg-black/50 p-6 border border-white/5"
+                style={{ 
+                  borderRadius: 'var(--brand-border-radius, 16px)',
+                  boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+                }}
+              >
+                <h4 
+                  className="font-sora font-semibold text-white mb-6 flex items-center gap-2"
+                  style={{ fontFamily: 'var(--brand-font-heading, var(--font-sora))' }}
+                >
+                  <Clock className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                   Business Hours
                 </h4>
                 <div className="space-y-3 text-sm">
@@ -261,5 +356,13 @@ export default function SalonLandingPage({ params }: { params: { slug: string } 
         <p>Powered by Yo Salon Platform</p>
       </footer>
     </div>
+  );
+}
+
+export default function SalonLandingPage({ params }: { params: { slug: string } }) {
+  return (
+    <TenantBrandProvider slug={params.slug}>
+      <SalonLandingPageContent params={params} />
+    </TenantBrandProvider>
   );
 }
