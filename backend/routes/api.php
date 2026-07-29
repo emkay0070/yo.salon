@@ -28,8 +28,16 @@ use App\Http\Controllers\Api\V1\PulseController;
 use App\Http\Controllers\Api\V1\CopilotController;
 use App\Http\Controllers\Api\V1\InvitationController;
 use App\Http\Controllers\Api\V1\BrandExperienceController;
+use App\Http\Controllers\Api\V1\WebhookController;
+use App\Http\Controllers\Api\V1\PlatformPaymentController;
+use App\Http\Controllers\Api\V1\SalonPaymentController;
 
 Route::prefix('v1')->group(function () {
+    // Public webhook routes (no authentication required)
+    Route::post('/webhooks/flutterwave', [WebhookController::class, 'handleFlutterwave']);
+    Route::post('/webhooks/platform', [WebhookController::class, 'handlePlatformWebhook']);
+    Route::post('/webhooks/salon', [WebhookController::class, 'handleSalonWebhook']);
+
     // Public routes
     Route::get('/salons', [SalonController::class, 'index']);
     Route::get('/salons/{slug}', [SalonController::class, 'showBySlug']);
@@ -152,11 +160,30 @@ Route::prefix('v1')->group(function () {
 
         // Payments — Methods
         Route::apiResource('payment-methods', PaymentMethodController::class);
+        Route::post('/payment-methods/test-connection', [PaymentMethodController::class, 'testConnection']);
+        Route::post('/payment-methods/{paymentMethod}/verify-credentials', [PaymentMethodController::class, 'verifyCredentials']);
 
         // Payments — Requests
         Route::apiResource('payment-requests', PaymentRequestController::class)->except(['update']);
         Route::patch('/payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus']);
         Route::post('/payment-requests/{paymentRequest}/cancel', [PaymentRequestController::class, 'cancel']);
+
+        // Payments — Platform (B2B - Subscription Payments)
+        Route::prefix('payments/platform')->group(function () {
+            Route::post('/initialize', [PlatformPaymentController::class, 'initializeSubscriptionPayment']);
+            Route::post('/verify', [PlatformPaymentController::class, 'verifySubscriptionPayment']);
+            Route::post('/refund', [PlatformPaymentController::class, 'refundSubscriptionPayment']);
+            Route::get('/invoices/{invoiceId}/status', [PlatformPaymentController::class, 'getInvoicePaymentStatus']);
+        });
+
+        // Payments — Salon (B2C - Customer Booking Payments)
+        Route::prefix('payments/salon')->group(function () {
+            Route::post('/initialize', [SalonPaymentController::class, 'initializeBookingPayment']);
+            Route::post('/verify', [SalonPaymentController::class, 'verifySalonPayment']);
+            Route::post('/manual', [SalonPaymentController::class, 'recordManualPayment']);
+            Route::post('/refund', [SalonPaymentController::class, 'refundSalonPayment']);
+            Route::get('/bookings/{bookingId}/status', [SalonPaymentController::class, 'getBookingPaymentStatus']);
+        });
 
         // Payments — Transactions
         Route::get('/transactions/summary', [TransactionController::class, 'summary']);
