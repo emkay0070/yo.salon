@@ -112,28 +112,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {sidebarOpen && <RoleSwitcher />}
 
-        <nav className="flex-1 space-y-2 overflow-y-auto mt-4 scrollbar-hide">
+        <nav className="flex-1 space-y-1 overflow-y-auto mt-4 scrollbar-hide">
           {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl transition-all duration-300"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group"
                 style={{
-                  backgroundColor: isActive ? `${colors?.primary}20` : 'transparent',
-                  border: isActive ? `1px solid ${colors?.primary}40` : '1px solid transparent',
-                  boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.1)' : 'none',
+                  backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
                 }}
               >
                 <item.icon
-                  className="w-6 h-6 flex-shrink-0"
-                  style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                  className="w-5 h-5 flex-shrink-0 transition-colors duration-200"
+                  style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                 />
                 {sidebarOpen && (
                   <span 
-                    className="font-medium whitespace-nowrap"
-                    style={{ color: isActive ? '#FFFFFF' : '#A0A0A0' }}
+                    className="text-sm font-normal whitespace-nowrap transition-colors duration-200"
+                    style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                   >
                     {item.label}
                   </span>
@@ -190,12 +188,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <motion.div whileTap={{ scale: 0.9 }} className="flex flex-col items-center gap-1">
                   <item.icon 
-                    className="w-6 h-6" 
-                    style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                    className="w-5 h-5" 
+                    style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                   />
                   <span 
-                    className="text-[10px] font-medium"
-                    style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                    className="text-[10px] font-normal"
+                    style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                   >
                     {item.label}
                   </span>
@@ -208,8 +206,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             className="flex-1 flex flex-col items-center justify-center gap-1 h-full select-none"
           >
             <motion.div whileTap={{ scale: 0.9 }} className="flex flex-col items-center gap-1">
-              <MoreHorizontal className="w-6 h-6 text-text-secondary" />
-              <span className="text-[10px] font-medium text-text-secondary">
+              <MoreHorizontal className="w-5 h-5" style={{ color: '#9CA3AF' }} />
+              <span className="text-[10px] font-normal" style={{ color: '#9CA3AF' }}>
                 More
               </span>
             </motion.div>
@@ -255,21 +253,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     >
                       <motion.div 
                         whileTap={{ scale: 0.9 }}
-                        className="w-14 h-14 rounded-2xl flex items-center justify-center transition-colors"
+                        className="w-14 h-14 rounded-xl flex items-center justify-center transition-colors"
                         style={{
-                          backgroundColor: isActive ? `${colors?.primary}20` : 'var(--color-surface)',
-                          border: isActive ? `1px solid ${colors?.primary}40` : '1px solid var(--color-border-light)',
-                          boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.1)' : '0 2px 8px rgba(0,0,0,0.05)',
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.02)',
                         }}
                       >
                         <item.icon 
-                          className="w-6 h-6" 
-                          style={{ color: isActive ? colors?.primary : '#A0A0A0' }}
+                          className="w-5 h-5" 
+                          style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                         />
                       </motion.div>
                       <span 
-                        className="text-[11px] font-medium text-center"
-                        style={{ color: isActive ? '#FFFFFF' : '#A0A0A0' }}
+                        className="text-[11px] font-normal text-center"
+                        style={{ color: isActive ? '#FFFFFF' : '#9CA3AF' }}
                       >
                         {item.label}
                       </span>
