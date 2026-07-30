@@ -72,12 +72,27 @@ function BookPageContent({ slug }: { slug: string }) {
   // Fetch salon data from slug
   useEffect(() => {
     if (salonSlug) {
+      const timeout = setTimeout(() => {
+        // If loading takes too long, set empty arrays to stop loading
+        setServices([]);
+        setStaff([]);
+      }, 10000); // 10 second timeout
+
       apiClient.getSalonBySlug(salonSlug).then((salon) => {
         setSalonId(salon.id);
         // Fetch services and staff for this salon
-        apiClient.getSalonServices(salonSlug).then(setServices);
-        apiClient.getSalonStaff(salonSlug).then(setStaff);
+        apiClient.getSalonServices(salonSlug).then(setServices).catch(() => setServices([]));
+        apiClient.getSalonStaff(salonSlug).then(setStaff).catch(() => setStaff([]));
+      }).catch((error) => {
+        console.error('Failed to fetch salon:', error);
+        // If salon lookup fails, set empty arrays to stop loading
+        setServices([]);
+        setStaff([]);
+      }).finally(() => {
+        clearTimeout(timeout);
       });
+
+      return () => clearTimeout(timeout);
     }
   }, [salonSlug]);
 
