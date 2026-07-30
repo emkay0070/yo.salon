@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             PlanSeeder::class,
+            EmCutsDemoSeeder::class,
         ]);
 
         // Create a default salon
