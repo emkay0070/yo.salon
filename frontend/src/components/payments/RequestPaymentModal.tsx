@@ -22,6 +22,7 @@ interface RequestPaymentModalProps {
   customerName?: string;
   serviceName?: string;
   amount?: number;
+  paymentMethodId?: string; // Added for salon payment methods
   onSuccess?: (transaction: any) => void;
 }
 
@@ -83,6 +84,7 @@ export default function RequestPaymentModal({
   customerName,
   serviceName,
   amount = 0,
+  paymentMethodId,
   onSuccess,
 }: RequestPaymentModalProps) {
   const [step, setStep] = useState<Step>('details');
@@ -113,55 +115,97 @@ export default function RequestPaymentModal({
 
   // Manual Transaction Mutation (Cash/Card)
   const manualMutation = useMutation({
-    mutationFn: (data: any) => apiClient.recordManualTransaction(data),
+    mutationFn: (data: any) => apiClient.recordManualPayment(data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['transaction-summary'] });
       setStep('success');
-      onSuccess?.(data);
+      onSuccess?.(data.transaction);
     },
-    onError: () => {
-      setError('Failed to record transaction. Please try again.');
+    onError: (error: any) => {
+      setError(error.response?.data?.message || 'Failed to record transaction. Please try again.');
     }
   });
 
   // Digital Payment Request Mutation (MTN/Airtel/Flutterwave)
   const requestMutation = useMutation({
-    mutationFn: (data: any) => apiClient.requestPayment(data),
+    mutationFn: (data: any) => apiClient.initializeSalonPayment(data),
     onSuccess: (data) => {
-      // In a real app we'd poll or wait for webhook here
+      // Store payment reference for verification
+      setPaymentReference(data.reference);
       setStep('waiting');
       setTimelineStep(0);
       
-      // We will simulate the timeline steps in a useEffect
-      // so the UI can visibly progress through the steps.
+      // Start payment verification polling
+      startPaymentPolling(data.reference);
     },
-    onError: () => {
-      setError('Failed to initiate payment request. Please try again.');
+    onError: (error: any) => {
+      setError(error.response?.data?.message || 'Failed to initiate payment request. Please try again.');
     }
   });
 
-  const isLoading = manualMutation.isPending || requestMutation.isPending;
+  const [paymentReference, setPaymentReference] = useState<string | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // Timeline simulation effect
-  useEffect(() => {
-    if (step === 'waiting') {
-      if (timelineStep < 4) {
-        const timer = setTimeout(() => {
-          setTimelineStep(prev => prev + 1);
-        }, 1200);
-        return () => clearTimeout(timer);
-      } else if (timelineStep === 4) {
-        // Timeline finished
-        queryClient.invalidateQueries({ queryKey: ['transactions'] });
-        queryClient.invalidateQueries({ queryKey: ['transaction-summary'] });
-        setStep('success');
-        if (requestMutation.data) {
-          onSuccess?.(requestMutation.data);
-        }
-      }
+  // Payment verification polling
+  const startPaymentPolling = (reference: string) => {
+    // Clear any existing interval
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
     }
-  }, [step, timelineStep, queryClient, onSuccess, requestMutation.data]);
+
+    const interval = setInterval(async () => {
+      try {
+        const result = await apiClient.verifySalonPayment(reference);
+        
+        if (result.success) {
+          // Payment successful
+          clearInterval(interval);
+          setPollingInterval(null);
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['transaction-summary'] });
+          setStep('success');
+          setTimelineStep(4); // Complete the timeline
+          onSuccess?.(result);
+        } else if (result.status === 'failed') {
+          // Payment failed
+          clearInterval(interval);
+          setPollingInterval(null);
+          setError('Payment failed. Please try again.');
+          setStep('details');
+        } else {
+          // Still pending, advance timeline step
+          setTimelineStep(prev => Math.min(prev + 1, 3));
+        }
+      } catch (error) {
+        // Error during verification, continue polling
+        console.error('Payment verification error:', error);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    setPollingInterval(interval);
+
+    // Stop polling after 2 minutes (timeout)
+    setTimeout(() => {
+      if (pollingInterval) {
+        clearInterval(interval);
+        setPollingInterval(null);
+        setError('Payment timed out. Please check with the customer.');
+        setStep('details');
+      }
+    }, 120000);
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  const isLoading = manualMutation.isPending || requestMutation.isPending;
 
   const handleSubmit = () => {
     setError('');
@@ -172,19 +216,38 @@ export default function RequestPaymentModal({
       return;
     }
 
-    const payload = {
-      booking_id: bookingId,
-      customer_id: customerId,
-      payment_method: method, // API expects this
-      amount: amount,
-      phone: phone || undefined,
-      email: email || undefined,
-      type: 'payment'
-    };
+    // Validation for Flutterwave
+    if (method === 'flutterwave' && !email.trim()) {
+      setError("Please enter the customer's email address.");
+      return;
+    }
+
+    // Validation for payment method ID (required for digital payments)
+    if ((method === 'mtn' || method === 'airtel' || method === 'flutterwave') && !paymentMethodId) {
+      setError("Payment method not configured. Please select a payment method.");
+      return;
+    }
 
     if (method === 'cash' || method === 'visa') {
+      // Manual payment
+      const payload = {
+        booking_id: bookingId,
+        customer_id: customerId,
+        salon_id: customerId ? undefined : bookingId, // Fallback logic
+        amount: amount,
+        payment_method: method,
+        notes: method === 'cash' ? 'Cash payment recorded at front desk' : 'Card terminal payment recorded',
+      };
       manualMutation.mutate(payload);
     } else {
+      // Digital payment via provider
+      const payload = {
+        booking_id: bookingId,
+        payment_method_id: paymentMethodId,
+        email: email || undefined,
+        customer_name: customerName || 'Customer',
+        customer_phone: phone || undefined,
+      };
       requestMutation.mutate(payload);
     }
   };

@@ -350,6 +350,16 @@ class ApiClient {
     return response.data;
   }
 
+  async testPaymentMethodConnection(data: any) {
+    const response = await this.client.post('/payment-methods/test-connection', data);
+    return response.data;
+  }
+
+  async verifyPaymentMethodCredentials(id: string, data: any) {
+    const response = await this.client.post(`/payment-methods/${id}/verify-credentials`, data);
+    return response.data;
+  }
+
   async getPulseData(params?: { salon_id?: string }) {
     const response = await this.client.get('/pulse', { params });
     return response.data;
@@ -381,6 +391,38 @@ class ApiClient {
 
   async recordManualTransaction(data: any) {
     const response = await this.client.post('/transactions', data);
+    return response.data;
+  }
+
+  // Salon payment APIs
+  async initializeSalonPayment(data: any) {
+    const response = await this.client.post('/payments/salon/initialize', data);
+    return response.data;
+  }
+
+  async verifySalonPayment(reference: string) {
+    const response = await this.client.post('/payments/salon/verify', { reference });
+    return response.data;
+  }
+
+  async recordManualPayment(data: any) {
+    const response = await this.client.post('/payments/salon/manual', data);
+    return response.data;
+  }
+
+  async getBookingPaymentStatus(bookingId: string) {
+    const response = await this.client.get(`/payments/salon/bookings/${bookingId}/status`);
+    return response.data;
+  }
+
+  // Platform payment APIs
+  async initializeSubscriptionPayment(data: any) {
+    const response = await this.client.post('/payments/platform/initialize', data);
+    return response.data;
+  }
+
+  async verifySubscriptionPayment(reference: string) {
+    const response = await this.client.post('/payments/platform/verify', { reference });
     return response.data;
   }
 

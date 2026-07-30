@@ -27,18 +27,23 @@ const PROVIDERS: Record<ProviderId, {
   color: string;
   gradient: string;
   fields: { name: string; label: string; placeholder: string; type: string; optional?: boolean }[];
+  requiresApiCredentials?: boolean;
 }> = {
   mtn: {
     id: 'mtn',
     name: 'MTN Mobile Money',
     type: 'mobile_money',
     Icon: Smartphone,
-    description: 'Customers will receive payment prompts directly on their phones. Funds settle into your MTN Business account.',
+    description: 'Connect your MTN MoMo Business account. Customers will receive payment prompts directly on their phones. Funds settle into your MTN Business account.',
     color: 'text-[var(--color-gold)]',
     gradient: 'from-[#C9A227]/20 to-[#FFD700]/5',
+    requiresApiCredentials: true,
     fields: [
-      { name: 'account_identifier', label: 'Merchant Code or Phone', placeholder: 'e.g. 123456 or 077XXXXXXX', type: 'text' },
-      { name: 'account_name', label: 'Account Name', placeholder: 'e.g. Yo Salon Ltd', type: 'text' }
+      { name: 'merchant_id', label: 'API User / Merchant ID', placeholder: 'e.g. your_mtn_api_user', type: 'text' },
+      { name: 'api_key', label: 'API Key', placeholder: 'e.g. your_mtn_api_key', type: 'text' },
+      { name: 'api_secret', label: 'API Secret', placeholder: 'e.g. your_mtn_api_secret', type: 'password' },
+      { name: 'api_subscription_key', label: 'Subscription Key', placeholder: 'e.g. your_subscription_key', type: 'text' },
+      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
     ]
   },
   airtel: {
@@ -46,12 +51,14 @@ const PROVIDERS: Record<ProviderId, {
     name: 'Airtel Money',
     type: 'mobile_money',
     Icon: Smartphone,
-    description: 'Customers will receive payment prompts directly on their phones. Funds settle into your Airtel Merchant account.',
+    description: 'Connect your Airtel Money Business account. Customers will receive payment prompts directly on their phones. Funds settle into your Airtel Merchant account.',
     color: 'text-red-400',
     gradient: 'from-red-900/40 to-red-900/10',
+    requiresApiCredentials: true,
     fields: [
-      { name: 'account_identifier', label: 'Merchant Code or Phone', placeholder: 'e.g. 123456 or 075XXXXXXX', type: 'text' },
-      { name: 'account_name', label: 'Account Name', placeholder: 'e.g. Yo Salon Ltd', type: 'text' }
+      { name: 'api_key', label: 'Client ID', placeholder: 'e.g. your_airtel_client_id', type: 'text' },
+      { name: 'api_secret', label: 'Client Secret', placeholder: 'e.g. your_airtel_client_secret', type: 'password' },
+      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
     ]
   },
   flutterwave: {
@@ -62,9 +69,11 @@ const PROVIDERS: Record<ProviderId, {
     description: 'Accept global card payments, Apple Pay, and Google Pay via secure payment links sent to your customers.',
     color: 'text-[#A29BFE]',
     gradient: 'from-[#6C5CE7]/30 to-[#A29BFE]/10',
+    requiresApiCredentials: true,
     fields: [
-      { name: 'account_identifier', label: 'Public Key', placeholder: 'FLWPUBK-XXXXXXXXX', type: 'text' },
-      { name: 'metadata', label: 'Secret Key', placeholder: 'FLWSECK-XXXXXXXXX', type: 'password' }
+      { name: 'api_key', label: 'Public Key', placeholder: 'FLWPUBK-XXXXXXXXX', type: 'text' },
+      { name: 'api_secret', label: 'Secret Key', placeholder: 'FLWSECK-XXXXXXXXX', type: 'password' },
+      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
     ]
   },
   cash: {
@@ -118,8 +127,33 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
       queryClient.invalidateQueries({ queryKey: ['payment-methods'] });
       setStep('success');
     },
-    onError: () => {
-      setError('Failed to connect payment method. Please try again.');
+    onError: (error: any) => {
+      setError(error.response?.data?.message || 'Failed to connect payment method. Please try again.');
+    }
+  });
+
+  const testConnectionMutation = useMutation({
+    mutationFn: (data: any) => apiClient.testPaymentMethodConnection(data),
+    onSuccess: () => {
+      setError('');
+      // Proceed to save after successful test
+      mutation.mutate({
+        salon_id: salonId,
+        provider: selectedProvider,
+        type: provider?.type,
+        display_name: provider?.name,
+        account_name: formData.account_name || undefined,
+        account_identifier: formData.account_identifier || undefined,
+        merchant_id: formData.merchant_id || undefined,
+        api_key: formData.api_key || undefined,
+        api_secret: formData.api_secret || undefined,
+        api_subscription_key: formData.api_subscription_key || undefined,
+        environment: formData.environment || 'sandbox',
+        currency: 'UGX',
+      });
+    },
+    onError: (error: any) => {
+      setError(error.response?.data?.message || 'Connection test failed. Please check your credentials.');
     }
   });
 
@@ -137,17 +171,28 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
         return;
       }
       
-      // Submit
-      mutation.mutate({
-        salon_id: salonId,
-        provider: selectedProvider,
-        type: provider?.type,
-        display_name: provider?.name,
-        account_name: formData.account_name || undefined,
-        account_identifier: formData.account_identifier || undefined,
-        metadata: formData.metadata ? { secret: formData.metadata } : undefined,
-        currency: 'UGX',
-      });
+      // Test connection first for providers that require API credentials
+      if (provider?.requiresApiCredentials) {
+        testConnectionMutation.mutate({
+          provider: selectedProvider,
+          merchant_id: formData.merchant_id,
+          api_key: formData.api_key,
+          api_secret: formData.api_secret,
+          api_subscription_key: formData.api_subscription_key,
+          environment: formData.environment || 'sandbox',
+        });
+      } else {
+        // Direct save for non-API providers (cash, card terminal)
+        mutation.mutate({
+          salon_id: salonId,
+          provider: selectedProvider,
+          type: provider?.type,
+          display_name: provider?.name,
+          account_name: formData.account_name || undefined,
+          account_identifier: formData.account_identifier || undefined,
+          currency: 'UGX',
+        });
+      }
     }
   };
 
@@ -352,17 +397,17 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                 <div className="mt-8 pt-6 border-t border-white/5">
                   <button
                     onClick={handleNext}
-                    disabled={step === 'choose' && !selectedProvider || mutation.isPending}
+                    disabled={step === 'choose' && !selectedProvider || mutation.isPending || testConnectionMutation.isPending}
                     className="w-full py-4 bg-white hover:bg-gray-100 text-black rounded-2xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {mutation.isPending ? (
+                    {mutation.isPending || testConnectionMutation.isPending ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Connecting...
+                        {testConnectionMutation.isPending ? 'Testing Connection...' : 'Connecting...'}
                       </>
                     ) : (
                       <>
-                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'Configure Integration' : 'Connect Channel'}
+                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'Configure Integration' : (provider?.requiresApiCredentials ? 'Test & Connect' : 'Connect Channel')}
                         {step !== 'configure' && <ArrowRight className="w-5 h-5" />}
                       </>
                     )}
