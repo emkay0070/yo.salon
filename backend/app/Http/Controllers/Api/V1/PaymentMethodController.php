@@ -22,6 +22,20 @@ class PaymentMethodController extends Controller
         return response()->json($methods);
     }
 
+    /**
+     * Get public payment methods for a salon (no auth required)
+     * Used in booking flow to show available payment options
+     */
+    public function getPublicMethods(string $salonId): JsonResponse
+    {
+        $methods = PaymentMethod::where('salon_id', $salonId)
+            ->where('is_active', true)
+            ->orderBy('is_primary', 'desc')
+            ->get(['id', 'provider', 'type', 'display_name']);
+        
+        return response()->json($methods);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $salonId = auth()->user()->currentSalon()?->id;

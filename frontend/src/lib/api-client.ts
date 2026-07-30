@@ -99,6 +99,21 @@ class ApiClient {
     return response.data;
   }
 
+  async getSalonServices(slug: string) {
+    const response = await this.client.get(`/salons/${slug}/services`);
+    return response.data;
+  }
+
+  async getSalonStaff(slug: string) {
+    const response = await this.client.get(`/salons/${slug}/staff`);
+    return response.data;
+  }
+
+  async getSalonPaymentMethods(salonId: string) {
+    const response = await this.client.get(`/salons/${salonId}/payment-methods`);
+    return response.data;
+  }
+
   async checkSlug(slug: string) {
     // Returns { available: boolean, slug: string, suggestions?: string[] }
     try {
@@ -125,16 +140,6 @@ class ApiClient {
 
   async deleteSalon(id: string) {
     await this.client.delete(`/salons/${id}`);
-  }
-
-  async getSalonServices(slug: string) {
-    const response = await this.client.get(`/salons/${slug}/services`);
-    return response.data;
-  }
-
-  async getSalonStaff(slug: string) {
-    const response = await this.client.get(`/salons/${slug}/staff`);
-    return response.data;
   }
 
   // Customer endpoints

@@ -69,6 +69,7 @@ function BookPageContent({ slug }: { slug: string }) {
   const [mounted, setMounted] = useState(false);
   const [loadingError, setLoadingError] = useState<string>('');
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -91,7 +92,7 @@ function BookPageContent({ slug }: { slug: string }) {
           console.log('Salon fetched:', salon);
           setSalonId(salon.id);
           
-          // Fetch services and staff for this salon
+          // Fetch services, staff, and payment methods for this salon
           Promise.all([
             apiClient.getSalonServices(salonSlug).then(setServices).catch((err) => {
               console.error('Failed to fetch services:', err);
@@ -102,9 +103,21 @@ function BookPageContent({ slug }: { slug: string }) {
               console.error('Failed to fetch staff:', err);
               setLoadingError(`Failed to load staff: ${err.message || 'Unknown error'}`);
               return setStaff([]);
+            }),
+            apiClient.getSalonPaymentMethods(salon.id).then((methods) => {
+              console.log('Payment methods fetched:', methods);
+              setPaymentMethods(methods);
+              // Auto-select primary payment method if available
+              const primaryMethod = methods.find((m: any) => m.is_primary);
+              if (primaryMethod) {
+                setPaymentMethodId(primaryMethod.id);
+              }
+            }).catch((err) => {
+              console.error('Failed to fetch payment methods:', err);
+              setPaymentMethods([]);
             })
           ]).then(() => {
-            console.log('Services and staff loaded successfully');
+            console.log('Services, staff, and payment methods loaded successfully');
             setLoadingError('');
           });
         })
@@ -807,6 +820,44 @@ function BookPageContent({ slug }: { slug: string }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Payment Method Selection */}
+                {paymentMethods.length > 0 && (
+                  <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 backdrop-blur-md text-left shadow-xl">
+                    <span className="text-[9px] font-bold font-mono tracking-widest text-white/35 uppercase border-b border-white/5 pb-3 block">PAYMENT METHOD</span>
+                    
+                    <div className="mt-4 space-y-3">
+                      {paymentMethods.map((method) => (
+                        <button
+                          key={method.id}
+                          type="button"
+                          onClick={() => setPaymentMethodId(method.id)}
+                          className={`w-full p-4 rounded-xl border text-left transition-all ${
+                            paymentMethodId === method.id
+                              ? 'border-gold bg-gold/10'
+                              : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                paymentMethodId === method.id ? 'border-gold bg-gold' : 'border-white/30'
+                              }`}>
+                                {paymentMethodId === method.id && (
+                                  <div className="w-2 h-2 rounded-full bg-black" />
+                                )}
+                              </div>
+                              <span className="text-white font-medium">{method.display_name}</span>
+                            </div>
+                            {method.is_primary && (
+                              <span className="text-[10px] font-mono text-gold bg-gold/10 px-2 py-1 rounded">PRIMARY</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {error && (
                   <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs font-mono text-left">

@@ -162,6 +162,9 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('payment-methods', PaymentMethodController::class);
         Route::post('/payment-methods/test-connection', [PaymentMethodController::class, 'testConnection']);
         Route::post('/payment-methods/{paymentMethod}/verify-credentials', [PaymentMethodController::class, 'verifyCredentials']);
+        
+        // Public payment methods (no auth required - for booking flow)
+        Route::get('/salons/{salon}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
 
         // Payments — Requests
         Route::apiResource('payment-requests', PaymentRequestController::class)->except(['update']);
