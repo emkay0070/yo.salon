@@ -78,7 +78,7 @@ class BookingService
     /**
      * Create booking with portal account (Journey 4)
      * 
-     * Flow: Booking → Customer → Portal Account → Payment → Confirmed
+     * Flow: Booking → Customer → Portal Account → Payment (if required) → Confirmed
      * 
      * @param array $data Booking data including customer and account details
      * @return array ['booking' => Booking, 'customer' => Customer, 'portal_account' => PortalAccount|null, 'payment' => array|null]
@@ -99,7 +99,29 @@ class BookingService
 
             $customer = $customerResult['customer'];
 
-            // Create booking with pending_payment status
+            // Get salon to check booking policy
+            $salon = \App\Models\Salon::find($data['salon_id']);
+            
+            // Determine if deposit is required
+            $requiresDeposit = $salon->booking_deposit_enabled ?? false;
+            $depositRequiredFor = $salon->deposit_required_for ?? 'all';
+            
+            // Check if deposit is required based on salon policy
+            if ($requiresDeposit && $depositRequiredFor === 'never') {
+                $requiresDeposit = false;
+            } elseif ($requiresDeposit && $depositRequiredFor === 'first_time') {
+                $requiresDeposit = $customerResult['is_new'];
+            } elseif ($requiresDeposit && $deposit_required_for === 'high_value') {
+                // Check if service price is above minimum threshold
+                $service = \App\Models\Service::find($data['service_id']);
+                $requiresDeposit = $service && $service->price >= ($salon->deposit_min_service_amount ?? 0);
+            }
+
+            // Set booking status based on deposit requirement
+            $bookingStatus = $requiresDeposit ? 'pending_payment' : 'confirmed';
+            $paymentStatus = $requiresDeposit ? 'pending' : 'paid';
+
+            // Create booking
             $booking = Booking::create([
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
@@ -107,8 +129,8 @@ class BookingService
                 'service_id' => $data['service_id'],
                 'date' => $data['date'],
                 'time' => $data['time'],
-                'status' => 'pending_payment',
-                'payment_status' => 'pending',
+                'status' => $bookingStatus,
+                'payment_status' => $paymentStatus,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -122,9 +144,9 @@ class BookingService
                 ]);
             }
 
-            // Initialize payment if payment method is provided
+            // Initialize payment only if deposit is required and payment method is provided
             $payment = null;
-            if (!empty($data['payment_method_id'])) {
+            if ($requiresDeposit && !empty($data['payment_method_id'])) {
                 try {
                     $payment = $this->salonPaymentService->initializeBookingPayment(
                         $booking->id,
@@ -146,6 +168,7 @@ class BookingService
                 'portal_account' => $portalAccount,
                 'is_new_customer' => $customerResult['is_new'],
                 'payment' => $payment,
+                'requires_deposit' => $requiresDeposit,
             ];
         });
     }

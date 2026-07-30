@@ -22,6 +22,11 @@ class Salon extends Model
         'lat',
         'lng',
         'opening_hours',
+        'booking_deposit_enabled',
+        'deposit_type',
+        'deposit_value',
+        'deposit_required_for',
+        'deposit_min_service_amount',
     ];
 
     protected $casts = [

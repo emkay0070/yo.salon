@@ -70,6 +70,7 @@ function BookPageContent({ slug }: { slug: string }) {
   const [loadingError, setLoadingError] = useState<string>('');
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [salonPolicy, setSalonPolicy] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -91,6 +92,14 @@ function BookPageContent({ slug }: { slug: string }) {
         .then((salon) => {
           console.log('Salon fetched:', salon);
           setSalonId(salon.id);
+          
+          // Store salon booking policy
+          setSalonPolicy({
+            booking_deposit_enabled: salon.booking_deposit_enabled || false,
+            deposit_type: salon.deposit_type,
+            deposit_value: salon.deposit_value,
+            deposit_required_for: salon.deposit_required_for,
+          });
           
           // Fetch services, staff, and payment methods for this salon
           Promise.all([
@@ -248,10 +257,17 @@ function BookPageContent({ slug }: { slug: string }) {
 
       setBookingResult(result);
       
-      // If payment was initialized, go to payment step, otherwise go to success
-      if (result.payment) {
-        setStep('payment');
+      // Check if deposit is required based on salon policy
+      if (result.requires_deposit) {
+        // If payment was initialized, go to payment step
+        if (result.payment) {
+          setStep('payment');
+        } else {
+          // No payment method selected, show error
+          setError('Please select a payment method to complete your booking.');
+        }
       } else {
+        // No deposit required, go directly to success
         setStep('success');
       }
     } catch (err: any) {
@@ -807,22 +823,34 @@ function BookPageContent({ slug }: { slug: string }) {
                 </div>
 
                 {/* Deposit Protection details */}
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 text-left flex gap-4 backdrop-blur-md">
-                  <Shield className="w-6 h-6 text-gold shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-gold font-semibold text-sm font-sora">Merchant Deposit Protection Active</span>
-                    <p className="text-white/60 text-xs leading-normal">
-                      To protect stylists and secure the reservation block, a **30% booking deposit** will be processed. The remaining **70% balance** is settled in-store at checkout.
-                    </p>
-                    <div className="flex gap-4 border-t border-amber-500/10 pt-2 mt-1 text-[10px] font-mono">
-                      <span className="text-white/50">PAY NOW (30%): <strong className="text-gold">{(selectedService ? selectedService.price * 0.3 : 0).toLocaleString()} UGX</strong></span>
-                      <span className="text-white/50">IN-STORE (70%): <strong className="text-white/80">{(selectedService ? selectedService.price * 0.7 : 0).toLocaleString()} UGX</strong></span>
+                {/* Deposit Protection Message - Only show if deposit is required */}
+                {salonPolicy?.booking_deposit_enabled && (
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 text-left flex gap-4 backdrop-blur-md">
+                    <Shield className="w-6 h-6 text-gold shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-gold font-semibold text-sm font-sora">Booking Deposit Protection Active</span>
+                      <p className="text-white/60 text-xs leading-normal">
+                        To protect stylists and secure the reservation block, a deposit will be processed. The remaining balance is settled in-store at checkout.
+                      </p>
+                      <div className="flex gap-4 border-t border-amber-500/10 pt-2 mt-1 text-[10px] font-mono">
+                        {salonPolicy.deposit_type === 'percentage' ? (
+                          <>
+                            <span className="text-white/50">PAY NOW ({salonPolicy.deposit_value}%): <strong className="text-gold">{(selectedService ? selectedService.price * (salonPolicy.deposit_value / 100) : 0).toLocaleString()} UGX</strong></span>
+                            <span className="text-white/50">IN-STORE ({100 - salonPolicy.deposit_value}%): <strong className="text-white/80">{(selectedService ? selectedService.price * ((100 - salonPolicy.deposit_value) / 100) : 0).toLocaleString()} UGX</strong></span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-white/50">PAY NOW: <strong className="text-gold">{(salonPolicy.deposit_value || 0).toLocaleString()} UGX</strong></span>
+                            <span className="text-white/50">IN-STORE: <strong className="text-white/80">{(selectedService ? selectedService.price - (salonPolicy.deposit_value || 0) : 0).toLocaleString()} UGX</strong></span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Payment Method Selection */}
-                {paymentMethods.length > 0 && (
+                {/* Payment Method Selection - Only show if deposit is required */}
+                {salonPolicy?.booking_deposit_enabled && paymentMethods.length > 0 && (
                   <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 backdrop-blur-md text-left shadow-xl">
                     <span className="text-[9px] font-bold font-mono tracking-widest text-white/35 uppercase border-b border-white/5 pb-3 block">PAYMENT METHOD</span>
                     
@@ -855,6 +883,23 @@ function BookPageContent({ slug }: { slug: string }) {
                           </div>
                         </button>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show "Pay at salon" message if deposit not required */}
+                {!salonPolicy?.booking_deposit_enabled && (
+                  <div className="bg-green-500/5 border border-green-500/20 rounded-3xl p-6 backdrop-blur-md text-left">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5 text-green-400" />
+                      </div>
+                      <div>
+                        <span className="text-green-400 font-semibold text-sm font-sora">No Deposit Required</span>
+                        <p className="text-white/60 text-xs leading-normal mt-1">
+                          This salon does not require a deposit. You can pay directly at the salon.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
