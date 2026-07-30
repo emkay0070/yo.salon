@@ -32,6 +32,11 @@ class Booking extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function salon(): BelongsTo
+    {
+        return $this->belongsTo(Salon::class);
+    }
+
     public function customerSalon(): BelongsTo
     {
         return $this->belongsTo(CustomerSalon::class);
