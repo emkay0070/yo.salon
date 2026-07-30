@@ -927,8 +927,9 @@ function BookPageContent({ slug }: { slug: string }) {
   );
 }
 
-export default async function BookPage({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
+export default async function BookPage({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = await params;
+  const slug = resolvedParams.slug;
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#070707]"><Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" /></div>}>
       <BookPageContent slug={slug} />
