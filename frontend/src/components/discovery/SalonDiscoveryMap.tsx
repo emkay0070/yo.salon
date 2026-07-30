@@ -123,7 +123,7 @@ export function SalonDiscoveryMap() {
                   </div>
                   {selectedSalon?.id === salon.id && (
                     <div 
-                      onClick={(e) => { e.stopPropagation(); router.push(`/book?salon=${salon.slug}`); }}
+                      onClick={(e) => { e.stopPropagation(); router.push(`/salons/${salon.slug}/book`); }}
                       className="flex items-center gap-1.5 text-black bg-gradient-to-r from-gold to-[#C9A227] px-3 py-1.5 rounded-lg text-xs font-semibold hover:brightness-110 active:scale-95 transition-all shadow-md shadow-gold/20"
                     >
                       Book Now <ArrowRight className="w-3 h-3" />
@@ -185,7 +185,7 @@ export function SalonDiscoveryMap() {
                 <h3 className="font-sora font-bold text-sm text-gray-900 mb-1">{selectedSalon.name}</h3>
                 <p className="text-xs text-gray-500 mb-3">{selectedSalon.address || 'Premium Location'}</p>
                 <button 
-                  onClick={() => router.push(`/book?salon=${selectedSalon.slug}`)}
+                  onClick={() => router.push(`/salons/${selectedSalon.slug}/book`)}
                   className="w-full bg-black text-gold py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 hover:bg-gray-900 transition-colors cursor-pointer"
                 >
                   Book Appointment <ArrowRight className="w-3 h-3" />
