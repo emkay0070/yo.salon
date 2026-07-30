@@ -86,7 +86,45 @@ class SalonPaymentService
             'redirect_url' => config('app.url') . "/salon/{$booking->salon_id}/payment/callback",
         ];
 
-        // Customize payment options based on payment method
+        // Customize payment options based on payment method type
+        if ($paymentMethod->type === 'manual') {
+            // For manual payment, return instructions instead of calling provider
+            $paymentRequest = PaymentRequest::create([
+                'salon_id' => $booking->salon_id,
+                'booking_id' => $booking->id,
+                'customer_id' => $booking->customer_id,
+                'payment_method_id' => $paymentMethodId,
+                'amount' => $fees['gross_amount'],
+                'status' => 'pending',
+                'provider_reference' => $reference,
+                'requested_at' => now(),
+                'expires_at' => now()->addMinutes(60), // Manual payments have longer expiry
+            ]);
+
+            return [
+                'success' => true,
+                'type' => 'manual',
+                'payment_request_id' => $paymentRequest->id,
+                'reference' => $reference,
+                'instructions' => [
+                    'method' => $paymentMethod->display_name,
+                    'phone' => $paymentMethod->account_identifier,
+                    'amount' => $fees['gross_amount'],
+                    'message' => "Please send {$fees['gross_amount']} UGX to {$paymentMethod->account_identifier} and upload your payment proof.",
+                ],
+            ];
+        }
+
+        if ($paymentMethod->type === 'offline') {
+            // For offline payment (pay at salon), no payment initialization needed
+            return [
+                'success' => true,
+                'type' => 'offline',
+                'message' => 'Payment will be collected at the salon.',
+            ];
+        }
+
+        // Only call provider for 'api' or 'gateway' type payment methods
         if ($paymentMethod->provider === 'flutterwave') {
             $paymentData['payment_options'] = 'card, mobilemoneyuganda, ussd, account';
         } elseif ($paymentMethod->provider === 'mtn') {

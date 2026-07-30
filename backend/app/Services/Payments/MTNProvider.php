@@ -99,7 +99,7 @@ class MTNProvider implements PaymentProviderInterface
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $token,
             'X-Target-Environment' => $this->environment,
-            'Ocp-Apim-Subscription-Key' => $this->subscription_key,
+            'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
         ])->get($this->baseUrl . '/collection/v1_0/requesttopay/' . $reference);
 
         $result = $response->json();
