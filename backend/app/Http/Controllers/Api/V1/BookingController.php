@@ -132,6 +132,7 @@ class BookingController extends Controller
             'create_account' => 'boolean',
             'account_email' => 'required_if:create_account,true|nullable|email',
             'account_password' => 'required_if:create_account,true|nullable|string|min:8',
+            'payment_method_id' => 'nullable|uuid|exists:payment_methods,id',
         ]);
 
         try {
@@ -142,9 +143,10 @@ class BookingController extends Controller
                 'customer' => $result['customer'],
                 'portal_account' => $result['portal_account'],
                 'is_new_customer' => $result['is_new_customer'],
+                'payment' => $result['payment'] ?? null,
                 'message' => $result['portal_account'] 
-                    ? 'Booking confirmed and account created!' 
-                    : 'Booking confirmed!',
+                    ? 'Booking created. Please complete payment to confirm.' 
+                    : 'Booking created. Please complete payment to confirm.',
             ], 201);
         } catch (\Exception $e) {
             return response()->json([

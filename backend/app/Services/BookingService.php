@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\PortalAccount;
+use App\Services\Payments\SalonPaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -22,13 +23,16 @@ class BookingService
 {
     private CustomerService $customerService;
     private PortalAuthService $portalAuthService;
+    private SalonPaymentService $salonPaymentService;
 
     public function __construct(
         CustomerService $customerService,
-        PortalAuthService $portalAuthService
+        PortalAuthService $portalAuthService,
+        SalonPaymentService $salonPaymentService
     ) {
         $this->customerService = $customerService;
         $this->portalAuthService = $portalAuthService;
+        $this->salonPaymentService = $salonPaymentService;
     }
 
     /**
@@ -74,10 +78,10 @@ class BookingService
     /**
      * Create booking with portal account (Journey 4)
      * 
-     * Flow: Booking → Customer → Portal Account → Linked
+     * Flow: Booking → Customer → Portal Account → Payment → Confirmed
      * 
      * @param array $data Booking data including customer and account details
-     * @return array ['booking' => Booking, 'customer' => Customer, 'portal_account' => PortalAccount|null]
+     * @return array ['booking' => Booking, 'customer' => Customer, 'portal_account' => PortalAccount|null, 'payment' => array|null]
      */
     public function createBookingWithAccount(array $data): array
     {
@@ -95,7 +99,7 @@ class BookingService
 
             $customer = $customerResult['customer'];
 
-            // Create booking
+            // Create booking with pending_payment status
             $booking = Booking::create([
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
@@ -103,7 +107,8 @@ class BookingService
                 'service_id' => $data['service_id'],
                 'date' => $data['date'],
                 'time' => $data['time'],
-                'status' => $data['status'] ?? 'pending',
+                'status' => 'pending_payment',
+                'payment_status' => 'pending',
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -117,11 +122,30 @@ class BookingService
                 ]);
             }
 
+            // Initialize payment if payment method is provided
+            $payment = null;
+            if (!empty($data['payment_method_id'])) {
+                try {
+                    $payment = $this->salonPaymentService->initializeBookingPayment(
+                        $booking->id,
+                        $data['payment_method_id'],
+                        $data['customer_email'] ?? $customer->email,
+                        $data['customer_name'],
+                        $data['customer_phone']
+                    );
+                } catch (\Exception $e) {
+                    // If payment initialization fails, still return the booking
+                    // but mark it as failed payment
+                    $booking->update(['payment_status' => 'failed']);
+                }
+            }
+
             return [
                 'booking' => $booking->load(['salon', 'customer', 'staff', 'service']),
                 'customer' => $customer,
                 'portal_account' => $portalAccount,
                 'is_new_customer' => $customerResult['is_new'],
+                'payment' => $payment,
             ];
         });
     }

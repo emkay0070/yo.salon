@@ -41,7 +41,7 @@ function BookPageContent({ slug }: { slug: string }) {
   console.log('=== BookPageContent mounted ===');
   console.log('Slug:', salonSlug);
 
-  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'confirm' | 'success'>('service');
+  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'payment' | 'confirm' | 'success'>('service');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -68,6 +68,7 @@ function BookPageContent({ slug }: { slug: string }) {
   const [salonId, setSalonId] = useState<string>('');
   const [mounted, setMounted] = useState(false);
   const [loadingError, setLoadingError] = useState<string>('');
+  const [paymentMethodId, setPaymentMethodId] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -229,10 +230,17 @@ function BookPageContent({ slug }: { slug: string }) {
         create_account: createAccount,
         account_email: createAccount ? (accountDetails.email || customerDetails.email) : undefined,
         account_password: createAccount ? accountDetails.password : undefined,
+        payment_method_id: paymentMethodId || undefined,
       });
 
       setBookingResult(result);
-      setStep('success');
+      
+      // If payment was initialized, go to payment step, otherwise go to success
+      if (result.payment) {
+        setStep('payment');
+      } else {
+        setStep('success');
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create booking. Please try again.');
     } finally {
@@ -245,6 +253,7 @@ function BookPageContent({ slug }: { slug: string }) {
     staff: '#a855f7',
     time: '#3b82f6',
     details: '#10b981',
+    payment: '#f59e0b',
     confirm: '#10b981',
     success: '#10b981',
   };
@@ -834,6 +843,71 @@ function BookPageContent({ slug }: { slug: string }) {
                 </div>
               </div>
               </div>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 'payment' && (
+            <motion.div
+              key="payment-step"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            >
+              <div className="fixed inset-x-0 bottom-0 z-50 bg-[#0c0c0c] border-t border-white/10 rounded-t-3xl p-6 pt-8 h-[90vh] overflow-y-auto custom-scrollbar md:static md:bg-transparent md:border-none md:p-0 md:h-auto md:overflow-visible md:rounded-none">
+                <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 md:hidden" />
+                <div className="text-left mb-8">
+                  <h2 className="font-sora text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">Complete Payment</h2>
+                  <p className="text-white/50 text-sm">Pay the deposit to secure your appointment</p>
+                </div>
+
+                <div className="max-w-2xl mx-auto">
+                  {bookingResult?.payment ? (
+                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-white/50 text-sm">Payment Reference</span>
+                        <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-6">
+                        <span className="text-white/50 text-sm">Amount</span>
+                        <span className="text-white font-semibold text-lg">
+                          {selectedService?.price ? `UGX ${Math.round(selectedService.price * 0.3).toLocaleString()}` : 'UGX 0'}
+                        </span>
+                      </div>
+                      <p className="text-white/40 text-xs mb-4">
+                        Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setStep('confirm')}
+                          className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Simulate payment completion for now
+                            setStep('success');
+                          }}
+                          className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                        >
+                          I've Paid
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md text-center">
+                      <p className="text-white/50 text-sm">No payment information available. Please contact support.</p>
+                      <button
+                        onClick={() => setStep('confirm')}
+                        className="mt-4 px-6 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                      >
+                        Go Back
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
