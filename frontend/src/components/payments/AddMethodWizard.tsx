@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 
 type ProviderId = 'cash' | 'mtn' | 'airtel' | 'flutterwave' | 'visa';
-type WizardStep = 'choose' | 'explain' | 'configure' | 'success';
+type WizardStep = 'choose' | 'explain' | 'setup-guide' | 'configure' | 'success';
 
 interface AddMethodWizardProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ const PROVIDERS: Record<ProviderId, {
   gradient: string;
   fields: { name: string; label: string; placeholder: string; type: string; optional?: boolean }[];
   requiresApiCredentials?: boolean;
+  setupSteps?: { title: string; description: string; action?: string }[];
 }> = {
   mtn: {
     id: 'mtn',
@@ -38,6 +39,33 @@ const PROVIDERS: Record<ProviderId, {
     color: 'text-[var(--color-gold)]',
     gradient: 'from-[#C9A227]/20 to-[#FFD700]/5',
     requiresApiCredentials: true,
+    setupSteps: [
+      {
+        title: 'Create MTN Developer Account',
+        description: 'Visit developers.mtn.com and register for a developer account using your business email.',
+        action: 'Go to developers.mtn.com'
+      },
+      {
+        title: 'Subscribe to Collections Product',
+        description: 'In the MTN developer portal, subscribe to the "Collections" product to enable payment requests.',
+        action: 'Subscribe to Collections'
+      },
+      {
+        title: 'Create API User',
+        description: 'Generate an API User ID in your MTN dashboard. This will be your merchant identifier.',
+        action: 'Create API User'
+      },
+      {
+        title: 'Generate API Key & Secret',
+        description: 'Create API Key and Secret credentials for authentication. Keep these secure.',
+        action: 'Generate Credentials'
+      },
+      {
+        title: 'Get Subscription Key',
+        description: 'Copy your Subscription Key from the MTN developer portal for API access.',
+        action: 'Get Subscription Key'
+      }
+    ],
     fields: [
       { name: 'merchant_id', label: 'API User / Merchant ID', placeholder: 'e.g. your_mtn_api_user', type: 'text' },
       { name: 'api_key', label: 'API Key', placeholder: 'e.g. your_mtn_api_key', type: 'text' },
@@ -55,6 +83,28 @@ const PROVIDERS: Record<ProviderId, {
     color: 'text-red-400',
     gradient: 'from-red-900/40 to-red-900/10',
     requiresApiCredentials: true,
+    setupSteps: [
+      {
+        title: 'Create Airtel Developer Account',
+        description: 'Visit developers.airtel.africa and register for a developer account using your business email.',
+        action: 'Go to developers.airtel.africa'
+      },
+      {
+        title: 'Register Application',
+        description: 'Create a new application in the Airtel developer portal and select Uganda as your country.',
+        action: 'Register Application'
+      },
+      {
+        title: 'Generate Client Credentials',
+        description: 'Generate Client ID and Client Secret for API authentication. Keep these secure.',
+        action: 'Generate Credentials'
+      },
+      {
+        title: 'Configure Environment',
+        description: 'Choose sandbox for testing or production for live payments. Configure your callback URL.',
+        action: 'Configure Environment'
+      }
+    ],
     fields: [
       { name: 'api_key', label: 'Client ID', placeholder: 'e.g. your_airtel_client_id', type: 'text' },
       { name: 'api_secret', label: 'Client Secret', placeholder: 'e.g. your_airtel_client_secret', type: 'password' },
@@ -70,6 +120,28 @@ const PROVIDERS: Record<ProviderId, {
     color: 'text-[#A29BFE]',
     gradient: 'from-[#6C5CE7]/30 to-[#A29BFE]/10',
     requiresApiCredentials: true,
+    setupSteps: [
+      {
+        title: 'Create Flutterwave Account',
+        description: 'Visit dashboard.flutterwave.com and sign up for a merchant account using your business details.',
+        action: 'Go to Flutterwave Dashboard'
+      },
+      {
+        title: 'Get API Keys',
+        description: 'Navigate to Settings > API Keys to generate your Public Key and Secret Key.',
+        action: 'Generate API Keys'
+      },
+      {
+        title: 'Configure Webhook',
+        description: 'Set up webhook URL in Flutterwave settings to receive payment status updates.',
+        action: 'Configure Webhook'
+      },
+      {
+        title: 'Test Integration',
+        description: 'Use Flutterwave sandbox to test your integration before going live.',
+        action: 'Test in Sandbox'
+      }
+    ],
     fields: [
       { name: 'api_key', label: 'Public Key', placeholder: 'FLWPUBK-XXXXXXXXX', type: 'text' },
       { name: 'api_secret', label: 'Secret Key', placeholder: 'FLWSECK-XXXXXXXXX', type: 'password' },
@@ -162,6 +234,13 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
     if (step === 'choose' && selectedProvider) {
       setStep('explain');
     } else if (step === 'explain') {
+      // Skip setup guide for non-API providers
+      if (provider?.requiresApiCredentials) {
+        setStep('setup-guide');
+      } else {
+        setStep('configure');
+      }
+    } else if (step === 'setup-guide') {
       setStep('configure');
     } else if (step === 'configure') {
       // Validate
@@ -226,7 +305,7 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                 <div className="flex items-center gap-4">
                   {step !== 'choose' && (
                     <button 
-                      onClick={() => setStep(step === 'configure' ? 'explain' : 'choose')}
+                      onClick={() => setStep(step === 'configure' ? 'setup-guide' : step === 'setup-guide' ? 'explain' : 'choose')}
                       className="w-8 h-8 rounded-full bg-[var(--color-card)] hover:bg-white/10 flex items-center justify-center transition-colors"
                     >
                       <ArrowLeft className="w-4 h-4 text-[var(--color-text-primary)]/70" />
@@ -315,7 +394,54 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                   </motion.div>
                 )}
 
-                {/* STEP 3: CONFIGURE */}
+                {/* STEP 3: SETUP GUIDE */}
+                {step === 'setup-guide' && provider && provider.setupSteps && (
+                  <motion.div
+                    key="setup-guide"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex-1 flex flex-col"
+                  >
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--color-card)] border border-[var(--color-border-light)] flex items-center justify-center shadow-lg">
+                        <provider.Icon className={`w-6 h-6 ${provider.color}`} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-[var(--color-text-primary)] tracking-tight">Setup Guide</h3>
+                        <p className="text-[var(--color-text-secondary)] text-sm">Follow these steps to connect {provider.name}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 flex-1 overflow-y-auto max-h-[300px]">
+                      {provider.setupSteps.map((setupStep, index) => (
+                        <div key={index} className="flex gap-4 p-4 rounded-2xl bg-[var(--color-card)] border border-[var(--color-border-light)]">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#6C5CE7]/20 border border-[#6C5CE7]/30 flex items-center justify-center text-[#6C5CE7] font-bold text-sm">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-[var(--color-text-primary)] mb-1">{setupStep.title}</h4>
+                            <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{setupStep.description}</p>
+                            {setupStep.action && (
+                              <button className="mt-2 text-xs font-medium text-[#6C5CE7] hover:text-[#A29BFE] transition-colors">
+                                {setupStep.action} →
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-6 p-4 rounded-2xl bg-[#6C5CE7]/5 border border-[#6C5CE7]/20">
+                      <p className="text-sm text-[var(--color-text-secondary)]">
+                        <span className="font-semibold text-[#6C5CE7]">💡 Tip:</span> Keep your API credentials secure. Never share them publicly or commit them to version control.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* STEP 4: CONFIGURE */}
                 {step === 'configure' && provider && (
                   <motion.div
                     key="configure"
@@ -407,8 +533,8 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                       </>
                     ) : (
                       <>
-                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'Configure Integration' : (provider?.requiresApiCredentials ? 'Test & Connect' : 'Connect Channel')}
-                        {step !== 'configure' && <ArrowRight className="w-5 h-5" />}
+                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'View Setup Guide' : step === 'setup-guide' ? 'Enter Credentials' : (provider?.requiresApiCredentials ? 'Test & Connect' : 'Connect Channel')}
+                        {step !== 'configure' && step !== 'setup-guide' && <ArrowRight className="w-5 h-5" />}
                       </>
                     )}
                   </button>
