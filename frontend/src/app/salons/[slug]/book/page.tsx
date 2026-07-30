@@ -64,6 +64,7 @@ function BookPageContent({ slug }: { slug: string }) {
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [salonId, setSalonId] = useState<string>('');
   const [mounted, setMounted] = useState(false);
+  const [loadingError, setLoadingError] = useState<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -74,23 +75,45 @@ function BookPageContent({ slug }: { slug: string }) {
     if (salonSlug) {
       const timeout = setTimeout(() => {
         // If loading takes too long, set empty arrays to stop loading
+        setLoadingError('Loading timeout. Please check your connection or try again.');
         setServices([]);
         setStaff([]);
       }, 10000); // 10 second timeout
 
-      apiClient.getSalonBySlug(salonSlug).then((salon) => {
-        setSalonId(salon.id);
-        // Fetch services and staff for this salon
-        apiClient.getSalonServices(salonSlug).then(setServices).catch(() => setServices([]));
-        apiClient.getSalonStaff(salonSlug).then(setStaff).catch(() => setStaff([]));
-      }).catch((error) => {
-        console.error('Failed to fetch salon:', error);
-        // If salon lookup fails, set empty arrays to stop loading
-        setServices([]);
-        setStaff([]);
-      }).finally(() => {
-        clearTimeout(timeout);
-      });
+      console.log('Fetching salon data for slug:', salonSlug);
+      
+      apiClient.getSalonBySlug(salonSlug)
+        .then((salon) => {
+          console.log('Salon fetched:', salon);
+          setSalonId(salon.id);
+          
+          // Fetch services and staff for this salon
+          Promise.all([
+            apiClient.getSalonServices(salonSlug).then(setServices).catch((err) => {
+              console.error('Failed to fetch services:', err);
+              setLoadingError(`Failed to load services: ${err.message || 'Unknown error'}`);
+              return setServices([]);
+            }),
+            apiClient.getSalonStaff(salonSlug).then(setStaff).catch((err) => {
+              console.error('Failed to fetch staff:', err);
+              setLoadingError(`Failed to load staff: ${err.message || 'Unknown error'}`);
+              return setStaff([]);
+            })
+          ]).then(() => {
+            console.log('Services and staff loaded successfully');
+            setLoadingError('');
+          });
+        })
+        .catch((error) => {
+          console.error('Failed to fetch salon:', error);
+          setLoadingError(`Failed to load salon: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+          // If salon lookup fails, set empty arrays to stop loading
+          setServices([]);
+          setStaff([]);
+        })
+        .finally(() => {
+          clearTimeout(timeout);
+        });
 
       return () => clearTimeout(timeout);
     }
@@ -348,8 +371,17 @@ function BookPageContent({ slug }: { slug: string }) {
 
               {services.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 bg-white/[0.02] border border-white/5 rounded-2xl">
-                  <Loader2 className="w-8 h-8 text-gold animate-spin mb-4" />
-                  <p className="text-white/45 text-sm">Fetching premium salon catalog...</p>
+                  {loadingError ? (
+                    <>
+                      <p className="text-red-400 text-sm mb-2">Error loading services</p>
+                      <p className="text-white/45 text-xs text-center max-w-md">{loadingError}</p>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="w-8 h-8 text-gold animate-spin mb-4" />
+                      <p className="text-white/45 text-sm">Fetching premium salon catalog...</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="flex overflow-x-auto pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:overflow-visible flex-nowrap space-x-4 md:space-x-0 gap-0 md:gap-4">
