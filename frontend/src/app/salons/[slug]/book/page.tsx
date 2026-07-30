@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Crown, Calendar, Clock, User, ArrowRight, 
-  CheckCircle2, Loader2, Star, Check, Shield, Info, Search
+  CheckCircle2, Loader2, Star, Check, Shield, Info, Search, Phone
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { portalApiClient } from '@/lib/portal-api-client';
@@ -961,36 +961,114 @@ function BookPageContent({ slug }: { slug: string }) {
                 <div className="max-w-2xl mx-auto">
                   {bookingResult?.payment ? (
                     <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-white/50 text-sm">Payment Reference</span>
-                        <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
-                      </div>
-                      <div className="flex justify-between items-center mb-6">
-                        <span className="text-white/50 text-sm">Amount</span>
-                        <span className="text-white font-semibold text-lg">
-                          {selectedService?.price ? `UGX ${Math.round(selectedService.price * 0.3).toLocaleString()}` : 'UGX 0'}
-                        </span>
-                      </div>
-                      <p className="text-white/40 text-xs mb-4">
-                        Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
-                      </p>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setStep('confirm')}
-                          className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => {
-                            // Simulate payment completion for now
-                            setStep('success');
-                          }}
-                          className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                        >
-                          I've Paid
-                        </button>
-                      </div>
+                      {bookingResult.payment.type === 'manual' ? (
+                        // Manual payment instructions
+                        <div>
+                          <div className="flex items-center gap-3 mb-6">
+                            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                              <Phone className="w-6 h-6 text-blue-400" />
+                            </div>
+                            <div>
+                              <h3 className="text-white font-semibold text-lg">Manual Payment Required</h3>
+                              <p className="text-white/50 text-sm">Follow the instructions below</p>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-white/[0.02] rounded-xl p-4 mb-4">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-white/50 text-sm">Payment Method</span>
+                              <span className="text-white font-semibold">{bookingResult.payment.instructions?.method}</span>
+                            </div>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-white/50 text-sm">Phone Number</span>
+                              <span className="text-gold font-mono text-lg">{bookingResult.payment.instructions?.phone}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-white/50 text-sm">Amount</span>
+                              <span className="text-white font-semibold text-lg">
+                                UGX {bookingResult.payment.instructions?.amount?.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <p className="text-white/40 text-xs mb-4">
+                            {bookingResult.payment.instructions?.message}
+                          </p>
+                          
+                          <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-4">
+                            <p className="text-yellow-400 text-xs">
+                              ⚠️ After sending the payment, please upload your payment proof screenshot or receipt. The salon will verify and confirm your booking.
+                            </p>
+                          </div>
+                          
+                          <button
+                            onClick={() => setStep('success')}
+                            className="w-full px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                          >
+                            I've Sent the Payment
+                          </button>
+                        </div>
+                      ) : bookingResult.payment.type === 'offline' ? (
+                        // Offline payment (pay at salon)
+                        <div>
+                          <div className="flex items-center gap-3 mb-6">
+                            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
+                              <CheckCircle2 className="w-6 h-6 text-green-400" />
+                            </div>
+                            <div>
+                              <h3 className="text-white font-semibold text-lg">Pay at Salon</h3>
+                              <p className="text-white/50 text-sm">No online payment required</p>
+                            </div>
+                          </div>
+                          
+                          <p className="text-white/40 text-xs mb-6">
+                            {bookingResult.payment.message}
+                          </p>
+                          
+                          <button
+                            onClick={() => setStep('success')}
+                            className="w-full px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                          >
+                            Continue to Confirmation
+                          </button>
+                        </div>
+                      ) : (
+                        // API payment (MTN MoMo, Airtel, Flutterwave)
+                        <div>
+                          <div className="flex justify-between items-center mb-4">
+                            <span className="text-white/50 text-sm">Payment Reference</span>
+                            <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
+                          </div>
+                          <div className="flex justify-between items-center mb-6">
+                            <span className="text-white/50 text-sm">Amount</span>
+                            <span className="text-white font-semibold text-lg">
+                              {selectedService?.price ? `UGX ${Math.round(selectedService.price * 0.3).toLocaleString()}` : 'UGX 0'}
+                            </span>
+                          </div>
+                          <p className="text-white/40 text-xs mb-4">
+                            Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
+                          </p>
+                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-4">
+                            <p className="text-blue-400 text-xs">
+                              ℹ️ Your booking will be confirmed automatically once payment is verified. This may take a few minutes.
+                            </p>
+                          </div>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => setStep('confirm')}
+                              className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => setStep('success')}
+                              className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                            >
+                              Check Payment Status
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md text-center">
