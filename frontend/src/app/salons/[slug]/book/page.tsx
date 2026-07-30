@@ -38,6 +38,9 @@ function BookPageContent({ slug }: { slug: string }) {
   const { login } = usePortalAuth();
   const salonSlug = slug;
 
+  console.log('=== BookPageContent mounted ===');
+  console.log('Slug:', salonSlug);
+
   const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'confirm' | 'success'>('service');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -248,6 +251,11 @@ function BookPageContent({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen bg-[#070707] text-white overflow-x-hidden font-poppins relative selection:bg-gold/30 selection:text-white pb-16">
+      {/* Debug info */}
+      <div className="fixed top-0 left-0 bg-red-500 text-white p-2 z-[100] text-xs">
+        Debug: Slug={salonSlug} | Services={services.length} | Staff={staff.length} | Error={loadingError || 'none'}
+      </div>
+
       {/* Dynamic Cursor Glow */}
       {mounted && <CursorGlow color={stepColors[step] || '#FFD700'} intensity={0.35} radius={350} />}
 
