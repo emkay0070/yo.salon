@@ -208,10 +208,6 @@ function BookPageContent({ slug }: { slug: string }) {
     success: '#10b981',
   };
 
-  if (!salonSlug) {
-    return <SalonDiscoveryMap />;
-  }
-
   return (
     <div className="min-h-screen bg-[#070707] text-white overflow-x-hidden font-poppins relative selection:bg-gold/30 selection:text-white pb-16">
       {/* Dynamic Cursor Glow */}
@@ -876,10 +872,11 @@ function BookPageContent({ slug }: { slug: string }) {
   );
 }
 
-export default function BookPage({ params }: { params: { slug: string } }) {
+export default async function BookPage({ params }: { params: { slug: string } }) {
+  const slug = params.slug;
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#070707]"><Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" /></div>}>
-      <BookPageContent slug={params.slug} />
+      <BookPageContent slug={slug} />
     </Suspense>
   );
 }
