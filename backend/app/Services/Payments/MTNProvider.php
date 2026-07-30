@@ -26,7 +26,7 @@ class MTNProvider implements PaymentProviderInterface
         
         $this->baseUrl = $this->environment === 'production' 
             ? 'https://api.mtn.com' 
-            : 'https://sandbox.mtn.com';
+            : 'https://sandbox.momodeveloper.mtn.com';
             
         $this->callbackUrl = config('services.mtn.callback_url');
     }
@@ -224,12 +224,13 @@ class MTNProvider implements PaymentProviderInterface
      */
     public function getAccessToken(): ?string
     {
-        $response = Http::withHeaders([
+        $response = Http::withBasicAuth(
+            $this->apiUser,
+            $this->apiKey
+        )->withHeaders([
             'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
             'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/collection/token', [
-            'providerCallbackHost' => config('app.url'),
-        ]);
+        ])->post($this->baseUrl . '/collection/token/');
 
         $result = $response->json();
 
