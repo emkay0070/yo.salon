@@ -7,10 +7,10 @@ use Illuminate\Support\Facades\Log;
 
 class FlutterwaveProvider implements PaymentProviderInterface
 {
-    private string $secretKey;
-    private string $publicKey;
+    private ?string $secretKey;
+    private ?string $publicKey;
     private string $baseUrl;
-    private string $webhookSecret;
+    private ?string $webhookSecret;
 
     public function __construct()
     {
