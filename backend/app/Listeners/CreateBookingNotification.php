@@ -4,7 +4,6 @@ namespace App\Listeners;
 
 use App\Events\BookingCreated;
 use App\Models\Notification;
-use App\Models\BookingActivity;
 
 class CreateBookingNotification
 {
@@ -14,8 +13,12 @@ class CreateBookingNotification
         Notification::create([
             'salon_id' => $event->salonId,
             'type' => 'booking_created',
+            'category' => 'booking',
+            'priority' => 'high',
+            'icon' => 'calendar',
             'title' => 'New Booking',
             'message' => "New booking from {$event->customerName} for {$event->serviceNames}",
+            'action_url' => "/dashboard/bookings/{$event->bookingId}",
             'data' => [
                 'booking_id' => $event->bookingId,
                 'customer_name' => $event->customerName,
@@ -29,30 +32,18 @@ class CreateBookingNotification
         Notification::create([
             'customer_id' => $event->customerId,
             'type' => 'booking_created',
+            'category' => 'booking',
+            'priority' => 'normal',
+            'icon' => 'calendar',
             'title' => 'Booking Submitted',
             'message' => "Your booking for {$event->serviceNames} has been submitted",
+            'action_url' => "/portal/bookings/{$event->bookingId}",
             'data' => [
                 'booking_id' => $event->bookingId,
                 'service_names' => $event->serviceNames,
                 'date' => $event->date,
                 'time' => $event->time,
             ],
-        ]);
-
-        // Create activity timeline entry
-        BookingActivity::create([
-            'booking_id' => $event->bookingId,
-            'type' => 'created',
-            'title' => 'Booking Created',
-            'description' => "Booking submitted for {$event->serviceNames}",
-            'data' => [
-                'customer_name' => $event->customerName,
-                'service_names' => $event->serviceNames,
-                'date' => $event->date,
-                'time' => $event->time,
-            ],
-            'actor_type' => 'customer',
-            'actor_id' => $event->customerId,
         ]);
     }
 }

@@ -26,15 +26,23 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register event listeners
+        // Register event listeners - separated by responsibility
         \Illuminate\Support\Facades\Event::listen(
             \App\Events\PaymentConfirmed::class,
-            \App\Listeners\CreatePaymentNotification::class
+            [
+                \App\Listeners\CreatePaymentNotification::class,
+                \App\Listeners\AddPaymentActivity::class,
+                \App\Listeners\BroadcastNotification::class,
+            ]
         );
 
         \Illuminate\Support\Facades\Event::listen(
             \App\Events\BookingCreated::class,
-            \App\Listeners\CreateBookingNotification::class
+            [
+                \App\Listeners\CreateBookingNotification::class,
+                \App\Listeners\AddBookingActivity::class,
+                \App\Listeners\BroadcastNotification::class,
+            ]
         );
     }
 }

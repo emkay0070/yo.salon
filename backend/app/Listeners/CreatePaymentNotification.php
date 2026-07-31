@@ -4,7 +4,6 @@ namespace App\Listeners;
 
 use App\Events\PaymentConfirmed;
 use App\Models\Notification;
-use App\Models\BookingActivity;
 
 class CreatePaymentNotification
 {
@@ -14,8 +13,12 @@ class CreatePaymentNotification
         Notification::create([
             'salon_id' => $event->salonId,
             'type' => 'payment_confirmed',
+            'category' => 'payment',
+            'priority' => 'high',
+            'icon' => 'wallet',
             'title' => 'Payment Received',
             'message' => "Payment of {$event->amount} UGX received via {$event->paymentMethod}",
+            'action_url' => "/dashboard/bookings/{$event->bookingId}",
             'data' => [
                 'booking_id' => $event->bookingId,
                 'amount' => $event->amount,
@@ -27,26 +30,17 @@ class CreatePaymentNotification
         Notification::create([
             'customer_id' => $event->customerId,
             'type' => 'payment_confirmed',
+            'category' => 'payment',
+            'priority' => 'high',
+            'icon' => 'wallet',
             'title' => 'Payment Confirmed',
             'message' => "Your payment of {$event->amount} UGX has been confirmed",
+            'action_url' => "/portal/bookings/{$event->bookingId}",
             'data' => [
                 'booking_id' => $event->bookingId,
                 'amount' => $event->amount,
                 'payment_method' => $event->paymentMethod,
             ],
-        ]);
-
-        // Create activity timeline entry
-        BookingActivity::create([
-            'booking_id' => $event->bookingId,
-            'type' => 'payment_confirmed',
-            'title' => 'Payment Confirmed',
-            'description' => "Payment of {$event->amount} UGX received via {$event->paymentMethod}",
-            'data' => [
-                'amount' => $event->amount,
-                'payment_method' => $event->paymentMethod,
-            ],
-            'actor_type' => 'system',
         ]);
     }
 }
