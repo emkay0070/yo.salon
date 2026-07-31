@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRole } from '@/contexts/RoleContext';
 
 interface ReverbHookOptions {
@@ -14,8 +14,14 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
   const { salonId, user } = useRole();
   const socketRef = useRef<WebSocket | null>(null);
   const channelRef = useRef<string | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const [isConnected, setIsConnected] = useState(false);
 
-  useEffect(() => {
+  const MAX_RECONNECT_ATTEMPTS = 10;
+  const RECONNECT_DELAY_BASE = 1000; // 1 second
+
+  const connect = () => {
     if (!channelName || !salonId) return;
 
     // Construct the full channel name
@@ -34,6 +40,8 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
 
     socket.onopen = () => {
       console.log('Reverb connected');
+      setIsConnected(true);
+      reconnectAttemptsRef.current = 0;
       
       // Subscribe to the channel
       const subscribeMessage = {
@@ -70,15 +78,38 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
 
     socket.onerror = (error) => {
       console.error('Reverb error:', error);
+      setIsConnected(false);
       options.onError?.(error);
     };
 
     socket.onclose = () => {
       console.log('Reverb disconnected');
+      setIsConnected(false);
       options.onDisconnect?.();
+      
+      // Attempt to reconnect with exponential backoff
+      if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+        const delay = RECONNECT_DELAY_BASE * Math.pow(2, reconnectAttemptsRef.current);
+        reconnectAttemptsRef.current++;
+        
+        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, delay);
+      } else {
+        console.error('Max reconnection attempts reached');
+      }
     };
+  };
+
+  useEffect(() => {
+    connect();
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       if (socketRef.current) {
         socketRef.current.close();
       }
@@ -86,6 +117,6 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
   }, [channelName, salonId]);
 
   return {
-    isConnected: socketRef.current?.readyState === WebSocket.OPEN,
+    isConnected,
   };
 }
