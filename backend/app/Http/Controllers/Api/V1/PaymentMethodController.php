@@ -153,7 +153,12 @@ class PaymentMethodController extends Controller
             }
         }
 
-        $paymentMethod->update($updateData);
+        // Use direct database update to avoid decryption errors on existing corrupted encrypted data
+        PaymentMethod::where('id', $paymentMethod->id)->update($updateData);
+
+        // Reload the model to get fresh data
+        $paymentMethod->refresh();
+
         return response()->json($paymentMethod);
     }
 
