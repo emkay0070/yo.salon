@@ -108,15 +108,16 @@ class BookingService
             $requiresDeposit = $salon->booking_deposit_enabled ?? false;
             $depositRequiredFor = $salon->deposit_required_for ?? 'all';
             
-            // Check if deposit is required based on salon policy
+            // Determine if deposit is required based on salon policy
             if ($requiresDeposit && $depositRequiredFor === 'never') {
                 $requiresDeposit = false;
             } elseif ($requiresDeposit && $depositRequiredFor === 'first_time') {
                 $requiresDeposit = $customerResult['is_new'];
             } elseif ($requiresDeposit && $depositRequiredFor === 'high_value') {
-                // Check if service price is above minimum threshold
-                $service = \App\Models\Service::find($data['service_id']);
-                $requiresDeposit = $service && $service->price >= ($salon->deposit_min_service_amount ?? 0);
+                // Check if any service price is above minimum threshold
+                $serviceIds = is_array($data['service_id']) ? $data['service_id'] : [$data['service_id']];
+                $services = \App\Models\Service::whereIn('id', $serviceIds)->get();
+                $requiresDeposit = $services->some(fn($s) => $s->price >= ($salon->deposit_min_service_amount ?? 0));
             }
 
             // Set booking status based on deposit requirement
