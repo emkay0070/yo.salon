@@ -137,12 +137,9 @@ export default function PaymentsPage() {
     queryFn: () => apiClient.getSettlements({ salon_id: salonId }),
   });
 
-  // Fetch salon deposit settings
-  const { data: salon } = useQuery({
-    queryKey: ['salon', salonId],
-    queryFn: () => apiClient.get(`/salons/${salonId}`),
-    enabled: !!salonId, // Only run query if salonId exists
-  });
+  // Get salon data from user context instead of making another API call
+  const { user } = useRole();
+  const salon = user?.salons?.[0];
 
   // Update deposit form when salon data loads
   useEffect(() => {
