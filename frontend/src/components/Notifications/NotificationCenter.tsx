@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Bell, X, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
-import { useReverb } from '@/hooks/useReverb';
 
 interface Notification {
   id: number;
@@ -50,26 +49,11 @@ export function NotificationCenter() {
 
   useEffect(() => {
     fetchNotifications();
+    
+    // Poll every 10 seconds (reverted from WebSocket until domain is purchased)
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
   }, []);
-
-  // Use Reverb for real-time notification updates
-  useReverb('salon.{id}', {
-    onMessage: (data) => {
-      console.log('Real-time notification received:', data);
-      
-      // Refresh notifications when new ones arrive
-      if (data.event === 'booking.created' || 
-          data.event === 'payment.confirmed') {
-        fetchNotifications();
-      }
-    },
-    onConnect: () => {
-      console.log('Connected to Reverb for notifications');
-    },
-    onError: (error) => {
-      console.error('Reverb connection error:', error);
-    },
-  });
 
   const getNotificationIcon = (type: string) => {
     switch (type) {

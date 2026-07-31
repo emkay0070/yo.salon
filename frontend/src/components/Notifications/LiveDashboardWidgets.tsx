@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Bell, Wallet, Clock, Users, TrendingUp } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
-import { useReverb } from '@/hooks/useReverb';
 
 interface LiveStats {
   new_bookings_today: number;
@@ -36,27 +35,11 @@ export function LiveDashboardWidgets() {
 
   useEffect(() => {
     fetchStats();
+    
+    // Poll every 10 seconds (reverted from WebSocket until domain is purchased)
+    const interval = setInterval(fetchStats, 10000);
+    return () => clearInterval(interval);
   }, []);
-
-  // Use Reverb for real-time updates
-  useReverb('salon.{id}', {
-    onMessage: (data) => {
-      console.log('Real-time update received:', data);
-      
-      // Refresh stats when relevant events occur
-      if (data.event === 'booking.created' || 
-          data.event === 'payment.confirmed' ||
-          data.event === 'booking.confirmed') {
-        fetchStats();
-      }
-    },
-    onConnect: () => {
-      console.log('Connected to Reverb for live dashboard updates');
-    },
-    onError: (error) => {
-      console.error('Reverb connection error:', error);
-    },
-  });
 
   const widgets = [
     {
