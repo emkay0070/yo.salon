@@ -141,6 +141,7 @@ export default function PaymentsPage() {
   const { data: salon } = useQuery({
     queryKey: ['salon', salonId],
     queryFn: () => apiClient.get(`/salons/${salonId}`),
+    enabled: !!salonId, // Only run query if salonId exists
   });
 
   // Update deposit form when salon data loads

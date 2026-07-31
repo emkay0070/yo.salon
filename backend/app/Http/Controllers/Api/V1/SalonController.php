@@ -79,6 +79,11 @@ class SalonController extends Controller
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'opening_hours' => 'nullable|array',
+            'booking_deposit_enabled' => 'sometimes|boolean',
+            'deposit_type' => 'sometimes|in:percentage,fixed',
+            'deposit_value' => 'sometimes|numeric',
+            'deposit_required_for' => 'sometimes|in:all,expensive,weekend',
+            'deposit_min_service_amount' => 'sometimes|numeric',
         ]);
 
         $salon->update($validated);
