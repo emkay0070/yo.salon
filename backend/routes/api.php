@@ -31,6 +31,8 @@ use App\Http\Controllers\Api\V1\BrandExperienceController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Api\V1\PlatformPaymentController;
 use App\Http\Controllers\Api\V1\SalonPaymentController;
+use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\BookingActivityController;
 
 Route::prefix('v1')->group(function () {
     // Public webhook routes (no authentication required)
@@ -95,6 +97,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/portal/availability', [CustomerBookingController::class, 'availability']);
             Route::get('/portal/availability/dates', [CustomerBookingController::class, 'availableDates']);
             Route::get('/portal/availability/staff', [CustomerBookingController::class, 'availableStaff']);
+            
+            // Portal notifications
+            Route::get('/portal/notifications', [NotificationController::class, 'index']);
+            Route::post('/portal/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+            Route::post('/portal/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+            
+            // Portal booking activities
+            Route::get('/portal/bookings/{id}/activities', [BookingActivityController::class, 'show']);
             Route::get('/portal/bookings', [CustomerBookingController::class, 'index']);
             Route::post('/portal/bookings', [CustomerBookingController::class, 'store']);
             Route::post('/portal/bookings/rebook/{id}', [CustomerBookingController::class, 'rebook']);
@@ -157,6 +167,14 @@ Route::prefix('v1')->group(function () {
         // Staff
         Route::apiResource('staff', StaffController::class);
         Route::get('/salons/{salon}/staff', [StaffController::class, 'bySalon']);
+        
+        // Notifications
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+        
+        // Booking activities
+        Route::get('/bookings/{id}/activities', [BookingActivityController::class, 'show']);
         
         // Profiles
         Route::apiResource('profiles', ProfileController::class);

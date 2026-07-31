@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Events\BookingCreated;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\PortalAccount;
 use App\Services\Payments\SalonPaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -137,6 +139,18 @@ class BookingService
             // Attach services (support both single service_id and array of service_ids)
             $serviceIds = is_array($data['service_id']) ? $data['service_id'] : [$data['service_id']];
             $booking->services()->attach($serviceIds);
+
+            // Dispatch BookingCreated event
+            $serviceNames = $booking->services()->pluck('name')->join(', ');
+            Event::dispatch(new BookingCreated(
+                $booking->id,
+                $customer->id,
+                $booking->salon_id,
+                $customer->name,
+                $serviceNames,
+                $booking->date,
+                $booking->time
+            ));
 
             // Create portal account if requested and customer doesn't have one
             $portalAccount = null;

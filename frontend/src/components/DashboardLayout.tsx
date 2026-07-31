@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import RoleSwitcher from './RoleSwitcher';
+import { NotificationCenter } from './Notifications/NotificationCenter';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSalonBranding } from '@/hooks/useSalonBranding';
 
@@ -154,12 +155,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         className={`relative z-10 flex-1 min-w-0 overflow-x-hidden transition-all duration-300 pb-20 lg:pb-0 ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-[80px]'}`}
       >
         <div className="p-4 lg:p-8">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="hidden lg:flex mb-6 p-2 rounded-xl bg-surface/50 border border-border-light hover:bg-text-primary/10 transition-colors duration-300 backdrop-blur-md"
-          >
-            <Menu className="w-6 h-6 text-text-secondary" />
-          </button>
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="hidden lg:flex p-2 rounded-xl bg-surface/50 border border-border-light hover:bg-text-primary/10 transition-colors duration-300 backdrop-blur-md"
+            >
+              <Menu className="w-6 h-6 text-text-secondary" />
+            </button>
+            <div className="flex-1" />
+            <NotificationCenter />
+          </div>
           
           <AnimatePresence mode="wait">
             <motion.div

@@ -2,6 +2,7 @@
 
 namespace App\Services\Payments;
 
+use App\Events\PaymentConfirmed;
 use App\Models\Booking;
 use App\Models\PaymentMethod;
 use App\Models\PaymentRequest;
@@ -9,6 +10,7 @@ use App\Models\Transaction;
 use App\Services\FeeEngine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 
 class SalonPaymentService
@@ -228,6 +230,18 @@ class SalonPaymentService
             if ($paymentRequest->booking_id) {
                 Booking::where('id', $paymentRequest->booking_id)
                     ->update(['payment_status' => 'paid']);
+            }
+
+            // Dispatch PaymentConfirmed event
+            $booking = Booking::find($paymentRequest->booking_id);
+            if ($booking) {
+                Event::dispatch(new PaymentConfirmed(
+                    $booking->id,
+                    $booking->customer_id,
+                    $booking->salon_id,
+                    $fees['gross_amount'],
+                    $paymentMethod->display_name
+                ));
             }
 
             return [
