@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -71,6 +71,7 @@ export default function PaymentsPage() {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [settingsFormData, setSettingsFormData] = useState({
     merchant_id: '',
     api_key: '',
@@ -87,6 +88,13 @@ export default function PaymentsPage() {
     api_secret: '',
     api_subscription_key: '',
     environment: 'sandbox',
+  });
+  const [depositFormData, setDepositFormData] = useState({
+    booking_deposit_enabled: false,
+    deposit_type: 'percentage',
+    deposit_value: 30,
+    deposit_required_for: 'all',
+    deposit_min_service_amount: 0,
   });
   const [verifying, setVerifying] = useState(false);
   const [verificationSuccess, setVerificationSuccess] = useState(false);
@@ -128,6 +136,25 @@ export default function PaymentsPage() {
     queryKey: ['settlements', salonId],
     queryFn: () => apiClient.getSettlements({ salon_id: salonId }),
   });
+
+  // Fetch salon deposit settings
+  const { data: salon } = useQuery({
+    queryKey: ['salon', salonId],
+    queryFn: () => apiClient.get(`/salons/${salonId}`),
+  });
+
+  // Update deposit form when salon data loads
+  useEffect(() => {
+    if (salon) {
+      setDepositFormData({
+        booking_deposit_enabled: salon.booking_deposit_enabled || false,
+        deposit_type: salon.deposit_type || 'percentage',
+        deposit_value: salon.deposit_value || 30,
+        deposit_required_for: salon.deposit_required_for || 'all',
+        deposit_min_service_amount: salon.deposit_min_service_amount || 0,
+      });
+    }
+  }, [salon]);
 
   // Stack Navigation
   const scrollPrev = useCallback(() => {
@@ -223,6 +250,11 @@ export default function PaymentsPage() {
       const response = await apiClient.post(`/payment-methods`, addFormData);
       if (response.data) {
         setAddVerificationSuccess(true);
+        // Close modal after successful creation
+        setTimeout(() => {
+          setIsAddModalOpen(false);
+          setAddVerificationSuccess(false);
+        }, 1500);
       }
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
@@ -230,6 +262,17 @@ export default function PaymentsPage() {
       setAddVerificationSuccess(false);
     } finally {
       setAddVerifying(false);
+    }
+  };
+
+  const handleSaveDepositSettings = async () => {
+    try {
+      await apiClient.put(`/salons/${salonId}`, depositFormData);
+      alert('Deposit settings saved successfully!');
+      setIsDepositModalOpen(false);
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
+      alert('Failed to save deposit settings: ' + errorMessage);
     }
   };
 
@@ -473,6 +516,15 @@ export default function PaymentsPage() {
                   Add Payment Method
                 </button>
               )}
+
+              {/* Deposit Settings Button */}
+              <button
+                onClick={() => setIsDepositModalOpen(true)}
+                className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-[#FFD700]/10 border border-[#FFD700]/30 hover:bg-[#FFD700]/20 transition-colors text-[#FFD700] font-medium text-sm w-full mt-3"
+              >
+                <Settings className="w-4 h-4" />
+                Deposit Policy
+              </button>
             </div>
           </div>
 
@@ -777,6 +829,101 @@ export default function PaymentsPage() {
                 className="flex-1 px-4 py-2 rounded-lg bg-[#6C5CE7] text-white hover:bg-[#5B4BC4] transition-colors disabled:opacity-50"
               >
                 {addVerifying ? 'Verifying...' : 'Add & Verify'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Deposit Policy Settings Modal */}
+      {isDepositModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#0c0c0c] border border-white/10 rounded-2xl p-6 w-full max-w-lg"
+          >
+            <h2 className="text-xl font-semibold text-white mb-6">
+              Deposit Policy Settings
+            </h2>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-white/70 text-sm">Require deposits for bookings</label>
+                <button
+                  onClick={() => setDepositFormData({ ...depositFormData, booking_deposit_enabled: !depositFormData.booking_deposit_enabled })}
+                  className={`w-12 h-6 rounded-full transition-colors ${depositFormData.booking_deposit_enabled ? 'bg-[#6C5CE7]' : 'bg-white/20'}`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white transition-transform ${depositFormData.booking_deposit_enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+
+              {depositFormData.booking_deposit_enabled && (
+                <>
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Deposit Type</label>
+                    <select
+                      value={depositFormData.deposit_type}
+                      onChange={(e) => setDepositFormData({ ...depositFormData, deposit_type: e.target.value })}
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    >
+                      <option value="percentage">Percentage</option>
+                      <option value="fixed">Fixed Amount</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">
+                      {depositFormData.deposit_type === 'percentage' ? 'Deposit Percentage' : 'Deposit Amount (UGX)'}
+                    </label>
+                    <input
+                      type="number"
+                      value={depositFormData.deposit_value}
+                      onChange={(e) => setDepositFormData({ ...depositFormData, deposit_value: Number(e.target.value) })}
+                      placeholder={depositFormData.deposit_type === 'percentage' ? '30' : '10000'}
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Require deposit for</label>
+                    <select
+                      value={depositFormData.deposit_required_for}
+                      onChange={(e) => setDepositFormData({ ...depositFormData, deposit_required_for: e.target.value })}
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    >
+                      <option value="all">All bookings</option>
+                      <option value="expensive">Expensive services only</option>
+                      <option value="weekend">Weekend bookings only</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Minimum service amount (UGX)</label>
+                    <input
+                      type="number"
+                      value={depositFormData.deposit_min_service_amount}
+                      onChange={(e) => setDepositFormData({ ...depositFormData, deposit_min_service_amount: Number(e.target.value) })}
+                      placeholder="0"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setIsDepositModalOpen(false)}
+                className="flex-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveDepositSettings}
+                className="flex-1 px-4 py-2 rounded-lg bg-[#6C5CE7] text-white hover:bg-[#5B4BC4] transition-colors"
+              >
+                Save Settings
               </button>
             </div>
           </motion.div>

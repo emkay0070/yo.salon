@@ -19,6 +19,13 @@ class PaymentMethodController extends Controller
             ->where('is_active', true)
             ->orderBy('is_primary', 'desc')
             ->get();
+
+        Log::info('Payment methods fetched', [
+            'salon_id' => $salonId,
+            'count' => $methods->count(),
+            'methods' => $methods->pluck('provider'),
+        ]);
+
         return response()->json($methods);
     }
 
