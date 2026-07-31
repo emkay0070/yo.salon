@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\PlatformPaymentController;
 use App\Http\Controllers\Api\V1\SalonPaymentController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\BookingActivityController;
+use App\Http\Controllers\Api\V1\DashboardController;
 
 Route::prefix('v1')->group(function () {
     // Public webhook routes (no authentication required)
@@ -175,6 +176,9 @@ Route::prefix('v1')->group(function () {
         
         // Booking activities
         Route::get('/bookings/{id}/activities', [BookingActivityController::class, 'show']);
+        
+        // Dashboard
+        Route::get('/dashboard/live-stats', [DashboardController::class, 'liveStats']);
         
         // Profiles
         Route::apiResource('profiles', ProfileController::class);

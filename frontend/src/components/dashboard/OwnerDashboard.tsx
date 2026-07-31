@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { TrendChart } from '@/components/analytics/TrendChart';
 import { CopyLinkModal } from '@/components/ui/CopyLinkModal';
+import { LiveDashboardWidgets } from '@/components/Notifications/LiveDashboardWidgets';
 import { useState } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -250,6 +251,9 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
           </motion.div>
         </div>
       </motion.section>
+
+      {/* ═══ Live Dashboard Widgets ═══════════════════════════════════════ */}
+      <LiveDashboardWidgets />
 
       {/* ═══ ROW 1: Revenue Chart + Signals ══════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
