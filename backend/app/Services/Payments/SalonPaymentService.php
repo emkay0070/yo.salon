@@ -127,7 +127,7 @@ class SalonPaymentService
             ];
         }
 
-        // Only call provider for 'api' or 'gateway' type payment methods
+        // Only call provider for 'api', 'gateway', or 'mobile_money' type payment methods
         if ($paymentMethod->provider === 'flutterwave') {
             $paymentData['payment_options'] = 'card, mobilemoneyuganda, ussd, account';
         } elseif ($paymentMethod->provider === 'mtn') {
