@@ -14,7 +14,7 @@ export default function DiscoverPage() {
 
   const { data: services, isLoading } = useQuery({
     queryKey: ['portal-services'],
-    queryFn: () => portalApiClient.get('/v1/portal/services'),
+    queryFn: () => portalApiClient.get('/portal/services'),
     enabled: !!customer,
   });
 

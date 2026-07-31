@@ -31,7 +31,7 @@ function CreateAccountContent() {
   // Fetch salon data from slug to get salon_id
   useEffect(() => {
     if (salonSlug && !invitationToken) {
-      portalApiClient.get(`/v1/salons/${salonSlug}`).then((salon) => {
+      portalApiClient.get(`/salons/${salonSlug}`).then((salon) => {
         setSalonId(salon.id);
       }).catch(() => {
         setError('Salon not found');
@@ -63,7 +63,7 @@ function CreateAccountContent() {
     try {
       if (invitationToken) {
         // Accept invitation flow
-        await portalApiClient.post('/v1/portal/accept-invitation', {
+        await portalApiClient.post('/portal/accept-invitation', {
           invitation_token: invitationToken,
           email: formData.email,
           password: formData.password,

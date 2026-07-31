@@ -16,7 +16,7 @@ export default function ProfilePage() {
 
   const { data: profileData, isLoading, isError } = useQuery({
     queryKey: ['portal-profile'],
-    queryFn: () => portalApiClient.get('/v1/portal/context'),
+    queryFn: () => portalApiClient.get('/portal/context'),
     enabled: !!customer,
   });
 

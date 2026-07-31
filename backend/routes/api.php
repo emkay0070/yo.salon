@@ -71,7 +71,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/invitations/{token}/accept', [InvitationController::class, 'accept']);
 
     // Portal protected routes (require portal authentication)
-    Route::middleware(['auth:portal'])->group(function () {
+    Route::middleware(['auth:sanctum'])->group(function () {
         // Portal context middleware resolves salon through customer relationship
         Route::middleware(['portal.context'])->group(function () {
 

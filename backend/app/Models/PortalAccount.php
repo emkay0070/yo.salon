@@ -64,4 +64,13 @@ class PortalAccount extends Model implements AuthenticatableContract
     {
         return $this->isEmailVerified() || $this->isPhoneVerified();
     }
+
+    /**
+     * Check if account is in onboarding state
+     * Portal accounts don't have onboarding - always false
+     */
+    public function isOnboarding(): bool
+    {
+        return false;
+    }
 }

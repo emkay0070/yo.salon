@@ -47,6 +47,10 @@ return [
             'driver' => 'sanctum',
             'provider' => 'portal_accounts',
         ],
+        'sanctum' => [
+            'driver' => 'sanctum',
+            'provider' => 'portal_accounts',
+        ],
     ],
 
     /*

@@ -77,7 +77,7 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('portal_auth_token');
     if (token) {
       try {
-        const data = await portalApiClient.get('/v1/portal/context');
+        const data = await portalApiClient.get('/portal/context');
         hydrateFromContext(data);
       } catch (error) {
         console.error("Failed to load portal user:", error);

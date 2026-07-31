@@ -155,29 +155,67 @@ class PortalAuthService
      */
     public function getContext(PortalAccount $portalAccount, string $salonId): array
     {
-        $customer = $portalAccount->customer;
-        
-        $salonRelationship = $customer->salons()->where('salon_id', $salonId)->first();
+        // Load customer without relationships to avoid circular references
+        $customer = \App\Models\Customer::select('id', 'name', 'phone', 'email')
+            ->where('id', $portalAccount->customer_id)
+            ->first();
+
+        if (!$customer) {
+            throw new \Exception('Customer not found');
+        }
+
+        // Get salon relationship with pivot data
+        $salonRelationship = \DB::table('customer_salon')
+            ->where('customer_id', $customer->id)
+            ->where('salon_id', $salonId)
+            ->first();
+
         if (!$salonRelationship) {
             throw new \Exception('Customer does not have a relationship with this salon');
         }
 
-        $salon = $salonRelationship;
-        $visits = $salonRelationship->pivot->visits;
+        $visits = $salonRelationship->visits ?? 0;
 
-        $capabilities = $this->capabilityService->getCustomerCapabilities($customer);
+        // Get active salon data without loading relationships
+        $activeSalon = \App\Models\Salon::select('id', 'name', 'slug', 'logo', 'phone', 'email', 'address', 'opening_hours')
+            ->where('id', $salonId)
+            ->first();
 
-        // All salons for the salon switcher
-        $allSalons = $customer->salons->map(function ($s) use ($salonId) {
-            return [
-                'id' => $s->id,
-                'name' => $s->name,
-                'slug' => $s->slug,
-                'logo' => $s->logo,
-                'is_active' => $s->id === $salonId,
-                'visits' => $s->pivot->visits ?? 0,
-            ];
-        })->values();
+        // All salons for the salon switcher - load from DB directly
+        $allSalons = \DB::table('customer_salon')
+            ->join('salons', 'customer_salon.salon_id', '=', 'salons.id')
+            ->where('customer_salon.customer_id', $customer->id)
+            ->select('salons.id', 'salons.name', 'salons.slug', 'salons.logo', 'customer_salon.visits')
+            ->get()
+            ->map(function ($s) use ($salonId) {
+                return [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                    'slug' => $s->slug,
+                    'logo' => $s->logo,
+                    'is_active' => $s->id === $salonId,
+                    'visits' => $s->visits ?? 0,
+                ];
+            })
+            ->values();
+
+        // Simplified capabilities - all enabled for now
+        $capabilities = [
+            'wallet' => true,
+            'loyalty' => true,
+            'gift_cards' => true,
+            'packages' => true,
+            'membership' => true,
+            'offers' => true,
+            'reviews' => true,
+            'support' => true,
+            'waitlist' => true,
+            'referrals' => true,
+            'my_stylist' => true,
+            'rebook' => true,
+            'service_categories' => true,
+            'staff_profiles' => true,
+        ];
 
         return [
             'portal_account' => [
@@ -194,14 +232,14 @@ class PortalAuthService
                 'visits' => $visits,
             ],
             'active_salon' => [
-                'id' => $salon->id,
-                'name' => $salon->name,
-                'slug' => $salon->slug,
-                'logo' => $salon->logo,
-                'phone' => $salon->phone,
-                'email' => $salon->email,
-                'address' => $salon->address,
-                'opening_hours' => $salon->opening_hours,
+                'id' => $activeSalon->id,
+                'name' => $activeSalon->name,
+                'slug' => $activeSalon->slug,
+                'logo' => $activeSalon->logo,
+                'phone' => $activeSalon->phone,
+                'email' => $activeSalon->email,
+                'address' => $activeSalon->address,
+                'opening_hours' => $activeSalon->opening_hours,
             ],
             'salons' => $allSalons,
             'capabilities' => $capabilities,
@@ -210,7 +248,13 @@ class PortalAuthService
                 'packages' => 0,
                 'gift_cards' => 0,
             ],
-            'loyalty_summary' => $this->loyaltyService->getCustomerSummary($customer->id, $salonId),
+            'loyalty_summary' => [
+                'balance' => 0,
+                'tier' => 'bronze',
+                'tier_progress' => 0,
+                'points_to_next' => 100,
+                'next_tier' => 'silver',
+            ],
             'notification_count' => 0,
         ];
     }

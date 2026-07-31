@@ -23,12 +23,12 @@ export default function NewBookingPage() {
 
   const { data: services, isLoading: servicesLoading } = useQuery({
     queryKey: ['portal-services'],
-    queryFn: () => portalApiClient.get('/v1/portal/services'),
+    queryFn: () => portalApiClient.get('/portal/services'),
     enabled: !!customer,
   });
 
   const createBooking = useMutation({
-    mutationFn: (data: any) => portalApiClient.post('/v1/portal/bookings', data),
+    mutationFn: (data: any) => portalApiClient.post('/portal/bookings', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portal-home'] });
       queryClient.invalidateQueries({ queryKey: ['upcoming-bookings'] });
@@ -38,7 +38,7 @@ export default function NewBookingPage() {
 
   const { data: availability, isLoading: availabilityLoading } = useQuery({
     queryKey: ['availability', selectedDate, selectedService?.id],
-    queryFn: () => portalApiClient.get('/v1/portal/availability', {
+    queryFn: () => portalApiClient.get('/portal/availability', {
       params: {
         service_id: selectedService?.id,
         date: selectedDate,
@@ -49,7 +49,7 @@ export default function NewBookingPage() {
 
   const { data: availableStaff, isLoading: staffLoading } = useQuery({
     queryKey: ['available-staff', selectedService?.id, selectedDate, selectedTime],
-    queryFn: () => portalApiClient.get('/v1/portal/availability/staff', {
+    queryFn: () => portalApiClient.get('/portal/availability/staff', {
       params: {
         service_id: selectedService?.id,
         date: selectedDate,

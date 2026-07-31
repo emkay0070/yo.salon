@@ -15,12 +15,12 @@ export default function PortalHomePage() {
 
   const { data: homeData, isLoading: homeLoading } = useQuery({
     queryKey: ['portal-home'],
-    queryFn: () => portalApiClient.get('/v1/portal/home'),
+    queryFn: () => portalApiClient.get('/portal/home'),
     enabled: !!customer,
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (bookingId: string) => portalApiClient.patch(`/v1/portal/bookings/${bookingId}/cancel`),
+    mutationFn: (bookingId: string) => portalApiClient.patch(`/portal/bookings/${bookingId}/cancel`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['portal-home'] });
     },

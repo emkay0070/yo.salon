@@ -13,19 +13,19 @@ export default function PackagesPage() {
 
   const { data: packages, isLoading: packagesLoading, isError: packagesError } = useQuery({
     queryKey: ['packages'],
-    queryFn: () => portalApiClient.get('/v1/portal/packages'),
+    queryFn: () => portalApiClient.get('/portal/packages'),
     enabled: !!customer,
   });
 
   const { data: myPackages, isLoading: myPackagesLoading, isError: myPackagesError } = useQuery({
     queryKey: ['my-packages'],
-    queryFn: () => portalApiClient.get('/v1/portal/packages/my'),
+    queryFn: () => portalApiClient.get('/portal/packages/my'),
     enabled: !!customer,
   });
 
   const purchaseMutation = useMutation({
     mutationFn: (packageId: string) => 
-      portalApiClient.post('/v1/portal/packages/purchase', { package_id: packageId }),
+      portalApiClient.post('/portal/packages/purchase', { package_id: packageId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-packages'] });
       queryClient.invalidateQueries({ queryKey: ['portal-wallet'] });

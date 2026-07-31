@@ -15,19 +15,19 @@ export default function GiftCardsPage() {
 
   const { data: purchasedGiftCards, isLoading: purchasedLoading, isError: purchasedError } = useQuery({
     queryKey: ['purchased-gift-cards'],
-    queryFn: () => portalApiClient.get('/v1/portal/gift-cards/purchased'),
+    queryFn: () => portalApiClient.get('/portal/gift-cards/purchased'),
     enabled: !!customer,
   });
 
   const { data: redeemedGiftCards, isLoading: redeemedLoading, isError: redeemedError } = useQuery({
     queryKey: ['redeemed-gift-cards'],
-    queryFn: () => portalApiClient.get('/v1/portal/gift-cards/redeemed'),
+    queryFn: () => portalApiClient.get('/portal/gift-cards/redeemed'),
     enabled: !!customer,
   });
 
   const purchaseMutation = useMutation({
     mutationFn: (data: { amount: number; message?: string }) =>
-      portalApiClient.post('/v1/portal/gift-cards/purchase', data),
+      portalApiClient.post('/portal/gift-cards/purchase', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchased-gift-cards'] });
       queryClient.invalidateQueries({ queryKey: ['portal-wallet'] });
@@ -36,7 +36,7 @@ export default function GiftCardsPage() {
 
   const redeemMutation = useMutation({
     mutationFn: (code: string) =>
-      portalApiClient.post('/v1/portal/gift-cards/redeem', { code }),
+      portalApiClient.post('/portal/gift-cards/redeem', { code }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchased-gift-cards'] });
       queryClient.invalidateQueries({ queryKey: ['redeemed-gift-cards'] });

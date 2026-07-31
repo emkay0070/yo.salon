@@ -12,7 +12,7 @@ export default function WalletPage() {
 
   const { data: walletData, isLoading } = useQuery({
     queryKey: ['portal-wallet'],
-    queryFn: () => portalApiClient.get('/v1/portal/wallet'),
+    queryFn: () => portalApiClient.get('/portal/wallet'),
     enabled: !!customer,
   });
 

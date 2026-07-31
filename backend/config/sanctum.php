@@ -4,6 +4,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 use Laravel\Sanctum\Sanctum;
+use App\Models\PortalAccount;
 
 return [
 
@@ -37,7 +38,18 @@ return [
     |
     */
 
-    'guard' => ['web'],
+    'guard' => [],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Model
+    |--------------------------------------------------------------------------
+    |
+    | This model will be used to authenticate users from Sanctum tokens.
+    |
+    */
+
+    'model' => PortalAccount::class,
 
     /*
     |--------------------------------------------------------------------------

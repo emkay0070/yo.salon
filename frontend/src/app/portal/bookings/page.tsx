@@ -18,7 +18,7 @@ export default function BookingsPage() {
 
   const { data: bookingsData, isLoading } = useQuery({
     queryKey: ['portal-bookings'],
-    queryFn: () => portalApiClient.get('/v1/portal/bookings'),
+    queryFn: () => portalApiClient.get('/portal/bookings'),
     enabled: !!customer,
   });
 
