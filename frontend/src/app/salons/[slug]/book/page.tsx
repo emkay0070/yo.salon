@@ -42,7 +42,7 @@ function BookPageContent({ slug }: { slug: string }) {
   console.log('Slug:', salonSlug);
 
   const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'payment' | 'confirm' | 'success'>('service');
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -71,6 +71,9 @@ function BookPageContent({ slug }: { slug: string }) {
   const [paymentMethodId, setPaymentMethodId] = useState<string>('');
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const [salonPolicy, setSalonPolicy] = useState<any>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'processing' | 'successful' | 'failed'>('pending');
+  const [paymentRequestId, setPaymentRequestId] = useState<string>('');
+  const [isPollingPayment, setIsPollingPayment] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -164,8 +167,19 @@ function BookPageContent({ slug }: { slug: string }) {
   }, []);
 
   const handleServiceSelect = (service: Service) => {
-    setSelectedService(service);
-    setStep('staff');
+    // Toggle service selection (allow multiple)
+    const isSelected = selectedServices.some(s => s.id === service.id);
+    if (isSelected) {
+      setSelectedServices(selectedServices.filter(s => s.id !== service.id));
+    } else {
+      setSelectedServices([...selectedServices, service]);
+    }
+  };
+
+  const handleContinueToStaff = () => {
+    if (selectedServices.length > 0) {
+      setStep('staff');
+    }
   };
 
   const handleStaffSelect = (staffMember: StaffMember) => {
@@ -213,12 +227,55 @@ function BookPageContent({ slug }: { slug: string }) {
     }
   };
 
+  const pollPaymentStatus = async (paymentId: string) => {
+    setIsPollingPayment(true);
+    setPaymentStatus('processing');
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/payment-requests/${paymentId}/check-status`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const status = data.payment_request?.status;
+          
+          if (status === 'successful') {
+            setPaymentStatus('successful');
+            setIsPollingPayment(false);
+            clearInterval(pollInterval);
+            setTimeout(() => setStep('success'), 1500);
+          } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
+            setPaymentStatus('failed');
+            setIsPollingPayment(false);
+            clearInterval(pollInterval);
+          }
+        }
+      } catch (err) {
+        console.error('Error polling payment status:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    // Stop polling after 5 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      if (isPollingPayment) {
+        setIsPollingPayment(false);
+        setPaymentStatus('failed');
+      }
+    }, 300000);
+  };
+
   const handleConfirmBooking = async () => {
     setIsLoading(true);
     setError('');
 
     // Guard: ensure all required fields are present before calling API
-    if (!salonId || !selectedService?.id || !selectedTime || !selectedDate) {
+    if (!salonId || selectedServices.length === 0 || !selectedTime || !selectedDate) {
       setError('Something is missing. Please go back and complete all steps.');
       setIsLoading(false);
       return;
@@ -245,7 +302,7 @@ function BookPageContent({ slug }: { slug: string }) {
         customer_name: customerDetails.name,
         customer_phone: customerDetails.phone,
         customer_email: customerDetails.email || undefined,
-        service_id: selectedService?.id,
+        service_id: selectedServices.map(s => s.id),
         staff_id: selectedStaff?.id,
         date: selectedDate,
         time: selectedTime,
@@ -261,7 +318,12 @@ function BookPageContent({ slug }: { slug: string }) {
       if (result.requires_deposit) {
         // If payment was initialized, go to payment step
         if (result.payment) {
+          setPaymentRequestId(result.payment.id || '');
           setStep('payment');
+          // Start polling for payment status if it's an API payment
+          if (result.payment.type === 'api' && result.payment.id) {
+            pollPaymentStatus(result.payment.id);
+          }
         } else {
           // No payment method selected, show error
           setError('Please select a payment method to complete your booking.');
@@ -348,7 +410,7 @@ function BookPageContent({ slug }: { slug: string }) {
               details: 'Profile Details',
             };
             const stepSummaries = {
-              service: selectedService ? selectedService.name : 'Select Treatment',
+              service: selectedServices.length > 0 ? selectedServices.map(s => s.name).join(', ') : 'Select Treatment',
               staff: selectedStaff ? selectedStaff.name : 'Preferred Stylist',
               time: selectedTime ? `${selectedDate} @ ${selectedTime}` : 'Choose Time',
               details: customerDetails.name ? customerDetails.name : 'Your Info',
@@ -425,38 +487,67 @@ function BookPageContent({ slug }: { slug: string }) {
                   )}
                 </div>
               ) : (
-                <div className="flex overflow-x-auto pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:overflow-visible flex-nowrap space-x-4 md:space-x-0 gap-0 md:gap-4">
-                  {services.map((service) => (
-                    <motion.button
-                      key={service.id}
-                      whileHover={{ scale: 1.01, borderColor: 'rgba(255, 215, 0, 0.4)', backgroundColor: 'rgba(255, 255, 255, 0.04)' }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => handleServiceSelect(service)}
-                      className={`min-w-[85vw] snap-center md:min-w-0 p-6 rounded-2xl border text-left transition-all duration-300 backdrop-blur-md cursor-pointer relative overflow-hidden flex flex-col justify-between h-36 shrink-0 md:shrink ${
-                        selectedService?.id === service.id
-                          ? 'border-gold bg-gold/10 shadow-lg'
-                          : 'border-white/5 bg-white/[0.02]'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex justify-between items-start gap-4 mb-2">
-                          <h3 className="text-white font-sora font-semibold text-base tracking-tight leading-snug">{service.name}</h3>
-                          <span className="text-gold font-sora font-bold text-sm tracking-wide whitespace-nowrap bg-gold/10 px-2.5 py-0.5 rounded-lg border border-gold/20">
-                            {service.price.toLocaleString()} UGX
-                          </span>
-                        </div>
-                        <span className="text-[10px] uppercase font-bold tracking-widest font-mono text-white/30">
-                          {service.category}
-                        </span>
+                <>
+                  <div className="flex overflow-x-auto pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 md:overflow-visible flex-nowrap space-x-4 md:space-x-0 gap-0 md:gap-4">
+                    {services.map((service) => {
+                      const isSelected = selectedServices.some(s => s.id === service.id);
+                      return (
+                        <motion.button
+                          key={service.id}
+                          whileHover={{ scale: 1.01, borderColor: 'rgba(255, 215, 0, 0.4)', backgroundColor: 'rgba(255, 255, 255, 0.04)' }}
+                          whileTap={{ scale: 0.99 }}
+                          onClick={() => handleServiceSelect(service)}
+                          className={`min-w-[85vw] snap-center md:min-w-0 p-6 rounded-2xl border text-left transition-all duration-300 backdrop-blur-md cursor-pointer relative overflow-hidden flex flex-col justify-between h-36 shrink-0 md:shrink ${
+                            isSelected
+                              ? 'border-gold bg-gold/10 shadow-lg'
+                              : 'border-white/5 bg-white/[0.02]'
+                          }`}
+                        >
+                          <div className="absolute top-3 right-3">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                              isSelected ? 'border-gold bg-gold' : 'border-white/30'
+                            }`}>
+                              {isSelected && (
+                                <div className="w-2.5 h-2.5 rounded-full bg-black" />
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between items-start gap-4 mb-2">
+                              <h3 className="text-white font-sora font-semibold text-base tracking-tight leading-snug">{service.name}</h3>
+                              <span className="text-gold font-sora font-bold text-sm tracking-wide whitespace-nowrap bg-gold/10 px-2.5 py-0.5 rounded-lg border border-gold/20">
+                                {service.price.toLocaleString()} UGX
+                              </span>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold tracking-widest font-mono text-white/30">
+                              {service.category}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5 text-white/50 text-xs mt-4">
+                            <Clock className="w-3.5 h-3.5 text-gold" />
+                            <span>{service.duration} min duration</span>
+                          </div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedServices.length > 0 && (
+                    <div className="flex justify-between items-center pt-4">
+                      <div className="text-white/50 text-sm">
+                        {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} selected
                       </div>
-                      
-                      <div className="flex items-center gap-1.5 text-white/50 text-xs mt-4">
-                        <Clock className="w-3.5 h-3.5 text-gold" />
-                        <span>{service.duration} min duration</span>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
+                      <button
+                        onClick={handleContinueToStaff}
+                        className="px-8 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 active:scale-98 transition-all text-black font-semibold rounded-xl text-sm shadow-lg shadow-gold/10 flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </motion.div>
           )}
@@ -789,10 +880,12 @@ function BookPageContent({ slug }: { slug: string }) {
                   <span className="text-[9px] font-bold font-mono tracking-widest text-white/35 uppercase border-b border-white/5 pb-3 block">APPOINTMENT SUMMARY RECEIPT</span>
                   
                   <div className="space-y-4 mt-4 text-sm">
-                    <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                      <span className="text-white/50">Treatment Selected</span>
-                      <span className="text-white font-semibold font-sora">{selectedService?.name}</span>
-                    </div>
+                    {selectedServices.map((service, index) => (
+                      <div key={service.id} className="flex justify-between items-center py-2.5 border-b border-white/5">
+                        <span className="text-white/50">{index + 1}. {service.name}</span>
+                        <span className="text-white font-semibold font-sora">{service.price.toLocaleString()} UGX</span>
+                      </div>
+                    ))}
                     {selectedStaff && (
                       <div className="flex justify-between items-center py-2.5 border-b border-white/5">
                         <span className="text-white/50">Stylist Assigned</span>
@@ -808,15 +901,15 @@ function BookPageContent({ slug }: { slug: string }) {
                       <span className="text-white font-mono font-medium">{selectedTime}</span>
                     </div>
                     <div className="flex justify-between items-center py-2.5 border-b border-white/5">
-                      <span className="text-white/50">Treatment Duration</span>
-                      <span className="text-white font-mono font-medium">{selectedService?.duration} minutes</span>
+                      <span className="text-white/50">Total Duration</span>
+                      <span className="text-white font-mono font-medium">{selectedServices.reduce((sum, s) => sum + s.duration, 0)} minutes</span>
                     </div>
                     
                     {/* Invoice Split total */}
                     <div className="flex justify-between items-center pt-4">
                       <span className="text-white/50 font-medium">Grand Total</span>
                       <span className="text-gold font-sora font-extrabold text-2xl bg-gold/10 px-3 py-1 rounded-xl border border-gold/20 shadow-md">
-                        {selectedService?.price.toLocaleString()} UGX
+                        {selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()} UGX
                       </span>
                     </div>
                   </div>
@@ -835,13 +928,13 @@ function BookPageContent({ slug }: { slug: string }) {
                       <div className="flex gap-4 border-t border-amber-500/10 pt-2 mt-1 text-[10px] font-mono">
                         {salonPolicy.deposit_type === 'percentage' ? (
                           <>
-                            <span className="text-white/50">PAY NOW ({salonPolicy.deposit_value}%): <strong className="text-gold">{(selectedService ? selectedService.price * (salonPolicy.deposit_value / 100) : 0).toLocaleString()} UGX</strong></span>
-                            <span className="text-white/50">IN-STORE ({100 - salonPolicy.deposit_value}%): <strong className="text-white/80">{(selectedService ? selectedService.price * ((100 - salonPolicy.deposit_value) / 100) : 0).toLocaleString()} UGX</strong></span>
+                            <span className="text-white/50">PAY NOW ({salonPolicy.deposit_value}%): <strong className="text-gold">{(selectedServices.reduce((sum, s) => sum + s.price, 0) * (salonPolicy.deposit_value / 100)).toLocaleString()} UGX</strong></span>
+                            <span className="text-white/50">IN-STORE ({100 - salonPolicy.deposit_value}%): <strong className="text-white/80">{(selectedServices.reduce((sum, s) => sum + s.price, 0) * ((100 - salonPolicy.deposit_value) / 100)).toLocaleString()} UGX</strong></span>
                           </>
                         ) : (
                           <>
                             <span className="text-white/50">PAY NOW: <strong className="text-gold">{(salonPolicy.deposit_value || 0).toLocaleString()} UGX</strong></span>
-                            <span className="text-white/50">IN-STORE: <strong className="text-white/80">{(selectedService ? selectedService.price - (salonPolicy.deposit_value || 0) : 0).toLocaleString()} UGX</strong></span>
+                            <span className="text-white/50">IN-STORE: <strong className="text-white/80">{(selectedServices.reduce((sum, s) => sum + s.price, 0) - (salonPolicy.deposit_value || 0)).toLocaleString()} UGX</strong></span>
                           </>
                         )}
                       </div>
@@ -1035,38 +1128,116 @@ function BookPageContent({ slug }: { slug: string }) {
                       ) : (
                         // API payment (MTN MoMo, Airtel, Flutterwave)
                         <div>
-                          <div className="flex justify-between items-center mb-4">
-                            <span className="text-white/50 text-sm">Payment Reference</span>
-                            <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
-                          </div>
-                          <div className="flex justify-between items-center mb-6">
-                            <span className="text-white/50 text-sm">Amount</span>
-                            <span className="text-white font-semibold text-lg">
-                              {selectedService?.price ? `UGX ${Math.round(selectedService.price * 0.3).toLocaleString()}` : 'UGX 0'}
-                            </span>
-                          </div>
-                          <p className="text-white/40 text-xs mb-4">
-                            Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
-                          </p>
-                          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-4">
-                            <p className="text-blue-400 text-xs">
-                              ℹ️ Your booking will be confirmed automatically once payment is verified. This may take a few minutes.
-                            </p>
-                          </div>
-                          <div className="flex gap-3">
-                            <button
-                              onClick={() => setStep('confirm')}
-                              className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => setStep('success')}
-                              className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                            >
-                              Check Payment Status
-                            </button>
-                          </div>
+                          {paymentStatus === 'processing' ? (
+                            // Waiting for payment
+                            <div className="text-center py-8">
+                              <div className="w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center mx-auto mb-6">
+                                <Loader2 className="w-8 h-8 text-gold animate-spin" />
+                              </div>
+                              <h3 className="text-white font-semibold text-lg mb-2">Waiting for Payment</h3>
+                              <p className="text-white/50 text-sm mb-6">
+                                Please approve the payment request on your phone. We're checking for confirmation...
+                              </p>
+                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-6">
+                                <p className="text-blue-400 text-xs">
+                                  ℹ️ Check your phone for the MTN MoMo prompt. Enter your PIN to complete the payment.
+                                </p>
+                              </div>
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={() => {
+                                    setIsPollingPayment(false);
+                                    setStep('confirm');
+                                  }}
+                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : paymentStatus === 'successful' ? (
+                            // Payment successful
+                            <div className="text-center py-8">
+                              <div className="w-16 h-16 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center mx-auto mb-6">
+                                <CheckCircle2 className="w-8 h-8 text-green-400" />
+                              </div>
+                              <h3 className="text-white font-semibold text-lg mb-2">Payment Successful!</h3>
+                              <p className="text-white/50 text-sm mb-6">
+                                Your payment has been confirmed. Redirecting to confirmation...
+                              </p>
+                            </div>
+                          ) : paymentStatus === 'failed' ? (
+                            // Payment failed
+                            <div className="text-center py-8">
+                              <div className="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center mx-auto mb-6">
+                                <Loader2 className="w-8 h-8 text-red-400" />
+                              </div>
+                              <h3 className="text-white font-semibold text-lg mb-2">Payment Failed</h3>
+                              <p className="text-white/50 text-sm mb-6">
+                                The payment was not completed or timed out. Please try again.
+                              </p>
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={() => {
+                                    setPaymentStatus('pending');
+                                    if (paymentRequestId) {
+                                      pollPaymentStatus(paymentRequestId);
+                                    }
+                                  }}
+                                  className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                                >
+                                  Retry Payment
+                                </button>
+                                <button
+                                  onClick={() => setStep('confirm')}
+                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Initial payment state
+                            <div>
+                              <div className="flex justify-between items-center mb-4">
+                                <span className="text-white/50 text-sm">Payment Reference</span>
+                                <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
+                              </div>
+                              <div className="flex justify-between items-center mb-6">
+                                <span className="text-white/50 text-sm">Amount</span>
+                                <span className="text-white font-semibold text-lg">
+                                  {selectedServices.length > 0 ? `UGX ${Math.round(selectedServices.reduce((sum, s) => sum + s.price, 0) * 0.3).toLocaleString()}` : 'UGX 0'}
+                                </span>
+                              </div>
+                              <p className="text-white/40 text-xs mb-4">
+                                Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
+                              </p>
+                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-4">
+                                <p className="text-blue-400 text-xs">
+                                  ℹ️ Your booking will be confirmed automatically once payment is verified. This may take a few minutes.
+                                </p>
+                              </div>
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={() => setStep('confirm')}
+                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setPaymentStatus('processing');
+                                    if (paymentRequestId) {
+                                      pollPaymentStatus(paymentRequestId);
+                                    }
+                                  }}
+                                  className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
+                                >
+                                  Pay Now
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1105,7 +1276,7 @@ function BookPageContent({ slug }: { slug: string }) {
               <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 mb-8 text-left shadow-lg backdrop-blur-md text-sm space-y-3.5">
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-white/50">Treatment</span>
-                  <span className="text-white font-semibold font-sora text-right">{selectedService?.name}</span>
+                  <span className="text-white font-semibold font-sora text-right">{selectedServices.length > 0 ? selectedServices.map(s => s.name).join(', ') : 'Not selected'}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-white/50">Date</span>
@@ -1170,12 +1341,16 @@ function BookPageContent({ slug }: { slug: string }) {
   );
 }
 
-export default async function BookPage({ params }: { params: Promise<{ slug: string }> }) {
-  const resolvedParams = await params;
-  const slug = resolvedParams.slug;
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#070707]"><Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" /></div>}>
-      <BookPageContent slug={slug} />
-    </Suspense>
-  );
+export default function BookPage({ params }: { params: Promise<{ slug: string }> }) {
+  const [slug, setSlug] = useState<string>('');
+
+  useEffect(() => {
+    params.then(resolved => setSlug(resolved.slug));
+  }, [params]);
+
+  if (!slug) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#070707]"><Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" /></div>;
+  }
+
+  return <BookPageContent slug={slug} />;
 }

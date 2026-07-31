@@ -5,17 +5,50 @@ namespace Database\Seeders;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Salon;
+use App\Models\User;
+use App\Models\PaymentMethod;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class EmCutsDemoSeeder extends Seeder
 {
     public function run(): void
     {
+        // Create em-cuts salon if it doesn't exist
         $salon = Salon::where('slug', 'em-cuts')->first();
 
         if (!$salon) {
-            $this->command->error('Salon with slug "em-cuts" not found.');
-            return;
+            $salon = Salon::create([
+                'name' => 'Em Cuts',
+                'slug' => 'em-cuts',
+                'description' => 'Premium barbershop experience',
+                'address' => '123 Kampala Road',
+                'city' => 'Kampala',
+                'booking_deposit_enabled' => true,
+                'deposit_type' => 'percentage',
+                'deposit_value' => 30,
+                'deposit_required_for' => 'all',
+                'deposit_min_service_amount' => 10000,
+            ]);
+            $this->command->info('Created salon: Em Cuts');
+        }
+
+        // Create owner user for Em Cuts
+        $user = User::where('email', 'emcuts@yosalon.com')->first();
+        if (!$user) {
+            $user = User::create([
+                'name' => 'Em Cuts Owner',
+                'email' => 'emcuts@yosalon.com',
+                'password' => Hash::make('password123'),
+                'status' => 'active',
+            ]);
+            $this->command->info('Created user: emcuts@yosalon.com / password123');
+        }
+
+        // Attach user to salon as owner
+        if (!$user->salons()->where('salon_id', $salon->id)->exists()) {
+            $user->salons()->attach($salon->id, ['role' => 'owner']);
+            $this->command->info('Attached user to Em Cuts as owner');
         }
 
         // Add services
@@ -106,6 +139,28 @@ class EmCutsDemoSeeder extends Seeder
             } else {
                 $this->command->info("Staff already exists: {$staffData['name']}");
             }
+        }
+
+        // Add payment method (MTN Mobile Money)
+        $paymentMethod = PaymentMethod::where('salon_id', $salon->id)->first();
+        if (!$paymentMethod) {
+            PaymentMethod::create([
+                'salon_id' => $salon->id,
+                'provider' => 'mtn',
+                'type' => 'mobile_money',
+                'display_name' => 'MTN Mobile Money',
+                'account_identifier' => '256700123456',
+                'currency' => 'UGX',
+                'is_active' => true,
+                'is_primary' => true,
+                'environment' => 'sandbox',
+                'merchant_id' => 'demo-merchant-id',
+            ]);
+            $this->command->info('Added payment method: MTN Mobile Money');
+        } else {
+            // Update existing payment method to be primary
+            $paymentMethod->update(['is_primary' => true]);
+            $this->command->info('Updated payment method to primary');
         }
 
         $this->command->info('Em-cuts demo data seeded successfully!');

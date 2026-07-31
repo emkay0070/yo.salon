@@ -17,6 +17,9 @@ class PaymentMethod extends Model
         'is_active' => 'boolean',
         'metadata' => 'array',
         'credentials_verified_at' => 'datetime',
+        'api_key' => 'encrypted',
+        'api_secret' => 'encrypted',
+        'api_subscription_key' => 'encrypted',
     ];
 
     protected $hidden = [

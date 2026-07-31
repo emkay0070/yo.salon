@@ -57,8 +57,11 @@ class SalonPaymentService
             throw new \Exception('Payment method does not belong to this salon');
         }
 
+        // Calculate total from all services
+        $totalPrice = $booking->services()->sum('price');
+        
         // Calculate fees
-        $fees = $this->feeEngine->calculateFees($booking->total_price, $paymentMethod);
+        $fees = $this->feeEngine->calculateFees($totalPrice, $paymentMethod);
 
         $reference = 'SALON-' . strtoupper(Str::random(12));
 

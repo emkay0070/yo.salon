@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Payments\PlatformPaymentService;
 use App\Services\Payments\SalonPaymentService;
 use App\Services\Payments\FlutterwaveProvider;
+use App\Services\Payments\PaymentManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -15,15 +16,18 @@ class WebhookController extends Controller
     private PlatformPaymentService $platformPaymentService;
     private SalonPaymentService $salonPaymentService;
     private FlutterwaveProvider $flutterwaveProvider;
+    private PaymentManager $paymentManager;
 
     public function __construct(
         PlatformPaymentService $platformPaymentService,
         SalonPaymentService $salonPaymentService,
-        FlutterwaveProvider $flutterwaveProvider
+        FlutterwaveProvider $flutterwaveProvider,
+        PaymentManager $paymentManager
     ) {
         $this->platformPaymentService = $platformPaymentService;
         $this->salonPaymentService = $salonPaymentService;
         $this->flutterwaveProvider = $flutterwaveProvider;
+        $this->paymentManager = $paymentManager;
     }
 
     /**
@@ -144,6 +148,42 @@ class WebhookController extends Controller
             Log::error('Salon webhook processing failed', [
                 'error' => $e->getMessage(),
             ]);
+            return response()->json(['message' => 'Webhook processing failed'], 500);
+        }
+    }
+
+    /**
+     * Handle MTN MoMo webhook callbacks.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function handleMTN(Request $request): JsonResponse
+    {
+        $payload = $request->all();
+        $signature = $request->header('X-Reference-Id');
+
+        Log::info('MTN MoMo webhook received', [
+            'payload' => $payload,
+            'signature' => $signature,
+        ]);
+
+        try {
+            $result = $this->paymentManager->handleWebhook('mtn_momo', $payload, $signature);
+
+            if ($result) {
+                return response()->json(['message' => 'MTN webhook processed successfully'], 200);
+            } else {
+                Log::warning('MTN webhook processing failed');
+                return response()->json(['message' => 'Webhook processing failed'], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('MTN webhook processing failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'payload' => $payload,
+            ]);
+
             return response()->json(['message' => 'Webhook processing failed'], 500);
         }
     }

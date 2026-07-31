@@ -19,9 +19,9 @@ class BookingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Booking::with(['salon', 'customer', 'staff', 'service']);
-        
-        if ($salonId = $request->attributes->get('salon_id')) {
+        $query = Booking::with(['salon', 'customer', 'staff', 'services']);
+
+        if ($salonId = $request->query('salon_id')) {
             $query->where('salon_id', $salonId);
         }
         if ($request->has('date')) {
@@ -32,7 +32,7 @@ class BookingController extends Controller
                 $query->whereDate('date', $date);
             }
         }
-        
+
         $bookings = $query->get();
         return response()->json($bookings);
     }
@@ -125,14 +125,15 @@ class BookingController extends Controller
             'customer_name' => 'required|string',
             'customer_phone' => 'required|string',
             'customer_email' => 'nullable|email',
-            'service_id' => 'required|uuid|exists:services,id',
+            'service_id' => 'required|array|min:1', // Accept array of service IDs
+            'service_id.*' => 'uuid|exists:services,id', // Each service_id must be a valid UUID
             'staff_id' => 'nullable|uuid|exists:staff,id',
             'date' => 'required|date',
             'time' => 'nullable|string',
             'create_account' => 'boolean',
             'account_email' => 'required_if:create_account,true|nullable|email',
             'account_password' => 'required_if:create_account,true|nullable|string|min:8',
-            'payment_method_id' => 'nullable|uuid|exists:payment_methods,id',
+            'payment_method_id' => 'nullable|integer|exists:payment_methods,id',
         ]);
 
         try {

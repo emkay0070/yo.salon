@@ -31,7 +31,7 @@ class ApiClient {
       (error: AxiosError) => {
         if (error.response?.status === 401) {
           // Only redirect to login when on a protected route, not public pages like /book
-          const publicPaths = ['/book', '/welcome', '/login', '/register', '/forgot-password'];
+          const publicPaths = ['/book', '/welcome', '/login', '/register', '/forgot-password', '/salons'];
           const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
           if (!isPublicPage) {
             localStorage.removeItem('auth_token');

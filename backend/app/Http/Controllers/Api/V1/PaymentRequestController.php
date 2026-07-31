@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PaymentRequest;
 use App\Models\Booking;
 use App\Services\FeeEngine;
+use App\Services\Payments\PaymentManager;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -14,10 +15,12 @@ use Carbon\Carbon;
 class PaymentRequestController extends Controller
 {
     protected FeeEngine $feeEngine;
+    protected PaymentManager $paymentManager;
 
-    public function __construct(FeeEngine $feeEngine)
+    public function __construct(FeeEngine $feeEngine, PaymentManager $paymentManager)
     {
         $this->feeEngine = $feeEngine;
+        $this->paymentManager = $paymentManager;
     }
     public function index(Request $request): JsonResponse
     {
@@ -36,7 +39,7 @@ class PaymentRequestController extends Controller
 
     /**
      * Create and dispatch a new payment request.
-     * For mobile money, this would trigger the STK push via the provider.
+     * For mobile money, this triggers the STK push via the provider.
      */
     public function store(Request $request): JsonResponse
     {
@@ -49,6 +52,7 @@ class PaymentRequestController extends Controller
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'payment_method'    => 'nullable|string',
             'amount'            => 'required|numeric|min:1',
+            'phone_number'      => 'nullable|string',
         ]);
 
         $paymentMethodId = $validated['payment_method_id'] ?? null;
@@ -64,22 +68,115 @@ class PaymentRequestController extends Controller
             $paymentMethodId = $pm->id;
         }
 
+        // Get payment method to determine provider
+        $paymentMethod = $paymentMethodId ? \App\Models\PaymentMethod::find($paymentMethodId) : null;
+        $providerName = $paymentMethod?->provider ?? 'mtn_momo'; // Default to MTN
+
+        // VALIDATE AMOUNT: Backend should calculate amount, not trust frontend
+        $calculatedAmount = $validated['amount'];
+        if ($validated['booking_id']) {
+            $booking = Booking::with('services')->find($validated['booking_id']);
+            if ($booking) {
+                // Calculate actual amount from booking services
+                $serviceTotal = $booking->services->sum('price');
+                // Check if salon has deposit policy
+                $salonPolicy = \App\Models\FeatureFlag::where('salon_id', $salonId)
+                    ->where('key', 'booking_deposit_enabled')
+                    ->first();
+                
+                if ($salonPolicy && $salonPolicy->value === true) {
+                    $calculatedAmount = $serviceTotal * 0.3; // 30% deposit
+                } else {
+                    $calculatedAmount = $serviceTotal;
+                }
+
+                // Validate that frontend amount matches backend calculation (with small tolerance for rounding)
+                $tolerance = 100; // Allow 100 UGX difference for rounding
+                if (abs($validated['amount'] - $calculatedAmount) > $tolerance) {
+                    Log::warning('Payment amount mismatch', [
+                        'booking_id' => $validated['booking_id'],
+                        'frontend_amount' => $validated['amount'],
+                        'backend_amount' => $calculatedAmount,
+                    ]);
+                    return response()->json([
+                        'message' => 'Amount mismatch. Please refresh and try again.',
+                        'expected_amount' => $calculatedAmount,
+                    ], 400);
+                }
+            }
+        }
+
+        // IDEMPOTENCY CHECK: Check for existing pending payment request
+        if ($validated['booking_id']) {
+            $existingRequest = PaymentRequest::where('booking_id', $validated['booking_id'])
+                ->where('status', 'pending')
+                ->where('expires_at', '>', now())
+                ->latest()
+                ->first();
+
+            if ($existingRequest) {
+                Log::info('Returning existing pending payment request', [
+                    'booking_id' => $validated['booking_id'],
+                    'payment_request_id' => $existingRequest->id,
+                ]);
+                return response()->json($existingRequest->load(['booking', 'customer', 'paymentMethod']), 200);
+            }
+        }
+
+        // Generate unique reference
+        $reference = 'PAY-' . strtoupper(Str::random(12));
+
         $paymentRequest = PaymentRequest::create([
             'salon_id'           => $salonId,
             'booking_id'         => $validated['booking_id'] ?? null,
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
-            'amount'             => $validated['amount'],
-            'status'       => 'pending',
-            'requested_at' => now(),
-            'expires_at'   => now()->addMinutes(15),
+            'provider'           => $providerName,
+            'amount'             => $calculatedAmount, // Use backend-calculated amount
+            'phone_number'       => $validated['phone_number'] ?? null,
+            'status'             => 'pending',
+            'provider_reference' => $reference,
+            'requested_at'       => now(),
+            'expires_at'         => now()->addMinutes(15),
         ]);
 
-        // TODO: Dispatch to provider (e.g., Flutterwave / MTN MoMo)
-        // ProviderService::sendPushRequest($paymentRequest);
+        // Dispatch to provider if it's a mobile money provider
+        if (in_array($providerName, ['mtn_momo', 'airtel_money']) && $paymentRequest->phone_number) {
+            // Get credentials from payment method record (per-salon credentials)
+            $credentials = null;
+            if ($paymentMethod) {
+                $credentials = [
+                    'api_subscription_key' => $paymentMethod->api_subscription_key,
+                    'api_key' => $paymentMethod->api_key,
+                    'merchant_id' => $paymentMethod->merchant_id,
+                    'environment' => $paymentMethod->environment ?? 'sandbox',
+                ];
+            }
 
-        // Transition to 'sent' after dispatching
-        $paymentRequest->update(['status' => 'sent']);
+            $paymentData = [
+                'amount' => $calculatedAmount, // Use backend-calculated amount
+                'currency' => 'UGX',
+                'phone_number' => $paymentRequest->phone_number,
+                'reference' => $reference,
+                'description' => 'Payment for booking #' . ($paymentRequest->booking_id ?? 'N/A'),
+            ];
+
+            $response = $this->paymentManager->requestPayment($providerName, $paymentData, $credentials);
+
+            if ($response['success']) {
+                $paymentRequest->update([
+                    'status' => 'processing',
+                    'provider_reference' => $response['provider_reference'] ?? $reference,
+                ]);
+            } else {
+                $paymentRequest->update([
+                    'status' => 'failed',
+                ]);
+            }
+        } else {
+            // For cash or card, mark as pending (no STK push)
+            $paymentRequest->update(['status' => 'pending']);
+        }
 
         // Update booking payment_status to 'pending'
         if ($paymentRequest->booking_id) {
@@ -93,6 +190,19 @@ class PaymentRequestController extends Controller
     public function show(PaymentRequest $paymentRequest): JsonResponse
     {
         return response()->json($paymentRequest->load(['booking', 'customer', 'paymentMethod']));
+    }
+
+    /**
+     * Check payment status from database (webhook is source of truth)
+     * Polling should only read DB, never call provider directly
+     */
+    public function checkStatus(PaymentRequest $paymentRequest): JsonResponse
+    {
+        // Only return current status from database
+        // Webhook is the source of truth for payment status
+        return response()->json([
+            'payment_request' => $paymentRequest->load(['booking', 'customer', 'paymentMethod']),
+        ]);
     }
 
     /**

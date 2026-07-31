@@ -22,7 +22,7 @@ return new class extends Migration
         });
         
         // Add check constraint using raw SQL for PostgreSQL
-        DB::statement("ALTER TABLE payment_methods ADD CONSTRAINT payment_methods_type_check CHECK (type IN ('api', 'manual', 'offline', 'gateway'))");
+        DB::statement("ALTER TABLE payment_methods ADD CONSTRAINT payment_methods_type_check CHECK (type IN ('api', 'manual', 'offline', 'gateway', 'mobile_money', 'card', 'cash'))");
     }
 
     /**

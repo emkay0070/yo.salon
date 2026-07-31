@@ -69,6 +69,16 @@ export default function PaymentsPage() {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsFormData, setSettingsFormData] = useState({
+    merchant_id: '',
+    api_key: '',
+    api_secret: '',
+    api_subscription_key: '',
+    environment: 'sandbox',
+  });
+  const [verifying, setVerifying] = useState(false);
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
 
   // Queries
   const { data: paymentMethods = [], isLoading: isMethodsLoading } = useQuery({
@@ -123,6 +133,60 @@ export default function PaymentsPage() {
     if (e.deltaY > 0) scrollNext();
     else scrollPrev();
   }, [scrollNext, scrollPrev]);
+
+  const handleSettingsClick = () => {
+    if (!activeMethod) return;
+    setSettingsFormData({
+      merchant_id: activeMethod.merchant_id || '',
+      api_key: '',
+      api_secret: '',
+      api_subscription_key: '',
+      environment: activeMethod.environment || 'sandbox',
+    });
+    setVerificationSuccess(false);
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleVerifyCredentials = async () => {
+    if (!activeMethod) return;
+    setVerifying(true);
+    setVerificationSuccess(false);
+    try {
+      const response = await apiClient.post(`/payment-methods/${activeMethod.id}/verify-credentials`, settingsFormData);
+      if (response.data?.message) {
+        setVerificationSuccess(true);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
+      alert('Verification failed: ' + errorMessage);
+      setVerificationSuccess(false);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!activeMethod) return;
+    try {
+      // Only send non-empty credential fields to avoid encryption errors
+      const saveData: any = {
+        merchant_id: settingsFormData.merchant_id || undefined,
+        environment: settingsFormData.environment,
+      };
+
+      if (settingsFormData.api_key) saveData.api_key = settingsFormData.api_key;
+      if (settingsFormData.api_secret) saveData.api_secret = settingsFormData.api_secret;
+      if (settingsFormData.api_subscription_key) saveData.api_subscription_key = settingsFormData.api_subscription_key;
+
+      await apiClient.put(`/payment-methods/${activeMethod.id}`, saveData);
+      alert('Settings saved successfully!');
+      setIsSettingsModalOpen(false);
+      setVerificationSuccess(false);
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
+      alert('Failed to save settings: ' + errorMessage);
+    }
+  };
 
   // Loading State
   if (isMethodsLoading) {
@@ -345,7 +409,10 @@ export default function PaymentsPage() {
                   <ArrowUpRight className="w-4 h-4" />
                   Request
                 </button>
-                <button className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-card border border-border-light hover:bg-white/10 transition-colors text-text-primary font-medium text-sm">
+                <button
+                  onClick={handleSettingsClick}
+                  className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-card border border-border-light hover:bg-white/10 transition-colors text-text-primary font-medium text-sm"
+                >
                   <Settings className="w-4 h-4 text-text-primary/70" />
                   Settings
                 </button>
@@ -429,11 +496,112 @@ export default function PaymentsPage() {
         }}
       />
       
-      <AddMethodWizard 
-        isOpen={isWizardOpen} 
-        onClose={() => setIsWizardOpen(false)} 
-        salonId={salonId || ''} 
+      <AddMethodWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        salonId={salonId || ''}
       />
+
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#0c0c0c] border border-white/10 rounded-2xl p-6 w-full max-w-lg"
+          >
+            <h2 className="text-xl font-semibold text-white mb-6">
+              Configure {activeMethod?.display_name}
+            </h2>
+
+            {verificationSuccess && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg text-green-400 text-sm">
+                ✓ Credentials verified successfully! Click Save to persist them.
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Merchant ID (API User)</label>
+                <input
+                  type="text"
+                  value={settingsFormData.merchant_id}
+                  onChange={(e) => setSettingsFormData({ ...settingsFormData, merchant_id: e.target.value })}
+                  placeholder="Your merchant ID from MTN developer portal"
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm mb-2">API Key</label>
+                <input
+                  type="password"
+                  value={settingsFormData.api_key}
+                  onChange={(e) => setSettingsFormData({ ...settingsFormData, api_key: e.target.value })}
+                  placeholder="Your MTN API key (used for authentication)"
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Subscription Key</label>
+                <input
+                  type="password"
+                  value={settingsFormData.api_subscription_key}
+                  onChange={(e) => setSettingsFormData({ ...settingsFormData, api_subscription_key: e.target.value })}
+                  placeholder="Your MTN subscription key (Ocp-Apim-Subscription-Key header)"
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm mb-2">API Secret (Optional)</label>
+                <input
+                  type="password"
+                  value={settingsFormData.api_secret}
+                  onChange={(e) => setSettingsFormData({ ...settingsFormData, api_secret: e.target.value })}
+                  placeholder="Your MTN API secret (if required)"
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Environment</label>
+                <select
+                  value={settingsFormData.environment}
+                  onChange={(e) => setSettingsFormData({ ...settingsFormData, environment: e.target.value })}
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                >
+                  <option value="sandbox">Sandbox (Testing)</option>
+                  <option value="production">Production (Live)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="flex-1 px-4 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-lg text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVerifyCredentials}
+                disabled={verifying}
+                className="flex-1 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-400 transition-colors disabled:opacity-50"
+              >
+                {verifying ? 'Verifying...' : 'Verify'}
+              </button>
+              <button
+                onClick={handleSaveSettings}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-black rounded-lg font-semibold hover:opacity-90 transition-opacity"
+              >
+                Save
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

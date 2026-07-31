@@ -38,7 +38,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           </ThemeProvider>
         </RoleProvider>
       </SidebarProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }

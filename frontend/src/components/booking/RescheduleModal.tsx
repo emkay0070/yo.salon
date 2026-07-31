@@ -78,7 +78,7 @@ export default function RescheduleModal({ isOpen, onClose, booking, onSuccess }:
             exit={{ opacity: 0, scale: 0.95 }}
             className="fixed inset-0 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
           >
-            <div className="bg-card border border-border-light rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-card border border-border-light rounded-t-2xl sm:rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
               <div className="p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>

@@ -98,7 +98,21 @@ class PaymentMethodController extends Controller
                 ->update(['is_primary' => false]);
         }
 
-        $paymentMethod->update($validated);
+        // Only update credential fields if they are provided (not empty strings)
+        $updateData = [];
+        foreach ($validated as $key => $value) {
+            // Skip empty strings for credential fields to avoid encryption errors
+            if (in_array($key, ['api_key', 'api_secret', 'api_subscription_key', 'merchant_id'])) {
+                if ($value !== '' && $value !== null) {
+                    $updateData[$key] = $value;
+                }
+            } else {
+                // For non-credential fields, include the value even if null
+                $updateData[$key] = $value;
+            }
+        }
+
+        $paymentMethod->update($updateData);
         return response()->json($paymentMethod);
     }
 
@@ -117,28 +131,51 @@ class PaymentMethodController extends Controller
         $validated = $request->validate([
             'merchant_id'          => 'required|string|max:100',
             'api_key'              => 'required|string',
-            'api_secret'           => 'required|string',
-            'api_subscription_key' => 'nullable|string',
+            'api_secret'           => 'nullable|string',
+            'api_subscription_key' => 'required|string',
             'environment'          => 'required|in:sandbox,production',
         ]);
 
-        // Update payment method with credentials
-        $paymentMethod->update([
-            'merchant_id' => $validated['merchant_id'],
-            'api_key' => $validated['api_key'],
-            'api_secret' => $validated['api_secret'],
-            'api_subscription_key' => $validated['api_subscription_key'] ?? null,
-            'environment' => $validated['environment'],
-        ]);
+        // Verify credentials by testing with the provider (don't save to DB)
+        try {
+            if ($paymentMethod->provider === 'mtn' || $paymentMethod->provider === 'mtn_momo') {
+                $momoService = new \App\Services\Payments\MTNMomoService();
+                $momoService->setCredentials([
+                    'merchant_id' => $validated['merchant_id'],
+                    'api_key' => $validated['api_key'],
+                    'api_subscription_key' => $validated['api_subscription_key'],
+                    'environment' => $validated['environment'],
+                ]);
 
-        // TODO: Implement actual provider verification
-        // For now, mark as verified (in production, call provider's test endpoint)
-        $paymentMethod->update(['credentials_verified_at' => now()]);
+                // Test by getting access token
+                $token = $momoService->getAccessToken();
 
-        return response()->json([
-            'message' => 'Credentials verified successfully',
-            'payment_method' => $paymentMethod->fresh()->makeVisible(['api_key', 'api_secret', 'api_subscription_key']),
-        ]);
+                if ($token) {
+                    // Only mark as verified, don't save credentials yet
+                    $paymentMethod->update([
+                        'credentials_verified_at' => now(),
+                    ]);
+
+                    return response()->json([
+                        'message' => 'Credentials verified successfully. Click Save to persist them.',
+                    ]);
+                }
+            }
+
+            // For other providers or if verification fails
+            throw new \Exception('Failed to verify credentials');
+
+        } catch (\Exception $e) {
+            Log::error('Payment method credential verification failed', [
+                'provider' => $paymentMethod->provider,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Credential verification failed: ' . $e->getMessage(),
+            ], 422);
+        }
     }
 
     /**

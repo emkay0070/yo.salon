@@ -111,7 +111,7 @@ class BookingService
                 $requiresDeposit = false;
             } elseif ($requiresDeposit && $depositRequiredFor === 'first_time') {
                 $requiresDeposit = $customerResult['is_new'];
-            } elseif ($requiresDeposit && $deposit_required_for === 'high_value') {
+            } elseif ($requiresDeposit && $depositRequiredFor === 'high_value') {
                 // Check if service price is above minimum threshold
                 $service = \App\Models\Service::find($data['service_id']);
                 $requiresDeposit = $service && $service->price >= ($salon->deposit_min_service_amount ?? 0);
@@ -126,13 +126,17 @@ class BookingService
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
                 'staff_id' => $data['staff_id'] ?? null,
-                'service_id' => $data['service_id'],
+                'service_id' => is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'], // Keep single service_id for backward compatibility
                 'date' => $data['date'],
                 'time' => $data['time'],
                 'status' => $bookingStatus,
                 'payment_status' => $paymentStatus,
                 'notes' => $data['notes'] ?? null,
             ]);
+
+            // Attach services (support both single service_id and array of service_ids)
+            $serviceIds = is_array($data['service_id']) ? $data['service_id'] : [$data['service_id']];
+            $booking->services()->attach($serviceIds);
 
             // Create portal account if requested and customer doesn't have one
             $portalAccount = null;

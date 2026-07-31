@@ -245,27 +245,28 @@
 
   /* Custom scrollbar for all elements */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 3px;
+    height: 3px;
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--color-background);
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--brand-primary, var(--color-dark-gold));
-    border-radius: 3px;
+    background: rgba(255, 215, 0, 0.3);
+    border-radius: 10px;
+    transition: background 0.2s ease;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--brand-accent, var(--color-gold));
+    background: rgba(255, 215, 0, 0.6);
   }
 
   /* Firefox */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--brand-primary, var(--color-dark-gold)) var(--color-background);
+    scrollbar-color: rgba(255, 215, 0, 0.3) transparent;
   }
 
   /* Disable text selection on UI elements to feel like native app */

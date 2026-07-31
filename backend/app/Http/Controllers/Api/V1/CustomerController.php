@@ -69,9 +69,10 @@ class CustomerController extends Controller
             'salon_id' => 'required|uuid|exists:salons,id',
         ]);
 
-        $customer = Customer::withoutSalonScope()
-            ->where('phone', $validated['phone'])
-            ->where('salon_id', $validated['salon_id'])
+        $customer = Customer::where('phone', $validated['phone'])
+            ->whereHas('salons', function($query) use ($validated) {
+                $query->where('salons.id', $validated['salon_id']);
+            })
             ->first();
 
         if ($customer) {

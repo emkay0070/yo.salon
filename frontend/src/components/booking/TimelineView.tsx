@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -10,6 +10,7 @@ export interface Booking {
   service: string;
   staffName: string;
   time: string;
+  date: string;
   endTime: string;
   duration: number;
   status: string;
@@ -74,6 +75,14 @@ function SingleColumnTimeline({
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [direction, setDirection] = useState(0);
+  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentHour(new Date().getHours());
+    }, 60000); // Update every minute
+    return () => clearInterval(timer);
+  }, []);
 
   const go = (dir: number) => {
     setDirection(dir);
@@ -140,23 +149,24 @@ function SingleColumnTimeline({
         >
           {hours.map(hour => {
             const booking = current ? getBookingForSlot(bookings, current.name, hour) : null;
+            const isNow = hour === currentHour;
             return (
               <div key={hour} className="flex items-stretch gap-3 min-h-[56px]">
                 {/* Time label */}
                 <div className="w-12 flex-shrink-0 flex items-start pt-1">
-                  <span className="text-text-muted text-xs font-medium">
-                    {hour > 12 ? `${hour - 12}PM` : hour === 12 ? '12PM' : `${hour}AM`}
+                  <span className={`text-xs font-medium ${isNow ? 'text-gold font-bold' : 'text-text-muted'}`}>
+                    {isNow ? 'NOW' : (hour > 12 ? `${hour - 12}PM` : hour === 12 ? '12PM' : `${hour}AM`)}
                   </span>
                 </div>
 
                 {/* Divider + slot */}
                 <div className="flex-1 relative">
-                  <div className="absolute top-3 left-0 right-0 border-t border-border-light/40" />
+                  <div className={`absolute top-3 left-0 right-0 border-t ${isNow ? 'border-gold' : 'border-border-light/40'}`} />
                   {booking ? (
                     <motion.button
                       whileTap={{ scale: 0.97 }}
                       onClick={() => onBookingClick(booking)}
-                      className={`relative z-10 w-full text-left p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${getStatusStyle(booking.status)}`}
+                      className={`relative z-10 w-full text-left p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${getStatusStyle(booking.status)} ${isNow ? 'ring-2 ring-gold/50' : ''}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
@@ -166,7 +176,7 @@ function SingleColumnTimeline({
                       <p className="text-xs pl-3.5 opacity-60 mt-0.5">{booking.time} · UGX {booking.price.toLocaleString()}</p>
                     </motion.button>
                   ) : (
-                    <div className="relative z-10 w-full h-[48px] rounded-xl border border-dashed border-border-medium hover:border-gold/15 transition-colors" />
+                    <div className={`relative z-10 w-full h-[48px] rounded-xl border border-dashed ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/15'} transition-colors`} />
                   )}
                 </div>
               </div>
@@ -203,6 +213,15 @@ function MultiColumnTimeline({
   bookings: Booking[];
   onBookingClick: (b: Booking) => void;
 }) {
+  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentHour(new Date().getHours());
+    }, 60000); // Update every minute
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="bg-surface/50 border border-border-light rounded-2xl p-4 backdrop-blur-xl">
       {/* Staff header row */}
@@ -220,40 +239,43 @@ function MultiColumnTimeline({
 
       {/* Grid */}
       <div className="space-y-1">
-        {hours.map(hour => (
-          <div key={hour} className="flex items-stretch min-h-[52px]">
-            <div className="w-16 flex-shrink-0 flex items-start pt-1">
-              <span className="text-text-muted text-xs font-medium">
-                {hour > 12 ? `${hour - 12}PM` : hour === 12 ? '12PM' : `${hour}AM`}
-              </span>
+        {hours.map(hour => {
+          const isNow = hour === currentHour;
+          return (
+            <div key={hour} className="flex items-stretch min-h-[52px]">
+              <div className="w-16 flex-shrink-0 flex items-start pt-1">
+                <span className={`text-xs font-medium ${isNow ? 'text-gold font-bold' : 'text-text-muted'}`}>
+                  {isNow ? 'NOW' : (hour > 12 ? `${hour - 12}PM` : hour === 12 ? '12PM' : `${hour}AM`)}
+                </span>
+              </div>
+              {staff.map(s => {
+                const booking = getBookingForSlot(bookings, s.name, hour);
+                return (
+                  <div key={s.id} className="flex-1 px-1 relative">
+                    <div className={`absolute top-3 left-1 right-1 border-t ${isNow ? 'border-gold' : 'border-border-light/40'}`} />
+                    {booking ? (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => onBookingClick(booking)}
+                        className={`relative z-10 w-full text-left p-2 rounded-xl border cursor-pointer transition-colors shadow-sm ${getStatusStyle(booking.status)} ${isNow ? 'ring-2 ring-gold/50' : ''}`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
+                          <p className="text-text-primary font-medium text-xs truncate">{booking.customerName}</p>
+                        </div>
+                        <p className="text-[10px] truncate pl-3 opacity-75">{booking.service}</p>
+                        <p className="text-[10px] pl-3 opacity-50 mt-0.5">{booking.time}</p>
+                      </motion.button>
+                    ) : (
+                      <div className={`relative z-10 h-[44px] rounded-xl border border-dashed ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/15'} transition-colors`} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            {staff.map(s => {
-              const booking = getBookingForSlot(bookings, s.name, hour);
-              return (
-                <div key={s.id} className="flex-1 px-1 relative">
-                  <div className="absolute top-3 left-1 right-1 border-t border-border-light/40" />
-                  {booking ? (
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => onBookingClick(booking)}
-                      className={`relative z-10 w-full text-left p-2 rounded-xl border cursor-pointer transition-colors shadow-sm ${getStatusStyle(booking.status)}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
-                        <p className="text-text-primary font-medium text-xs truncate">{booking.customerName}</p>
-                      </div>
-                      <p className="text-[10px] truncate pl-3 opacity-75">{booking.service}</p>
-                      <p className="text-[10px] pl-3 opacity-50 mt-0.5">{booking.time}</p>
-                    </motion.button>
-                  ) : (
-                    <div className="relative z-10 h-[44px] rounded-xl border border-dashed border-border-medium hover:border-gold/15 transition-colors" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Legend */}

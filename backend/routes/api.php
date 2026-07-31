@@ -37,6 +37,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/webhooks/flutterwave', [WebhookController::class, 'handleFlutterwave']);
     Route::post('/webhooks/platform', [WebhookController::class, 'handlePlatformWebhook']);
     Route::post('/webhooks/salon', [WebhookController::class, 'handleSalonWebhook']);
+    Route::post('/webhooks/mtn', [WebhookController::class, 'handleMTN']);
 
     // Public routes
     Route::get('/salons', [SalonController::class, 'index']);
@@ -50,6 +51,9 @@ Route::prefix('v1')->group(function () {
     
     // Public customer lookup
     Route::post('/customers/lookup', [CustomerController::class, 'lookup']);
+    
+    // Public payment methods (no auth required - for booking flow)
+    Route::get('/salons/{salon}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
     
     // Authentication routes
     Route::post('/auth/register', [AuthController::class, 'register']);
@@ -162,14 +166,12 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('payment-methods', PaymentMethodController::class);
         Route::post('/payment-methods/test-connection', [PaymentMethodController::class, 'testConnection']);
         Route::post('/payment-methods/{paymentMethod}/verify-credentials', [PaymentMethodController::class, 'verifyCredentials']);
-        
-        // Public payment methods (no auth required - for booking flow)
-        Route::get('/salons/{salon}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
 
         // Payments — Requests
         Route::apiResource('payment-requests', PaymentRequestController::class)->except(['update']);
         Route::patch('/payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus']);
         Route::post('/payment-requests/{paymentRequest}/cancel', [PaymentRequestController::class, 'cancel']);
+        Route::get('/payment-requests/{paymentRequest}/check-status', [PaymentRequestController::class, 'checkStatus']);
 
         // Payments — Platform (B2B - Subscription Payments)
         Route::prefix('payments/platform')->group(function () {
