@@ -210,7 +210,7 @@ class PortalAuthService
                 'packages' => 0,
                 'gift_cards' => 0,
             ],
-            'loyalty_summary' => $this->loyaltyService->getCustomerSummary($customer, $salonId),
+            'loyalty_summary' => $this->loyaltyService->getCustomerSummary($customer->id, $salonId),
             'notification_count' => 0,
         ];
     }

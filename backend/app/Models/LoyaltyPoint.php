@@ -82,6 +82,7 @@ class LoyaltyPoint extends Model
                 'tier' => 'bronze',
                 'progress' => 0,
                 'points_to_next' => 100,
+                'next_tier' => 'silver',
             ];
         }
 

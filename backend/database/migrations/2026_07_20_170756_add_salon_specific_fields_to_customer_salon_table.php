@@ -12,7 +12,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('customer_salon', function (Blueprint $table) {
-            //
+            $table->string('loyalty_tier')->default('bronze')->after('joined_at');
+            $table->decimal('wallet_balance', 10, 2)->default(0)->after('loyalty_tier');
+            $table->uuid('preferred_staff_id')->nullable()->after('wallet_balance');
+            $table->boolean('is_blocked')->default(false)->after('preferred_staff_id');
+            $table->text('block_reason')->nullable()->after('is_blocked');
+
+            $table->foreign('preferred_staff_id')->references('id')->on('staff')->onDelete('set null');
         });
     }
 

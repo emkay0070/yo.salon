@@ -104,8 +104,18 @@ class CapabilityService
         return $available;
     }
 
-    public function getCustomerCapabilities(Customer $customer): array
+    public function getCustomerCapabilities(Customer $customer, ?string $salonId = null): array
     {
+        // If no salonId provided, use the first salon relationship
+        if (!$salonId) {
+            $firstSalon = $customer->salons()->first();
+            $salonId = $firstSalon ? $firstSalon->id : null;
+        }
+
+        // Temporarily set salon_id on customer model for allowsCustomer
+        $originalSalonId = $customer->salon_id ?? null;
+        $customer->salon_id = $salonId;
+
         $allFeatures = [
             'wallet',
             'loyalty',
@@ -127,6 +137,9 @@ class CapabilityService
         foreach ($allFeatures as $feature) {
             $capabilities[$feature] = $this->allowsCustomer($customer, $feature);
         }
+
+        // Restore original salon_id
+        $customer->salon_id = $originalSalonId;
 
         return $capabilities;
     }
