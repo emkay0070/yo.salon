@@ -46,4 +46,9 @@ class CreateBookingNotification
             ],
         ]);
     }
+
+    public function __invoke(BookingCreated $event)
+    {
+        return $this->handle($event);
+    }
 }

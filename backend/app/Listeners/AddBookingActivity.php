@@ -11,9 +11,9 @@ class AddBookingActivity
     {
         BookingActivity::create([
             'booking_id' => $event->bookingId,
-            'type' => 'created',
+            'type' => 'booking_created',
             'title' => 'Booking Created',
-            'description' => "Booking submitted for {$event->serviceNames}",
+            'description' => "New booking created by {$event->customerName}",
             'data' => [
                 'customer_name' => $event->customerName,
                 'service_names' => $event->serviceNames,
@@ -23,5 +23,10 @@ class AddBookingActivity
             'actor_type' => 'customer',
             'actor_id' => $event->customerId,
         ]);
+    }
+
+    public function __invoke(BookingCreated $event)
+    {
+        return $this->handle($event);
     }
 }

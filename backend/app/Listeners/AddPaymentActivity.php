@@ -24,4 +24,9 @@ class AddPaymentActivity
             'actor_type' => 'system',
         ]);
     }
+
+    public function __invoke(PaymentConfirmed $event)
+    {
+        return $this->handle($event);
+    }
 }

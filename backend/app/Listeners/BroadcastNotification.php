@@ -39,4 +39,9 @@ class BroadcastNotification
             $dashboardController->invalidateStatsCache($salonId);
         }
     }
+
+    public function __invoke($event)
+    {
+        return $this->handle($event);
+    }
 }

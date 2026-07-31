@@ -45,4 +45,9 @@ class CreatePaymentNotification
             ],
         ]);
     }
+
+    public function __invoke(PaymentConfirmed $event)
+    {
+        return $this->handle($event);
+    }
 }
