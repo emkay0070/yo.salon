@@ -70,7 +70,18 @@ export default function PaymentsPage() {
   const [isHovered, setIsHovered] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [settingsFormData, setSettingsFormData] = useState({
+    merchant_id: '',
+    api_key: '',
+    api_secret: '',
+    api_subscription_key: '',
+    environment: 'sandbox',
+  });
+  const [addFormData, setAddFormData] = useState({
+    provider: 'mtn_momo',
+    type: 'mobile_money',
+    display_name: 'MTN MoMo',
     merchant_id: '',
     api_key: '',
     api_secret: '',
@@ -79,6 +90,8 @@ export default function PaymentsPage() {
   });
   const [verifying, setVerifying] = useState(false);
   const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [addVerifying, setAddVerifying] = useState(false);
+  const [addVerificationSuccess, setAddVerificationSuccess] = useState(false);
 
   // Queries
   const { data: paymentMethods = [], isLoading: isMethodsLoading } = useQuery({
@@ -185,6 +198,38 @@ export default function PaymentsPage() {
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
       alert('Failed to save settings: ' + errorMessage);
+    }
+  };
+
+  const handleAddPaymentMethod = () => {
+    setAddFormData({
+      provider: 'mtn_momo',
+      type: 'mobile_money',
+      display_name: 'MTN MoMo',
+      merchant_id: '',
+      api_key: '',
+      api_secret: '',
+      api_subscription_key: '',
+      environment: 'sandbox',
+    });
+    setAddVerificationSuccess(false);
+    setIsAddModalOpen(true);
+  };
+
+  const handleVerifyAddCredentials = async () => {
+    setAddVerifying(true);
+    setAddVerificationSuccess(false);
+    try {
+      const response = await apiClient.post(`/payment-methods`, addFormData);
+      if (response.data) {
+        setAddVerificationSuccess(true);
+      }
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error occurred';
+      alert('Verification failed: ' + errorMessage);
+      setAddVerificationSuccess(false);
+    } finally {
+      setAddVerifying(false);
     }
   };
 
@@ -417,6 +462,17 @@ export default function PaymentsPage() {
                   Settings
                 </button>
               </div>
+
+              {/* Add Payment Method Button */}
+              {paymentMethods.length === 0 && (
+                <button
+                  onClick={handleAddPaymentMethod}
+                  className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-[#2F7A5C]/10 border border-[#2F7A5C]/30 hover:bg-[#2F7A5C]/20 transition-colors text-[#2F7A5C] font-medium text-sm w-full mt-3"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Payment Method
+                </button>
+              )}
             </div>
           </div>
 
@@ -597,6 +653,130 @@ export default function PaymentsPage() {
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-black rounded-lg font-semibold hover:opacity-90 transition-opacity"
               >
                 Save
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Add Payment Method Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#0c0c0c] border border-white/10 rounded-2xl p-6 w-full max-w-lg"
+          >
+            <h2 className="text-xl font-semibold text-white mb-6">
+              Add Payment Method
+            </h2>
+
+            {addVerificationSuccess && (
+              <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg text-green-400 text-sm">
+                ✓ Payment method added successfully!
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Provider</label>
+                <select
+                  value={addFormData.provider}
+                  onChange={(e) => setAddFormData({ ...addFormData, provider: e.target.value })}
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                >
+                  <option value="mtn_momo">MTN MoMo</option>
+                  <option value="airtel_money">Airtel Money</option>
+                  <option value="flutterwave">Flutterwave</option>
+                  <option value="cash">Cash</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Display Name</label>
+                <input
+                  type="text"
+                  value={addFormData.display_name}
+                  onChange={(e) => setAddFormData({ ...addFormData, display_name: e.target.value })}
+                  placeholder="e.g., MTN Mobile Money"
+                  className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              {(addFormData.provider === 'mtn_momo' || addFormData.provider === 'airtel_money') && (
+                <>
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Merchant ID (API User)</label>
+                    <input
+                      type="text"
+                      value={addFormData.merchant_id}
+                      onChange={(e) => setAddFormData({ ...addFormData, merchant_id: e.target.value })}
+                      placeholder="Your merchant ID from provider portal"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">API Key</label>
+                    <input
+                      type="password"
+                      value={addFormData.api_key}
+                      onChange={(e) => setAddFormData({ ...addFormData, api_key: e.target.value })}
+                      placeholder="Your API key"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Subscription Key</label>
+                    <input
+                      type="password"
+                      value={addFormData.api_subscription_key}
+                      onChange={(e) => setAddFormData({ ...addFormData, api_subscription_key: e.target.value })}
+                      placeholder="Your subscription key"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">API Secret (Optional)</label>
+                    <input
+                      type="password"
+                      value={addFormData.api_secret}
+                      onChange={(e) => setAddFormData({ ...addFormData, api_secret: e.target.value })}
+                      placeholder="Your API secret (if required)"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-white/70 text-sm mb-2">Environment</label>
+                    <select
+                      value={addFormData.environment}
+                      onChange={(e) => setAddFormData({ ...addFormData, environment: e.target.value })}
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#FFD700]"
+                    >
+                      <option value="sandbox">Sandbox</option>
+                      <option value="production">Production</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="flex-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVerifyAddCredentials}
+                disabled={addVerifying}
+                className="flex-1 px-4 py-2 rounded-lg bg-[#6C5CE7] text-white hover:bg-[#5B4BC4] transition-colors disabled:opacity-50"
+              >
+                {addVerifying ? 'Verifying...' : 'Add & Verify'}
               </button>
             </div>
           </motion.div>

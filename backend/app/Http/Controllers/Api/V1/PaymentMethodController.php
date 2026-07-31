@@ -60,12 +60,53 @@ class PaymentMethodController extends Controller
 
         $validated['salon_id'] = $salonId;
 
+        // For MTN, verify credentials before creating
+        if (in_array($validated['provider'], ['mtn', 'mtn_momo'])) {
+            if (empty($validated['merchant_id']) || empty($validated['api_key']) || empty($validated['api_subscription_key'])) {
+                return response()->json(['message' => 'Merchant ID, API Key, and Subscription Key are required for MTN MoMo'], 422);
+            }
+
+            try {
+                $momoService = new \App\Services\Payments\MTNMomoService();
+                $momoService->setCredentials([
+                    'merchant_id' => $validated['merchant_id'],
+                    'api_key' => $validated['api_key'],
+                    'api_subscription_key' => $validated['api_subscription_key'],
+                    'environment' => $validated['environment'] ?? 'sandbox',
+                ]);
+
+                // Test by getting access token
+                $token = $momoService->getAccessToken();
+
+                if (!$token) {
+                    return response()->json(['message' => 'Failed to verify MTN credentials'], 422);
+                }
+            } catch (\Exception $e) {
+                Log::error('MTN credential verification failed during creation', [
+                    'error' => $e->getMessage(),
+                ]);
+                return response()->json(['message' => 'Credential verification failed: ' . $e->getMessage()], 422);
+            }
+        }
+
         // Enforce one primary per salon
         if (!empty($validated['is_primary'])) {
             PaymentMethod::where('salon_id', $salonId)->update(['is_primary' => false]);
         }
 
-        $method = PaymentMethod::create($validated);
+        // Filter out empty strings for credential fields to avoid encryption errors
+        $createData = [];
+        foreach ($validated as $key => $value) {
+            if (in_array($key, ['api_key', 'api_secret', 'api_subscription_key', 'merchant_id'])) {
+                if ($value !== '' && $value !== null) {
+                    $createData[$key] = $value;
+                }
+            } else {
+                $createData[$key] = $value;
+            }
+        }
+
+        $method = PaymentMethod::create($createData);
         return response()->json($method, 201);
     }
 
