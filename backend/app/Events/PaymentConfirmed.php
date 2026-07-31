@@ -55,4 +55,9 @@ class PaymentConfirmed implements ShouldBroadcast
             'paid_at' => $this->transaction->paid_at->toIso8601String(),
         ];
     }
+
+    public function broadcastWhen()
+    {
+        return config('reverb.apps.0.key') && config('reverb.apps.0.app_id');
+    }
 }
