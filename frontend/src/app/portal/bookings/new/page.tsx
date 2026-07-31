@@ -5,7 +5,6 @@ import { Calendar, Clock, User, ArrowRight, ChevronLeft } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -68,7 +67,6 @@ export default function NewBookingPage() {
   }
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -166,7 +164,6 @@ export default function NewBookingPage() {
           />
         )}
       </div>
-    </ClientLayout>
   );
 }
 

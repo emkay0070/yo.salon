@@ -5,7 +5,6 @@ import { Sparkles, Scissors, Clock, DollarSign, Search } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 import { useState } from 'react';
 
 export default function DiscoverPage() {
@@ -31,7 +30,6 @@ export default function DiscoverPage() {
   }
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -79,7 +77,6 @@ export default function DiscoverPage() {
           )}
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 

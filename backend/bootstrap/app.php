@@ -17,9 +17,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'salon.context' => \App\Http\Middleware\ResolveSalonContext::class,
             'portal.context' => \App\Http\Middleware\ResolvePortalContext::class,
         ]);
-
-        // Disable logging for API responses to prevent memory issues
-        $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

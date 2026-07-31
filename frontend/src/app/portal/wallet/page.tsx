@@ -5,7 +5,6 @@ import { Wallet, Plus, History, ArrowUp, ArrowDown } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 
 export default function WalletPage() {
   const { customer, salon } = usePortalAuth();
@@ -28,7 +27,6 @@ export default function WalletPage() {
   const transactions = walletData?.recent_transactions || [];
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -100,7 +98,6 @@ export default function WalletPage() {
           )}
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 

@@ -6,7 +6,6 @@ import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { usePortalBrand } from '@/contexts/PortalBrandContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -35,7 +34,6 @@ export default function BookingsPage() {
   }
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -163,7 +161,6 @@ export default function BookingsPage() {
           )}
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 

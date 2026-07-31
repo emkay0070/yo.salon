@@ -33,7 +33,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   const isAuthPage = ['/portal/login', '/portal/create-account'].includes(pathname);
 
   if (isAuthPage) {
-    return <main className="min-h-screen bg-[#070707] font-sans text-text-primary selection:bg-gold/30">{children}</main>;
+    return <main className="min-h-screen bg-background font-sans text-text-primary selection:bg-gold/30">{children}</main>;
   }
 
   if (isLoading) {

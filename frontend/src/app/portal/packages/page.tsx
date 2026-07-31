@@ -5,7 +5,6 @@ import { CreditCard, ShoppingBag, Check, Star } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 
 export default function PackagesPage() {
   const { customer, salon } = usePortalAuth();
@@ -52,7 +51,6 @@ export default function PackagesPage() {
   }
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -99,7 +97,6 @@ export default function PackagesPage() {
           </div>
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 

@@ -6,7 +6,6 @@ import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { usePortalBrand } from '@/contexts/PortalBrandContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 import { useRouter } from 'next/navigation';
 
 export default function ProfilePage() {
@@ -47,7 +46,6 @@ export default function ProfilePage() {
   const profile = profileData || {};
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -196,7 +194,6 @@ export default function ProfilePage() {
           </button>
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 

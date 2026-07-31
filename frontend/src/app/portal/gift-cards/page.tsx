@@ -5,7 +5,6 @@ import { Gift, Plus, Check, Send, Clock, CreditCard } from 'lucide-react';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ClientLayout from '@/components/ClientLayout';
 import { useState } from 'react';
 
 export default function GiftCardsPage() {
@@ -64,7 +63,6 @@ export default function GiftCardsPage() {
   }
 
   return (
-    <ClientLayout>
       <div className="space-y-6">
         {/* Header */}
         <motion.div
@@ -161,7 +159,6 @@ export default function GiftCardsPage() {
           )}
         </motion.div>
       </div>
-    </ClientLayout>
   );
 }
 
