@@ -33,13 +33,18 @@ class PaymentMethodController extends Controller
      * Get public payment methods for a salon (no auth required)
      * Used in booking flow to show available payment options
      */
-    public function getPublicMethods(string $salonId): JsonResponse
+    public function getPublicMethods(string $slug): JsonResponse
     {
-        $methods = PaymentMethod::where('salon_id', $salonId)
+        $salon = \App\Models\Salon::where('slug', $slug)->first();
+        if (!$salon) {
+            return response()->json(['message' => 'Salon not found'], 404);
+        }
+
+        $methods = PaymentMethod::where('salon_id', $salon->id)
             ->where('is_active', true)
             ->orderBy('is_primary', 'desc')
             ->get(['id', 'provider', 'type', 'display_name']);
-        
+
         return response()->json($methods);
     }
 

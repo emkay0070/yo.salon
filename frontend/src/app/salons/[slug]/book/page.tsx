@@ -116,7 +116,7 @@ function BookPageContent({ slug }: { slug: string }) {
               setLoadingError(`Failed to load staff: ${err.message || 'Unknown error'}`);
               return setStaff([]);
             }),
-            apiClient.getSalonPaymentMethods(salon.id).then((methods) => {
+            apiClient.getSalonPaymentMethods(salonSlug).then((methods) => {
               console.log('Payment methods fetched:', methods);
               setPaymentMethods(methods);
               // Auto-select primary payment method if available

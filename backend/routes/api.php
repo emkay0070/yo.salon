@@ -53,7 +53,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/customers/lookup', [CustomerController::class, 'lookup']);
     
     // Public payment methods (no auth required - for booking flow)
-    Route::get('/salons/{salon}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
+    Route::get('/salons/{slug}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
     
     // Authentication routes
     Route::post('/auth/register', [AuthController::class, 'register']);
