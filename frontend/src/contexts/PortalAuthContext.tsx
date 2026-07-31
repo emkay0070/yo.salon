@@ -66,6 +66,7 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
 
   const hydrateFromContext = useCallback((data: any) => {
+    console.log('Hydrating from context:', data);
     setCustomer(data.customer);
     setSalon(data.active_salon);
     setSalons(data.salons || []);
@@ -112,7 +113,7 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
       // Update the stored salon ID so subsequent requests use it
       portalApiClient.setActiveSalonId(salonId);
       // Re-fetch context with new salon
-      const data = await portalApiClient.get('/v1/portal/context');
+      const data = await portalApiClient.get('/portal/context');
       hydrateFromContext(data);
     } catch (error) {
       console.error("Failed to switch salon:", error);

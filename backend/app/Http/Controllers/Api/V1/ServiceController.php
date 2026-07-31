@@ -102,7 +102,8 @@ class ServiceController extends Controller
             return response()->json(['message' => 'No salon context found'], 400);
         }
 
-        $services = Service::where('salon_id', $salonId)
+        $services = Service::withoutGlobalScope('salon')
+            ->where('salon_id', $salonId)
             ->where('active', true)
             ->get();
             
