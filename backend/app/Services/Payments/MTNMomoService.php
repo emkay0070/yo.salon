@@ -383,9 +383,26 @@ class MTNMomoService implements PaymentProviderInterface
         ]);
 
         // Update booking payment status
+        $booking = null;
         if ($paymentRequest->booking_id) {
-            \App\Models\Booking::where('id', $paymentRequest->booking_id)
-                ->update(['payment_status' => 'paid']);
+            $booking = \App\Models\Booking::find($paymentRequest->booking_id);
+            if ($booking) {
+                $booking->update(['payment_status' => 'paid']);
+            }
+        }
+
+        // Dispatch PaymentConfirmed event to trigger notifications and timeline updates
+        if ($booking) {
+            \App\Events\PaymentConfirmed::dispatch(
+                $booking,
+                $transaction,
+                $paymentRequest->customer_id
+            );
+
+            Log::info('MTN MoMo: PaymentConfirmed event dispatched', [
+                'booking_id' => $booking->id,
+                'transaction_id' => $transaction->id,
+            ]);
         }
 
         Log::info('MTN MoMo: Payment processed successfully', [

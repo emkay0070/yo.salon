@@ -9,6 +9,8 @@ class CreatePaymentNotification
 {
     public function handle(PaymentConfirmed $event)
     {
+        $paymentMethod = $event->transaction->paymentMethod?->name ?? 'MTN MoMo';
+
         // Create notification for salon
         Notification::create([
             'salon_id' => $event->salonId,
@@ -17,12 +19,12 @@ class CreatePaymentNotification
             'priority' => 'high',
             'icon' => 'wallet',
             'title' => 'Payment Received',
-            'message' => "Payment of {$event->amount} UGX received via {$event->paymentMethod}",
-            'action_url' => "/dashboard/bookings/{$event->bookingId}",
+            'message' => "Payment of {$event->amount} UGX received via {$paymentMethod}",
+            'action_url' => "/dashboard/bookings/{$event->booking->id}",
             'data' => [
-                'booking_id' => $event->bookingId,
+                'booking_id' => $event->booking->id,
                 'amount' => $event->amount,
-                'payment_method' => $event->paymentMethod,
+                'payment_method' => $paymentMethod,
             ],
         ]);
 
@@ -35,11 +37,11 @@ class CreatePaymentNotification
             'icon' => 'wallet',
             'title' => 'Payment Confirmed',
             'message' => "Your payment of {$event->amount} UGX has been confirmed",
-            'action_url' => "/portal/bookings/{$event->bookingId}",
+            'action_url' => "/portal/bookings/{$event->booking->id}",
             'data' => [
-                'booking_id' => $event->bookingId,
+                'booking_id' => $event->booking->id,
                 'amount' => $event->amount,
-                'payment_method' => $event->paymentMethod,
+                'payment_method' => $paymentMethod,
             ],
         ]);
     }

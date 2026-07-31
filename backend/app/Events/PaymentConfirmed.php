@@ -2,6 +2,8 @@
 
 namespace App\Events;
 
+use App\Models\Booking;
+use App\Models\Transaction;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
@@ -14,19 +16,19 @@ class PaymentConfirmed implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $bookingId;
+    public $booking;
+    public $transaction;
     public $customerId;
     public $salonId;
     public $amount;
-    public $paymentMethod;
 
-    public function __construct($bookingId, $customerId, $salonId, $amount, $paymentMethod)
+    public function __construct(Booking $booking, Transaction $transaction, $customerId)
     {
-        $this->bookingId = $bookingId;
+        $this->booking = $booking;
+        $this->transaction = $transaction;
         $this->customerId = $customerId;
-        $this->salonId = $salonId;
-        $this->amount = $amount;
-        $this->paymentMethod = $paymentMethod;
+        $this->salonId = $booking->salon_id;
+        $this->amount = $transaction->gross_amount;
     }
 
     public function broadcastOn()
@@ -40,5 +42,17 @@ class PaymentConfirmed implements ShouldBroadcast
     public function broadcastAs()
     {
         return 'payment.confirmed';
+    }
+
+    public function broadcastWith()
+    {
+        return [
+            'booking_id' => $this->booking->id,
+            'transaction_id' => $this->transaction->id,
+            'amount' => $this->amount,
+            'customer_id' => $this->customerId,
+            'salon_id' => $this->salonId,
+            'paid_at' => $this->transaction->paid_at->toIso8601String(),
+        ];
     }
 }

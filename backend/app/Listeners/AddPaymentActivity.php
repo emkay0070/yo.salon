@@ -9,14 +9,17 @@ class AddPaymentActivity
 {
     public function handle(PaymentConfirmed $event)
     {
+        $paymentMethod = $event->transaction->paymentMethod?->name ?? 'MTN MoMo';
+
         BookingActivity::create([
-            'booking_id' => $event->bookingId,
+            'booking_id' => $event->booking->id,
             'type' => 'payment_confirmed',
             'title' => 'Payment Confirmed',
-            'description' => "Payment of {$event->amount} UGX received via {$event->paymentMethod}",
+            'description' => "Payment of {$event->amount} UGX received via {$paymentMethod}",
             'data' => [
                 'amount' => $event->amount,
-                'payment_method' => $event->paymentMethod,
+                'payment_method' => $paymentMethod,
+                'transaction_id' => $event->transaction->id,
             ],
             'actor_type' => 'system',
         ]);
