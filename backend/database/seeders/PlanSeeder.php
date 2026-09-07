@@ -16,7 +16,55 @@ class PlanSeeder extends Seeder
     public function run(): void
     {
         $plans = [
+            // Specialist Plans
             [
+                'provider_type' => 'specialist',
+                'name' => 'Free',
+                'slug' => 'specialist-free',
+                'description' => 'Core professional identity and workspace tools for specialists',
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'features' => json_encode([
+                    'Workspace',
+                    'Calendar',
+                    'Appointments',
+                    'Profile',
+                    'Craft',
+                    'Clients',
+                    'Settings',
+                    'Verification',
+                ]),
+                'staff_limit' => 1,
+                'branches_limit' => 0,
+                'storage_limit_gb' => 1,
+                'support_level' => 'community',
+                'is_active' => true,
+                'sort_order' => 1,
+            ],
+            [
+                'provider_type' => 'specialist',
+                'name' => 'Pro',
+                'slug' => 'specialist-pro',
+                'description' => 'Advanced business intelligence and growth tools for specialists',
+                'monthly_price' => 0, // Coming soon
+                'yearly_price' => 0, // Coming soon
+                'features' => json_encode([
+                    'Everything in Free',
+                    'Career Tracking',
+                    'Business Intelligence',
+                    'Finance Reports',
+                    'Journey Goals',
+                ]),
+                'staff_limit' => 1,
+                'branches_limit' => 0,
+                'storage_limit_gb' => 10,
+                'support_level' => 'email',
+                'is_active' => true,
+                'sort_order' => 2,
+            ],
+            // Salon Plans
+            [
+                'provider_type' => 'salon',
                 'name' => 'Starter',
                 'slug' => 'starter',
                 'description' => 'Perfect for small salons just getting started',
@@ -37,6 +85,7 @@ class PlanSeeder extends Seeder
                 'sort_order' => 1,
             ],
             [
+                'provider_type' => 'salon',
                 'name' => 'Professional',
                 'slug' => 'professional',
                 'description' => 'For growing salons with multiple staff members',
@@ -45,7 +94,6 @@ class PlanSeeder extends Seeder
                 'features' => json_encode([
                     'Smart Analytics',
                     'Unlimited Appointments',
-                    'Wallet',
                     'Customer Profiles',
                     'Online Booking',
                     'Reports',
@@ -60,6 +108,7 @@ class PlanSeeder extends Seeder
                 'sort_order' => 2,
             ],
             [
+                'provider_type' => 'salon',
                 'name' => 'Premium',
                 'slug' => 'premium',
                 'description' => 'Advanced features for established salons',
@@ -83,6 +132,7 @@ class PlanSeeder extends Seeder
                 'sort_order' => 3,
             ],
             [
+                'provider_type' => 'salon',
                 'name' => 'Enterprise',
                 'slug' => 'enterprise',
                 'description' => 'Custom solutions for salon chains and franchises',

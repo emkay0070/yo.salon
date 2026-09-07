@@ -5,13 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Crown, Calendar, Clock, User, ArrowRight, 
-  CheckCircle2, Loader2, Star, Check, Shield, Info, Search, Phone
+  CheckCircle2, Loader2, Star, Check, Shield, Info, Search, Phone, MapPin
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { portalApiClient } from '@/lib/portal-api-client';
 import { usePortalAuth } from '@/contexts/PortalAuthContext';
 import { CursorGlow } from '@/components/ui/cursor-glow';
 import { SalonDiscoveryMap } from '@/components/discovery/SalonDiscoveryMap';
+import AvailabilityCalendar from '@/components/booking/AvailabilityCalendar';
 
 interface Service {
   id: string;
@@ -28,8 +29,16 @@ interface StaffMember {
 }
 
 interface TimeSlot {
-  time: string;
-  available: boolean;
+  start: string;
+  end: string;
+  duration: number;
+  available_specialists?: Array<{
+    id: string;
+    name: string;
+    skill_level: string;
+    price: number;
+  }>;
+  base_price?: number;
 }
 
 function BookPageContent({ slug }: { slug: string }) {
@@ -41,11 +50,11 @@ function BookPageContent({ slug }: { slug: string }) {
   console.log('=== BookPageContent mounted ===');
   console.log('Slug:', salonSlug);
 
-  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'payment' | 'confirm' | 'success'>('service');
+  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'confirm' | 'success'>('service');
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [customerDetails, setCustomerDetails] = useState({
     name: '',
     phone: '',
@@ -64,16 +73,9 @@ function BookPageContent({ slug }: { slug: string }) {
   const [bookingResult, setBookingResult] = useState<any>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [salonId, setSalonId] = useState<string>('');
   const [mounted, setMounted] = useState(false);
-  const [loadingError, setLoadingError] = useState<string>('');
-  const [paymentMethodId, setPaymentMethodId] = useState<string>('');
-  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
-  const [salonPolicy, setSalonPolicy] = useState<any>(null);
-  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'processing' | 'successful' | 'failed'>('pending');
-  const [paymentRequestId, setPaymentRequestId] = useState<string>('');
-  const [isPollingPayment, setIsPollingPayment] = useState(false);
+  const [showNearbySalons, setShowNearbySalons] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -81,90 +83,33 @@ function BookPageContent({ slug }: { slug: string }) {
 
   // Fetch salon data from slug
   useEffect(() => {
-    if (salonSlug) {
-      const timeout = setTimeout(() => {
-        // If loading takes too long, set empty arrays to stop loading
-        setLoadingError('Loading timeout. Please check your connection or try again.');
-        setServices([]);
-        setStaff([]);
-      }, 10000); // 10 second timeout
-
+    if (salonSlug && salonSlug.length > 0) {
       console.log('Fetching salon data for slug:', salonSlug);
       
       apiClient.getSalonBySlug(salonSlug)
         .then((salon) => {
           console.log('Salon fetched:', salon);
           setSalonId(salon.id);
-          
-          // Store salon booking policy
-          setSalonPolicy({
-            booking_deposit_enabled: salon.booking_deposit_enabled || false,
-            deposit_type: salon.deposit_type,
-            deposit_value: salon.deposit_value,
-            deposit_required_for: salon.deposit_required_for,
-          });
-          
-          // Fetch services, staff, and payment methods for this salon
-          Promise.all([
-            apiClient.getSalonServices(salonSlug).then(setServices).catch((err) => {
-              console.error('Failed to fetch services:', err);
-              setLoadingError(`Failed to load services: ${err.message || 'Unknown error'}`);
-              return setServices([]);
-            }),
-            apiClient.getSalonStaff(salonSlug).then(setStaff).catch((err) => {
-              console.error('Failed to fetch staff:', err);
-              setLoadingError(`Failed to load staff: ${err.message || 'Unknown error'}`);
-              return setStaff([]);
-            }),
-            apiClient.getSalonPaymentMethods(salonSlug).then((methods) => {
-              console.log('Payment methods fetched:', methods);
-              setPaymentMethods(methods);
-              // Auto-select primary payment method if available
-              const primaryMethod = methods.find((m: any) => m.is_primary);
-              if (primaryMethod) {
-                setPaymentMethodId(primaryMethod.id);
-              }
-            }).catch((err) => {
-              console.error('Failed to fetch payment methods:', err);
-              setPaymentMethods([]);
-            })
-          ]).then(() => {
-            console.log('Services, staff, and payment methods loaded successfully');
-            setLoadingError('');
-          });
+          return Promise.all([
+            apiClient.get(`/salons/${salonSlug}/services`),
+            apiClient.get(`/salons/${salonSlug}/staff`),
+          ]);
         })
-        .catch((error) => {
-          console.error('Failed to fetch salon:', error);
-          setLoadingError(`Failed to load salon: ${error.response?.data?.message || error.message || 'Unknown error'}`);
-          // If salon lookup fails, set empty arrays to stop loading
+        .then(([servicesData, staffData]) => {
+          console.log('Services:', servicesData);
+          console.log('Staff:', staffData);
+          setServices(servicesData);
+          setStaff(staffData);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch salon data:', err);
           setServices([]);
           setStaff([]);
-        })
-        .finally(() => {
-          clearTimeout(timeout);
         });
-
-      return () => clearTimeout(timeout);
+    } else {
+      console.log('Skipping fetch - slug is empty:', salonSlug);
     }
   }, [salonSlug]);
-
-  // Mock time slots
-  const mockTimeSlots: TimeSlot[] = [
-    { time: '09:00', available: true },
-    { time: '09:30', available: true },
-    { time: '10:00', available: false },
-    { time: '10:30', available: true },
-    { time: '11:00', available: true },
-    { time: '11:30', available: false },
-    { time: '14:00', available: true },
-    { time: '14:30', available: true },
-    { time: '15:00', available: true },
-    { time: '15:30', available: false },
-  ];
-
-  useEffect(() => {
-    setTimeSlots(mockTimeSlots);
-  }, []);
 
   const handleServiceSelect = (service: Service) => {
     // Toggle service selection (allow multiple)
@@ -187,8 +132,8 @@ function BookPageContent({ slug }: { slug: string }) {
     setStep('time');
   };
 
-  const handleTimeSelect = (time: string) => {
-    setSelectedTime(time);
+  const handleSlotSelect = (slot: TimeSlot) => {
+    setSelectedSlot(slot);
     setStep('details');
   };
 
@@ -227,59 +172,14 @@ function BookPageContent({ slug }: { slug: string }) {
     }
   };
 
-  const pollPaymentStatus = async (paymentId: string) => {
-    setIsPollingPayment(true);
-    setPaymentStatus('processing');
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/payment-requests/${paymentId}/check-status`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const status = data.payment_request?.status;
-          
-          if (status === 'successful') {
-            setPaymentStatus('successful');
-            setIsPollingPayment(false);
-            clearInterval(pollInterval);
-            setTimeout(() => setStep('success'), 1500);
-          } else if (status === 'failed' || status === 'cancelled' || status === 'expired') {
-            setPaymentStatus('failed');
-            setIsPollingPayment(false);
-            clearInterval(pollInterval);
-          }
-        }
-      } catch (err) {
-        console.error('Error polling payment status:', err);
-      }
-    }, 3000); // Poll every 3 seconds
-
-    // Stop polling after 5 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (isPollingPayment) {
-        setIsPollingPayment(false);
-        setPaymentStatus('failed');
-      }
-    }, 300000);
-  };
-
   const handleConfirmBooking = async () => {
-    setIsLoading(true);
-    setError('');
-
-    // Guard: ensure all required fields are present before calling API
-    if (!salonId || selectedServices.length === 0 || !selectedTime || !selectedDate) {
-      setError('Something is missing. Please go back and complete all steps.');
-      setIsLoading(false);
+    if (!selectedSlot || selectedServices.length === 0) {
+      setError('Please select a service and time slot');
       return;
     }
+
+    setIsLoading(true);
+    setError('');
 
     try {
       if (createAccount) {
@@ -295,8 +195,8 @@ function BookPageContent({ slug }: { slug: string }) {
         }
       }
 
-      // All guest bookings use the single public endpoint — no auth required.
-      // create_account=true will also create a portal account on success.
+      const formattedDate = selectedDate.toISOString().split('T')[0];
+      
       const result = await apiClient.createBookingWithAccount({
         salon_id: salonId,
         customer_name: customerDetails.name,
@@ -304,34 +204,15 @@ function BookPageContent({ slug }: { slug: string }) {
         customer_email: customerDetails.email || undefined,
         service_id: selectedServices.map(s => s.id),
         staff_id: selectedStaff?.id,
-        date: selectedDate,
-        time: selectedTime,
+        date: formattedDate,
+        time: selectedSlot.start,
         create_account: createAccount,
         account_email: createAccount ? (accountDetails.email || customerDetails.email) : undefined,
         account_password: createAccount ? accountDetails.password : undefined,
-        payment_method_id: paymentMethodId || undefined,
       });
 
       setBookingResult(result);
-      
-      // Check if deposit is required based on salon policy
-      if (result.requires_deposit) {
-        // If payment was initialized, go to payment step
-        if (result.payment) {
-          setPaymentRequestId(result.payment.id || '');
-          setStep('payment');
-          // Start polling for payment status if it's an API payment
-          if (result.payment.type === 'api' && result.payment.id) {
-            pollPaymentStatus(result.payment.id);
-          }
-        } else {
-          // No payment method selected, show error
-          setError('Please select a payment method to complete your booking.');
-        }
-      } else {
-        // No deposit required, go directly to success
-        setStep('success');
-      }
+      setStep('success');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create booking. Please try again.');
     } finally {
@@ -344,7 +225,6 @@ function BookPageContent({ slug }: { slug: string }) {
     staff: '#a855f7',
     time: '#3b82f6',
     details: '#10b981',
-    payment: '#f59e0b',
     confirm: '#10b981',
     success: '#10b981',
   };
@@ -388,13 +268,49 @@ function BookPageContent({ slug }: { slug: string }) {
             </span>
           </div>
           <button
-            onClick={() => router.push('/portal/login')}
-            className="text-white/60 hover:text-gold text-xs transition-colors duration-300 font-medium font-mono"
+            onClick={() => setShowNearbySalons(!showNearbySalons)}
+            className="flex items-center gap-2 px-3 py-2 bg-white/[0.05] border border-white/10 rounded-xl hover:border-gold/30 transition-all text-sm"
           >
-            Portal Sign In
+            <MapPin className="w-4 h-4 text-gold" />
+            <span className="text-white/80">Nearby Salons</span>
           </button>
         </div>
       </div>
+
+      {/* Nearby Salons Map Modal */}
+      {showNearbySalons && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowNearbySalons(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.95, y: 20 }}
+            className="w-full max-w-6xl h-[80vh] bg-[#0c0c0c] rounded-2xl overflow-hidden border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div>
+                <h2 className="text-xl font-bold text-white">Nearby Salons</h2>
+                <p className="text-white/50 text-sm">Find alternative salons in your area</p>
+              </div>
+              <button
+                onClick={() => setShowNearbySalons(false)}
+                className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center hover:border-gold/30 transition-all"
+              >
+                <span className="text-white/60">×</span>
+              </button>
+            </div>
+            <div className="h-[calc(80vh-73px)]">
+              <SalonDiscoveryMap />
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Progress Steps */}
       <div className="max-w-4xl mx-auto px-4 py-8 relative z-10">
@@ -412,7 +328,7 @@ function BookPageContent({ slug }: { slug: string }) {
             const stepSummaries = {
               service: selectedServices.length > 0 ? selectedServices.map(s => s.name).join(', ') : 'Select Treatment',
               staff: selectedStaff ? selectedStaff.name : 'Preferred Stylist',
-              time: selectedTime ? `${selectedDate} @ ${selectedTime}` : 'Choose Time',
+              time: selectedSlot ? `${selectedDate.toLocaleDateString()} @ ${selectedSlot.start}` : 'Choose Time',
               details: customerDetails.name ? customerDetails.name : 'Your Info',
             };
 
@@ -474,17 +390,8 @@ function BookPageContent({ slug }: { slug: string }) {
 
               {services.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-12 bg-white/[0.02] border border-white/5 rounded-2xl">
-                  {loadingError ? (
-                    <>
-                      <p className="text-red-400 text-sm mb-2">Error loading services</p>
-                      <p className="text-white/45 text-xs text-center max-w-md">{loadingError}</p>
-                    </>
-                  ) : (
-                    <>
-                      <Loader2 className="w-8 h-8 text-gold animate-spin mb-4" />
-                      <p className="text-white/45 text-sm">Fetching premium salon catalog...</p>
-                    </>
-                  )}
+                  <Loader2 className="w-8 h-8 text-gold animate-spin mb-4" />
+                  <p className="text-white/45 text-sm">Fetching premium salon catalog...</p>
                 </div>
               ) : (
                 <>
@@ -516,7 +423,7 @@ function BookPageContent({ slug }: { slug: string }) {
                             <div className="flex justify-between items-start gap-4 mb-2">
                               <h3 className="text-white font-sora font-semibold text-base tracking-tight leading-snug">{service.name}</h3>
                               <span className="text-gold font-sora font-bold text-sm tracking-wide whitespace-nowrap bg-gold/10 px-2.5 py-0.5 rounded-lg border border-gold/20">
-                                {service.price.toLocaleString()} UGX
+                                {service.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} UGX
                               </span>
                             </div>
                             <span className="text-[10px] uppercase font-bold tracking-widest font-mono text-white/30">
@@ -640,67 +547,26 @@ function BookPageContent({ slug }: { slug: string }) {
               exit={{ opacity: 0, y: -15 }}
               transition={{ type: 'spring', stiffness: 200, damping: 20 }}
             >
-              <div className="fixed inset-x-0 bottom-0 z-50 bg-[#0c0c0c] border-t border-white/10 rounded-t-3xl p-6 pt-8 h-[85vh] overflow-y-auto custom-scrollbar md:static md:bg-transparent md:border-none md:p-0 md:h-auto md:overflow-visible md:rounded-none">
-                <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 md:hidden" />
-                <div className="text-left mb-8">
-                  <h2 className="font-sora text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">Reserve Slot</h2>
-                  <p className="text-white/50 text-sm">Select your preferred appointment date and time</p>
-                </div>
-
-              <div className="flex flex-col md:flex-row gap-6 mb-8">
-                {/* Date Picker glass panel */}
-                <div className="flex flex-col text-left p-5 bg-white/[0.02] border border-white/5 rounded-2xl backdrop-blur-md w-full md:w-1/3">
-                  <span className="text-[9px] font-bold tracking-wider font-mono text-white/30 uppercase mb-3">SELECT DATE</span>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-gold transition-colors cursor-pointer"
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                  <div className="mt-4 text-white/50 text-[11px] leading-relaxed flex items-start gap-1.5 border-t border-white/5 pt-4">
-                    <Info className="w-3.5 h-3.5 text-gold shrink-0 mt-0.5" />
-                    <span>Real-time availability calculated. Slots are refreshed automatically.</span>
-                  </div>
-                </div>
-
-                {/* Time Slots grid panel */}
-                <div className="flex-1 text-left p-5 bg-white/[0.02] border border-white/5 rounded-2xl backdrop-blur-md">
-                  <span className="text-[9px] font-bold tracking-wider font-mono text-white/30 uppercase mb-4 block">AVAILABLE TIMESLOTS</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                    {timeSlots.map((slot) => (
-                      <motion.button
-                        key={slot.time}
-                        whileHover={slot.available ? { scale: 1.02 } : {}}
-                        whileTap={slot.available ? { scale: 0.98 } : {}}
-                        onClick={() => slot.available && handleTimeSelect(slot.time)}
-                        disabled={!slot.available}
-                        className={`p-3.5 rounded-xl border font-mono text-xs transition-all duration-300 cursor-pointer ${
-                          !slot.available
-                            ? 'border-white/5 bg-white/[0.01] text-white/20 cursor-not-allowed border-dashed'
-                            : selectedTime === slot.time
-                            ? 'border-gold bg-gold/10 text-gold shadow-md shadow-gold/5'
-                            : 'border-white/5 bg-black/30 hover:border-white/20 text-white'
-                        }`}
-                      >
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span>{slot.time}</span>
-                          {!slot.available && <span className="text-[8px] text-white/10 uppercase">Booked</span>}
-                        </div>
-                      </motion.button>
-                    ))}
-                  </div>
-                </div>
+              <div className="text-left mb-8">
+                <h2 className="font-sora text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">Reserve Slot</h2>
+                <p className="text-white/50 text-sm">Select your preferred appointment date and time</p>
               </div>
 
-                <div className="flex justify-between items-center mt-6">
-                  <button
-                    onClick={() => setStep('staff')}
-                    className="text-white/50 hover:text-white text-xs font-mono font-medium transition-colors"
-                  >
-                    ← Back to stylists
-                  </button>
-                </div>
+              <AvailabilityCalendar
+                salonId={salonId}
+                serviceId={selectedServices[0]?.id}
+                specialistId={selectedStaff?.id}
+                onSlotSelect={handleSlotSelect}
+                selectedSlot={selectedSlot}
+              />
+
+              <div className="flex justify-between items-center mt-6">
+                <button
+                  onClick={() => setStep('staff')}
+                  className="text-white/50 hover:text-white text-xs font-mono font-medium transition-colors"
+                >
+                  ← Back to stylists
+                </button>
               </div>
             </motion.div>
           )}
@@ -883,7 +749,7 @@ function BookPageContent({ slug }: { slug: string }) {
                     {selectedServices.map((service, index) => (
                       <div key={service.id} className="flex justify-between items-center py-2.5 border-b border-white/5">
                         <span className="text-white/50">{index + 1}. {service.name}</span>
-                        <span className="text-white font-semibold font-sora">{service.price.toLocaleString()} UGX</span>
+                        <span className="text-white font-semibold font-sora">{service.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} UGX</span>
                       </div>
                     ))}
                     {selectedStaff && (
@@ -894,11 +760,11 @@ function BookPageContent({ slug }: { slug: string }) {
                     )}
                     <div className="flex justify-between items-center py-2.5 border-b border-white/5">
                       <span className="text-white/50">Scheduled Date</span>
-                      <span className="text-white font-mono font-medium">{selectedDate}</span>
+                      <span className="text-white font-mono font-medium">{selectedDate.toLocaleDateString()}</span>
                     </div>
                     <div className="flex justify-between items-center py-2.5 border-b border-white/5">
                       <span className="text-white/50">Reservation Time</span>
-                      <span className="text-white font-mono font-medium">{selectedTime}</span>
+                      <span className="text-white font-mono font-medium">{selectedSlot?.start || 'Not selected'}</span>
                     </div>
                     <div className="flex justify-between items-center py-2.5 border-b border-white/5">
                       <span className="text-white/50">Total Duration</span>
@@ -909,93 +775,11 @@ function BookPageContent({ slug }: { slug: string }) {
                     <div className="flex justify-between items-center pt-4">
                       <span className="text-white/50 font-medium">Grand Total</span>
                       <span className="text-gold font-sora font-extrabold text-2xl bg-gold/10 px-3 py-1 rounded-xl border border-gold/20 shadow-md">
-                        {selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()} UGX
+                        {selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} UGX
                       </span>
                     </div>
                   </div>
                 </div>
-
-                {/* Deposit Protection details */}
-                {/* Deposit Protection Message - Only show if deposit is required */}
-                {salonPolicy?.booking_deposit_enabled && (
-                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 text-left flex gap-4 backdrop-blur-md">
-                    <Shield className="w-6 h-6 text-gold shrink-0 mt-0.5" />
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-gold font-semibold text-sm font-sora">Booking Deposit Protection Active</span>
-                      <p className="text-white/60 text-xs leading-normal">
-                        To protect stylists and secure the reservation block, a deposit will be processed. The remaining balance is settled in-store at checkout.
-                      </p>
-                      <div className="flex gap-4 border-t border-amber-500/10 pt-2 mt-1 text-[10px] font-mono">
-                        {salonPolicy.deposit_type === 'percentage' ? (
-                          <>
-                            <span className="text-white/50">PAY NOW ({salonPolicy.deposit_value}%): <strong className="text-gold">{(selectedServices.reduce((sum, s) => sum + s.price, 0) * (salonPolicy.deposit_value / 100)).toLocaleString()} UGX</strong></span>
-                            <span className="text-white/50">IN-STORE ({100 - salonPolicy.deposit_value}%): <strong className="text-white/80">{(selectedServices.reduce((sum, s) => sum + s.price, 0) * ((100 - salonPolicy.deposit_value) / 100)).toLocaleString()} UGX</strong></span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-white/50">PAY NOW: <strong className="text-gold">{(salonPolicy.deposit_value || 0).toLocaleString()} UGX</strong></span>
-                            <span className="text-white/50">IN-STORE: <strong className="text-white/80">{(selectedServices.reduce((sum, s) => sum + s.price, 0) - (salonPolicy.deposit_value || 0)).toLocaleString()} UGX</strong></span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Payment Method Selection - Only show if deposit is required */}
-                {salonPolicy?.booking_deposit_enabled && paymentMethods.length > 0 && (
-                  <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 backdrop-blur-md text-left shadow-xl">
-                    <span className="text-[9px] font-bold font-mono tracking-widest text-white/35 uppercase border-b border-white/5 pb-3 block">PAYMENT METHOD</span>
-                    
-                    <div className="mt-4 space-y-3">
-                      {paymentMethods.map((method) => (
-                        <button
-                          key={method.id}
-                          type="button"
-                          onClick={() => setPaymentMethodId(method.id)}
-                          className={`w-full p-4 rounded-xl border text-left transition-all ${
-                            paymentMethodId === method.id
-                              ? 'border-gold bg-gold/10'
-                              : 'border-white/10 bg-white/[0.02] hover:border-white/20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                paymentMethodId === method.id ? 'border-gold bg-gold' : 'border-white/30'
-                              }`}>
-                                {paymentMethodId === method.id && (
-                                  <div className="w-2 h-2 rounded-full bg-black" />
-                                )}
-                              </div>
-                              <span className="text-white font-medium">{method.display_name}</span>
-                            </div>
-                            {method.is_primary && (
-                              <span className="text-[10px] font-mono text-gold bg-gold/10 px-2 py-1 rounded">PRIMARY</span>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Show "Pay at salon" message if deposit not required */}
-                {!salonPolicy?.booking_deposit_enabled && (
-                  <div className="bg-green-500/5 border border-green-500/20 rounded-3xl p-6 backdrop-blur-md text-left">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5 text-green-400" />
-                      </div>
-                      <div>
-                        <span className="text-green-400 font-semibold text-sm font-sora">No Deposit Required</span>
-                        <p className="text-white/60 text-xs leading-normal mt-1">
-                          This salon does not require a deposit. You can pay directly at the salon.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {error && (
                   <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs font-mono text-left">
@@ -1036,227 +820,6 @@ function BookPageContent({ slug }: { slug: string }) {
             </motion.div>
           )}
 
-          {step === 'payment' && (
-            <motion.div
-              key="payment-step"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            >
-              <div className="fixed inset-x-0 bottom-0 z-50 bg-[#0c0c0c] border-t border-white/10 rounded-t-3xl p-6 pt-8 h-[90vh] overflow-y-auto custom-scrollbar md:static md:bg-transparent md:border-none md:p-0 md:h-auto md:overflow-visible md:rounded-none">
-                <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 md:hidden" />
-                <div className="text-left mb-8">
-                  <h2 className="font-sora text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">Complete Payment</h2>
-                  <p className="text-white/50 text-sm">Pay the deposit to secure your appointment</p>
-                </div>
-
-                <div className="max-w-2xl mx-auto">
-                  {bookingResult?.payment ? (
-                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md">
-                      {bookingResult.payment.type === 'manual' ? (
-                        // Manual payment instructions
-                        <div>
-                          <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                              <Phone className="w-6 h-6 text-blue-400" />
-                            </div>
-                            <div>
-                              <h3 className="text-white font-semibold text-lg">Manual Payment Required</h3>
-                              <p className="text-white/50 text-sm">Follow the instructions below</p>
-                            </div>
-                          </div>
-                          
-                          <div className="bg-white/[0.02] rounded-xl p-4 mb-4">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-white/50 text-sm">Payment Method</span>
-                              <span className="text-white font-semibold">{bookingResult.payment.instructions?.method}</span>
-                            </div>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-white/50 text-sm">Phone Number</span>
-                              <span className="text-gold font-mono text-lg">{bookingResult.payment.instructions?.phone}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-white/50 text-sm">Amount</span>
-                              <span className="text-white font-semibold text-lg">
-                                UGX {bookingResult.payment.instructions?.amount?.toLocaleString()}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <p className="text-white/40 text-xs mb-4">
-                            {bookingResult.payment.instructions?.message}
-                          </p>
-                          
-                          <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-4">
-                            <p className="text-yellow-400 text-xs">
-                              ⚠️ After sending the payment, please upload your payment proof screenshot or receipt. The salon will verify and confirm your booking.
-                            </p>
-                          </div>
-                          
-                          <button
-                            onClick={() => setStep('success')}
-                            className="w-full px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                          >
-                            I've Sent the Payment
-                          </button>
-                        </div>
-                      ) : bookingResult.payment.type === 'offline' ? (
-                        // Offline payment (pay at salon)
-                        <div>
-                          <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-                              <CheckCircle2 className="w-6 h-6 text-green-400" />
-                            </div>
-                            <div>
-                              <h3 className="text-white font-semibold text-lg">Pay at Salon</h3>
-                              <p className="text-white/50 text-sm">No online payment required</p>
-                            </div>
-                          </div>
-                          
-                          <p className="text-white/40 text-xs mb-6">
-                            {bookingResult.payment.message}
-                          </p>
-                          
-                          <button
-                            onClick={() => setStep('success')}
-                            className="w-full px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                          >
-                            Continue to Confirmation
-                          </button>
-                        </div>
-                      ) : (
-                        // API payment (MTN MoMo, Airtel, Flutterwave)
-                        <div>
-                          {paymentStatus === 'processing' ? (
-                            // Waiting for payment
-                            <div className="text-center py-8">
-                              <div className="w-16 h-16 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center mx-auto mb-6">
-                                <Loader2 className="w-8 h-8 text-gold animate-spin" />
-                              </div>
-                              <h3 className="text-white font-semibold text-lg mb-2">Waiting for Payment</h3>
-                              <p className="text-white/50 text-sm mb-6">
-                                Please approve the payment request on your phone. We're checking for confirmation...
-                              </p>
-                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-6">
-                                <p className="text-blue-400 text-xs">
-                                  ℹ️ Check your phone for the MTN MoMo prompt. Enter your PIN to complete the payment.
-                                </p>
-                              </div>
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() => {
-                                    setIsPollingPayment(false);
-                                    setStep('confirm');
-                                  }}
-                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : paymentStatus === 'successful' ? (
-                            // Payment successful
-                            <div className="text-center py-8">
-                              <div className="w-16 h-16 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center mx-auto mb-6">
-                                <CheckCircle2 className="w-8 h-8 text-green-400" />
-                              </div>
-                              <h3 className="text-white font-semibold text-lg mb-2">Payment Successful!</h3>
-                              <p className="text-white/50 text-sm mb-6">
-                                Your payment has been confirmed. Redirecting to confirmation...
-                              </p>
-                            </div>
-                          ) : paymentStatus === 'failed' ? (
-                            // Payment failed
-                            <div className="text-center py-8">
-                              <div className="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center mx-auto mb-6">
-                                <Loader2 className="w-8 h-8 text-red-400" />
-                              </div>
-                              <h3 className="text-white font-semibold text-lg mb-2">Payment Failed</h3>
-                              <p className="text-white/50 text-sm mb-6">
-                                The payment was not completed or timed out. Please try again.
-                              </p>
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() => {
-                                    setPaymentStatus('pending');
-                                    if (paymentRequestId) {
-                                      pollPaymentStatus(paymentRequestId);
-                                    }
-                                  }}
-                                  className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                                >
-                                  Retry Payment
-                                </button>
-                                <button
-                                  onClick={() => setStep('confirm')}
-                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            // Initial payment state
-                            <div>
-                              <div className="flex justify-between items-center mb-4">
-                                <span className="text-white/50 text-sm">Payment Reference</span>
-                                <span className="text-gold font-mono text-sm">{bookingResult.payment.reference}</span>
-                              </div>
-                              <div className="flex justify-between items-center mb-6">
-                                <span className="text-white/50 text-sm">Amount</span>
-                                <span className="text-white font-semibold text-lg">
-                                  {selectedServices.length > 0 ? `UGX ${Math.round(selectedServices.reduce((sum, s) => sum + s.price, 0) * 0.3).toLocaleString()}` : 'UGX 0'}
-                                </span>
-                              </div>
-                              <p className="text-white/40 text-xs mb-4">
-                                Please complete the payment using your mobile money provider. You will receive a prompt on your phone.
-                              </p>
-                              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-4">
-                                <p className="text-blue-400 text-xs">
-                                  ℹ️ Your booking will be confirmed automatically once payment is verified. This may take a few minutes.
-                                </p>
-                              </div>
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() => setStep('confirm')}
-                                  className="flex-1 px-4 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setPaymentStatus('processing');
-                                    if (paymentRequestId) {
-                                      pollPaymentStatus(paymentRequestId);
-                                    }
-                                  }}
-                                  className="flex-1 px-4 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 text-black font-semibold rounded-xl text-sm transition-all"
-                                >
-                                  Pay Now
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-md text-center">
-                      <p className="text-white/50 text-sm">No payment information available. Please contact support.</p>
-                      <button
-                        onClick={() => setStep('confirm')}
-                        className="mt-4 px-6 py-3 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-white text-sm font-semibold transition-colors"
-                      >
-                        Go Back
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
           {step === 'success' && (
             <motion.div
               key="success-step"
@@ -1280,11 +843,11 @@ function BookPageContent({ slug }: { slug: string }) {
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-white/50">Date</span>
-                  <span className="text-white font-mono">{selectedDate}</span>
+                  <span className="text-white font-mono">{selectedDate.toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className="text-white/50">Time</span>
-                  <span className="text-white font-mono">{selectedTime}</span>
+                  <span className="text-white font-mono">{selectedSlot?.start || 'Not selected'}</span>
                 </div>
               </div>
               
@@ -1348,7 +911,7 @@ export default function BookPage({ params }: { params: Promise<{ slug: string }>
     params.then(resolved => setSlug(resolved.slug));
   }, [params]);
 
-  if (!slug) {
+  if (!slug || slug.length === 0) {
     return <div className="min-h-screen flex items-center justify-center bg-[#070707]"><Loader2 className="w-8 h-8 text-[#FFD700] animate-spin" /></div>;
   }
 

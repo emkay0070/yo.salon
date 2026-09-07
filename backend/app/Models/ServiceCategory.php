@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class ServiceCategory extends Model
@@ -23,9 +24,29 @@ class ServiceCategory extends Model
         'sort_order' => 'integer',
     ];
 
+    protected $appends = [
+        'image_url',
+    ];
+
     public function services(): HasMany
     {
         return $this->hasMany(Service::class, 'category', 'name');
+    }
+
+    public function imageMedia(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'image');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if ($this->image && \Illuminate\Support\Str::isUuid($this->image)) {
+            return $this->imageMedia?->url;
+        }
+        if ($this->image) {
+            return asset('storage/' . $this->image);
+        }
+        return null;
     }
 
     /**

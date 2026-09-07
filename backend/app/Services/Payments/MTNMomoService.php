@@ -5,6 +5,8 @@ namespace App\Services\Payments;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\DTOs\PaymentRequestDTO;
 use App\Services\Payments\DTOs\PaymentResponseDTO;
+use App\Models\Invoice;
+use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -97,7 +99,7 @@ class MTNMomoService implements PaymentProviderInterface
     /**
      * Request a payment from the customer
      */
-    public function requestPayment(array $data): array
+    public function initializePayment(array $data): array
     {
         $dto = PaymentRequestDTO::fromArray($data);
         $token = $this->getAccessToken();
@@ -162,7 +164,7 @@ class MTNMomoService implements PaymentProviderInterface
      * NOTE: This should only be called by webhook or admin, not by polling
      * Polling should only read the database
      */
-    public function checkPaymentStatus(string $transactionId): array
+    public function verifyPayment(string $transactionId): array
     {
         $token = $this->getAccessToken();
 
@@ -208,76 +210,58 @@ class MTNMomoService implements PaymentProviderInterface
     /**
      * Handle webhook callback from MTN
      */
-    public function handleWebhook(array $payload): bool
+    public function handleWebhook(array $payload, string $signature): array
     {
-        // DUPLICATE WEBHOOK PROTECTION: Check if already processed
         $transactionId = $payload['externalId'] ?? null;
         
         if (!$transactionId) {
-            Log::error('MTN MoMo: Webhook missing externalId', $payload);
-            return false;
-        }
-
-        $paymentRequest = \App\Models\PaymentRequest::where('provider_reference', $transactionId)->first();
-        
-        if (!$paymentRequest) {
-            Log::error('MTN MoMo: Payment request not found for webhook', [
-                'transaction_id' => $transactionId,
-            ]);
-            return false;
-        }
-
-        // If already successful, don't process again (idempotent)
-        if ($paymentRequest->status === 'successful') {
-            Log::info('MTN MoMo: Webhook already processed', [
-                'payment_request_id' => $paymentRequest->id,
-                'transaction_id' => $transactionId,
-            ]);
-            return true;
+            throw new \Exception('MTN MoMo: Webhook missing externalId');
         }
 
         $status = $this->mapMTNStatus($payload['status'] ?? 'unknown');
 
-        // Wrap in DB transaction for atomicity
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($paymentRequest, $status, $payload) {
-            $paymentRequest->update([
-                'status' => $status,
-                'provider_reference' => $payload['financialTransactionId'] ?? $paymentRequest->provider_reference,
-                'completed_at' => in_array($status, ['successful', 'failed', 'cancelled', 'expired']) ? now() : null,
-            ]);
+        Log::info('MTN MoMo: Webhook received', [
+            'status' => $status,
+            'transaction_id' => $transactionId,
+        ]);
 
-            Log::info('MTN MoMo: Payment status updated via webhook', [
-                'payment_request_id' => $paymentRequest->id,
-                'status' => $status,
-                'transaction_id' => $payload['externalId'],
-            ]);
-
-            // If payment successful, create transaction and update booking
-            if ($status === 'successful') {
-                $this->processSuccessfulPayment($paymentRequest, $payload);
+        $paymentRequest = \App\Models\PaymentRequest::where('provider_reference', $transactionId)->first();
+        if ($paymentRequest) {
+            if ($status === 'successful' || $status === 'completed') {
+                if ($paymentRequest->status !== 'successful' && $paymentRequest->status !== 'paid') {
+                    $paymentRequest->update(['status' => 'successful']);
+                    $this->processSuccessfulPayment($paymentRequest, $payload);
+                }
+            } elseif (in_array($status, ['failed', 'expired', 'cancelled'])) {
+                $paymentRequest->update(['status' => 'failed']);
             }
+        }
 
-            return true;
-        });
+        return [
+            'event'     => 'transaction.updated',
+            'reference' => $transactionId,
+            'status'    => $status,
+            'data'      => $payload,
+        ];
     }
 
     /**
      * Verify webhook signature
+     * MTN uses HMAC-SHA256 signature with the API user as the key
      */
-    public function verifyWebhookSignature(array $payload, string $signature): bool
+    public function validateWebhookSignature(array $payload, string $signature): bool
     {
-        // MTN uses X-Reference-Id for correlation
-        // In production, implement HMAC signature verification
-        // For now, verify the reference exists in our system
         $transactionId = $payload['externalId'] ?? null;
-        
+
         if (!$transactionId) {
             Log::warning('MTN MoMo: Webhook verification failed - no externalId');
             return false;
         }
 
+        // For now, verify the reference exists in our system
+        // In production, you would verify the HMAC signature using a webhook secret
         $exists = \App\Models\PaymentRequest::where('provider_reference', $transactionId)->exists();
-        
+
         if (!$exists) {
             Log::warning('MTN MoMo: Webhook verification failed - unknown transaction', [
                 'transaction_id' => $transactionId,
@@ -288,8 +272,87 @@ class MTNMomoService implements PaymentProviderInterface
         Log::info('MTN MoMo: Webhook verified', [
             'transaction_id' => $transactionId,
         ]);
-        
+
         return true;
+    }
+
+    /**
+     * Attempt to collect payment for a finalized, frozen invoice.
+     *
+     * MTN MoMo can send a push prompt to the customer's phone.
+     */
+    public function attemptInvoiceCollection(Invoice $invoice, PaymentMethod $method): PaymentResponseDTO
+    {
+        $this->setCredentials($method->credentials ?? []);
+
+        $reference = 'INV-' . strtoupper(uniqid());
+
+        $payload = [
+            'amount' => $invoice->total,
+            'currency' => $invoice->currency,
+            'externalId' => $reference,
+            'payer' => [
+                'partyIdType' => 'MSISDN',
+                'partyId' => $this->formatPhoneNumber($method->account_identifier),
+            ],
+            'payerMessage' => "Payment for invoice {$invoice->invoice_number}",
+            'payeeNote' => 'Yo.Salon Invoice Payment',
+        ];
+
+        Log::info('MTN MoMo: Attempting invoice collection', [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'reference' => $reference,
+            'amount' => $invoice->total,
+        ]);
+
+        $token = $this->getAccessToken();
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
+            'X-Reference-Id' => $reference,
+            'X-Target-Environment' => config('services.mtn.environment', 'sandbox'),
+        ])->post("{$this->baseUrl}/collection/v1_0/requesttopay", $payload);
+
+        if ($response->failed()) {
+            Log::error('MTN MoMo: Invoice collection failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'invoice_id' => $invoice->id,
+            ]);
+
+            return PaymentResponseDTO::failure(
+                'Failed to initiate invoice collection',
+                $response->json()
+            );
+        }
+
+        Log::info('MTN MoMo: Invoice collection initiated successfully', [
+            'invoice_id' => $invoice->id,
+            'reference' => $reference,
+        ]);
+
+        return PaymentResponseDTO::success([
+            'status' => 'pending',
+            'transaction_id' => $reference,
+            'provider_reference' => $reference,
+            'message' => 'Invoice payment request initiated successfully',
+        ]);
+    }
+
+    /**
+     * Return an array of capabilities this provider supports.
+     */
+    public function getCapabilities(): array
+    {
+        return [
+            'tokenized_charging' => false,
+            'momo_push' => true,
+            'refunds' => false,
+            'webhooks' => true,
+            'split_payments' => false,
+        ];
     }
 
     /**
@@ -357,13 +420,6 @@ class MTNMomoService implements PaymentProviderInterface
      */
     private function processSuccessfulPayment(\App\Models\PaymentRequest $paymentRequest, array $mtnData): void
     {
-        $feeEngine = app(\App\Services\FeeEngine::class);
-        $paymentMethod = $paymentRequest->payment_method_id
-            ? \App\Models\PaymentMethod::find($paymentRequest->payment_method_id)
-            : null;
-
-        $fees = $feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
-
         $transaction = \App\Models\Transaction::create([
             'salon_id' => $paymentRequest->salon_id,
             'booking_id' => $paymentRequest->booking_id,
@@ -371,11 +427,11 @@ class MTNMomoService implements PaymentProviderInterface
             'payment_method_id' => $paymentRequest->payment_method_id,
             'type' => 'payment',
             'status' => 'completed',
-            'gross_amount' => $fees['gross_amount'],
-            'gateway_fee' => $fees['gateway_fee'],
-            'platform_fee' => $fees['platform_fee'],
-            'tax_amount' => $fees['tax_amount'],
-            'net_amount' => $fees['net_amount'],
+            'gross_amount' => (float) $paymentRequest->amount,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'tax_amount' => 0,
+            'net_amount' => (float) $paymentRequest->amount,
             'currency' => 'UGX',
             'internal_reference' => 'TXN-' . strtoupper(\Illuminate\Support\Str::random(10)),
             'provider_reference' => $mtnData['financialTransactionId'] ?? null,

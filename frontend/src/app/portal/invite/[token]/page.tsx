@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scissors, CheckCircle, ArrowRight } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { motion } from 'framer-motion';
 
-export default function PortalInvitePage({ params }: { params: { token: string } }) {
-  const { token } = params;
+export default function PortalInvitePage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
   const [salonName, setSalonName] = useState('');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');

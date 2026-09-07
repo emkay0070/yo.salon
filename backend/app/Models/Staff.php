@@ -14,6 +14,7 @@ class Staff extends Model
     
     protected $fillable = [
         'salon_id',
+        'user_id',
         'name',
         'phone',
         'email',
@@ -22,6 +23,7 @@ class Staff extends Model
         'photo',
         'active',
         'role',
+        'commission_rate',
     ];
 
     protected $casts = [
@@ -30,15 +32,31 @@ class Staff extends Model
         'active' => 'boolean',
     ];
 
-    protected $appends = ['photo_url'];
-
-    public function getPhotoUrlAttribute()
-    {
-        return $this->photo ? asset('storage/' . $this->photo) : null;
-    }
-
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function media(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'photo');
+    }
+
+    public function getPhotoUrlAttribute(): ?string
+    {
+        // If photo is a UUID, get from media relationship
+        if ($this->photo && \Illuminate\Support\Str::isUuid($this->photo)) {
+            return $this->media?->url;
+        }
+        // If photo is a path (backward compatibility), use asset
+        if ($this->photo) {
+            return asset('storage/' . $this->photo);
+        }
+        return null;
     }
 }

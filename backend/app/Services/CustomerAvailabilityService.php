@@ -6,13 +6,11 @@ use App\Models\Salon;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Booking;
+use App\Domain\Availability\Statuses\AvailabilityDomainStatus;
 use Carbon\Carbon;
 
 class CustomerAvailabilityService
 {
-    /**
-     * Get available time slots for a customer booking
-     */
     public function getAvailableSlots(string $salonId, ?string $serviceId, ?string $staffId, string $date): array
     {
         $salon = Salon::find($salonId);
@@ -20,40 +18,68 @@ class CustomerAvailabilityService
             throw new \Exception('Salon not found');
         }
 
-        $service = $serviceId ? Service::find($serviceId) : null;
-        $staff = $staffId ? Staff::find($staffId) : null;
+        $service = $serviceId ? Service::withoutGlobalScope('salon')->find($serviceId) : null;
+        $staff = $staffId ? Staff::withoutGlobalScope('salon')->find($staffId) : null;
 
-        // Get service duration
-        $duration = $service ? $service->duration : 60; // Default 60 minutes
+        $duration = $service ? $service->duration : 60;
 
-        // Get salon opening hours for the day
-        $dayOfWeek = Carbon::parse($date)->dayOfWeek; // 0 (Sunday) to 6 (Saturday)
+        $dayOfWeek = Carbon::parse($date)->dayOfWeek;
         $openingHours = $this->getOpeningHoursForDay($salon, $dayOfWeek);
 
+        $allStatuses = [];
+
         if (!$openingHours) {
-            return ['slots' => [], 'message' => 'Salon is closed on this day'];
+            return [
+                'salon_id' => $salonId,
+                'date' => $date,
+                'service_id' => $serviceId,
+                'staff_id' => $staffId,
+                'duration' => $duration,
+                'is_closed' => true,
+                'slots' => [],
+                'first_available_slot' => null,
+                'total_available_slots' => 0,
+                'domain_status' => AvailabilityDomainStatus::BRANCH_CLOSED->value,
+                'domain_statuses' => [AvailabilityDomainStatus::BRANCH_CLOSED->value],
+                'timezone' => $salon->timezone ?? 'Africa/Kampala',
+                'operating_hours' => null,
+            ];
         }
 
-        // Get existing bookings for the day
         $existingBookings = $this->getExistingBookings($salonId, $staffId, $date);
 
-        // Generate time slots
         $slots = $this->generateTimeSlots($openingHours, $duration, $existingBookings);
 
+        if (count($slots) > 0) {
+            $primary = AvailabilityDomainStatus::AVAILABLE;
+        } else {
+            $primary = AvailabilityDomainStatus::NO_WINDOWS;
+            $allStatuses[] = AvailabilityDomainStatus::NO_WINDOWS;
+        }
+
         return [
-            'date' => $date,
             'salon_id' => $salonId,
+            'date' => $date,
             'service_id' => $serviceId,
             'staff_id' => $staffId,
             'duration' => $duration,
-            'opening_hours' => $openingHours,
+            'timezone' => $salon->timezone ?? 'Africa/Kampala',
+            'operating_hours' => [
+                'open' => $openingHours['open'],
+                'close' => $openingHours['close'],
+            ],
+            'is_closed' => false,
             'slots' => $slots,
+            'first_available_slot' => count($slots) > 0 ? $slots[0] : null,
+            'total_available_slots' => count($slots),
+            'domain_status' => $primary->value,
+            'domain_statuses' => array_values(array_unique(array_map(
+                static fn (AvailabilityDomainStatus $s) => $s->value,
+                array_merge([$primary], $allStatuses),
+            ))),
         ];
     }
 
-    /**
-     * Get available dates for a month
-     */
     public function getAvailableDates(string $salonId, string $year, string $month): array
     {
         $salon = Salon::find($salonId);
@@ -88,14 +114,30 @@ class CustomerAvailabilityService
         ];
     }
 
-    /**
-     * Get opening hours for a specific day
-     */
     private function getOpeningHoursForDay(Salon $salon, int $dayOfWeek): ?array
     {
         $dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         $dayName = $dayNames[$dayOfWeek];
 
+        // Check if salon has INHERIT mode - use provider schedule
+        if ($salon->schedule_mode === 'INHERIT' && $salon->provider_id) {
+            $providerSchedule = \App\Models\ProviderSchedule::where('provider_id', $salon->provider_id)
+                ->where('day_of_week', $dayOfWeek)
+                ->first();
+
+            if ($providerSchedule && !$providerSchedule->is_closed) {
+                return [
+                    'open' => substr($providerSchedule->open_time, 0, 5),
+                    'close' => substr($providerSchedule->close_time, 0, 5),
+                    'break_start' => null,
+                    'break_end' => null,
+                ];
+            }
+
+            return null;
+        }
+
+        // Otherwise use salon's opening_hours
         $openingHours = $salon->opening_hours;
 
         if (!$openingHours || !isset($openingHours[$dayName])) {
@@ -104,7 +146,7 @@ class CustomerAvailabilityService
 
         $dayHours = $openingHours[$dayName];
 
-        if (!$dayHours['is_open'] ?? false) {
+        if (!($dayHours['is_open'] ?? false)) {
             return null;
         }
 
@@ -116,45 +158,52 @@ class CustomerAvailabilityService
         ];
     }
 
-    /**
-     * Get existing bookings for a specific date
-     */
     private function getExistingBookings(string $salonId, ?string $staffId, string $date): array
     {
+        $salon = \App\Models\Salon::find($salonId);
+        $providerId = $salon ? $salon->provider_id : null;
+
+        if (!$providerId) {
+            return [];
+        }
+
         $query = Booking::where('salon_id', $salonId)
             ->where('date', $date)
-            ->where('status', '!=', 'cancelled');
+            ->whereIn('status', ['confirmed', 'pending']);
 
         if ($staffId) {
+            // staff_id is the salon-local identity for bookings.
+            // We no longer fall back to specialist_id — those are distinct identities.
             $query->where('staff_id', $staffId);
         }
 
         $bookings = $query->get();
 
         return $bookings->map(function ($booking) {
+            $start = $booking->start_time ?? $booking->time;
+            $end = $booking->end_time;
+            if (!$end && $booking->service) {
+                $end = Carbon::parse($start)->addMinutes($booking->service->duration ?? 60)->toTimeString();
+            }
             return [
-                'time' => $booking->time,
-                'duration' => $booking->service ? $booking->service->duration : 60,
+                'start' => $start,
+                'end' => $end,
+                // staff_id is the canonical local identity for slot occupancy
                 'staff_id' => $booking->staff_id,
             ];
         })->toArray();
     }
 
-    /**
-     * Generate available time slots
-     */
     private function generateTimeSlots(array $openingHours, int $duration, array $existingBookings): array
     {
         $slots = [];
         $currentTime = Carbon::parse($openingHours['open']);
         $closeTime = Carbon::parse($openingHours['close']);
 
-        // Handle break time
         $breakStart = isset($openingHours['break_start']) ? Carbon::parse($openingHours['break_start']) : null;
         $breakEnd = isset($openingHours['break_end']) ? Carbon::parse($openingHours['break_end']) : null;
 
         while ($currentTime->copy()->addMinutes($duration)->lte($closeTime)) {
-            // Skip if during break
             if ($breakStart && $breakEnd) {
                 if ($currentTime->between($breakStart, $breakEnd)) {
                     $currentTime = $breakEnd->copy();
@@ -162,40 +211,44 @@ class CustomerAvailabilityService
                 }
             }
 
-            // Check if slot conflicts with existing bookings
             $slotStart = $currentTime->toTimeString();
             $slotEnd = $currentTime->copy()->addMinutes($duration)->toTimeString();
+
+            if ($breakStart && $breakEnd
+                && Carbon::parse($slotStart)->lt($breakEnd)
+                && Carbon::parse($slotEnd)->gt($breakStart)) {
+                $currentTime->addMinutes(15);
+                continue;
+            }
 
             $isAvailable = !$this->hasConflict($slotStart, $slotEnd, $existingBookings);
 
             if ($isAvailable) {
                 $slots[] = [
-                    'time' => $slotStart,
-                    'end_time' => $slotEnd,
+                    'start' => substr($slotStart, 0, 5),
+                    'end' => substr($slotEnd, 0, 5),
+                    'duration' => $duration,
                     'available' => true,
+                    'time' => substr($slotStart, 0, 5),
                 ];
             }
 
-            $currentTime->addMinutes(30); // 30-minute intervals
+            $currentTime->addMinutes(15);
         }
 
         return $slots;
     }
 
-    /**
-     * Check if time slot conflicts with existing bookings
-     */
     private function hasConflict(string $slotStart, string $slotEnd, array $existingBookings): bool
     {
+        $slotStartCarbon = Carbon::parse($slotStart);
+        $slotEndCarbon = Carbon::parse($slotEnd);
+
         foreach ($existingBookings as $booking) {
-            $bookingStart = Carbon::parse($booking['time']);
-            $bookingEnd = $bookingStart->copy()->addMinutes($booking['duration']);
+            $bookingStart = Carbon::parse($booking['start']);
+            $bookingEnd = Carbon::parse($booking['end'] ?? $booking['start'])->addMinutes($booking['duration'] ?? 60);
 
-            $slotStartCarbon = Carbon::parse($slotStart);
-            $slotEndCarbon = Carbon::parse($slotEnd);
-
-            // Check for overlap
-            if ($slotStartCarbon < $bookingEnd && $slotEndCarbon > $bookingStart) {
+            if ($slotStartCarbon->lt($bookingEnd) && $slotEndCarbon->gt($bookingStart)) {
                 return true;
             }
         }
@@ -203,12 +256,9 @@ class CustomerAvailabilityService
         return false;
     }
 
-    /**
-     * Get available staff for a service and time slot
-     */
     public function getAvailableStaff(string $salonId, string $serviceId, string $date, string $time): array
     {
-        $service = Service::find($serviceId);
+        $service = Service::withoutGlobalScope('salon')->find($serviceId);
         if (!$service) {
             throw new \Exception('Service not found');
         }
@@ -217,36 +267,37 @@ class CustomerAvailabilityService
         $slotStart = Carbon::parse($time);
         $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-        // Get all active staff for the salon
-        $allStaff = Staff::where('salon_id', $salonId)
+        $allStaff = Staff::withoutGlobalScope('salon')
+            ->where('salon_id', $salonId)
             ->where('active', true)
             ->get();
 
-        // Get existing bookings for the time slot
         $existingBookings = Booking::where('salon_id', $salonId)
             ->where('date', $date)
-            ->where('status', '!=', 'cancelled')
+            ->whereIn('status', ['confirmed', 'pending'])
             ->get();
 
         $availableStaff = [];
 
         foreach ($allStaff as $staff) {
-            // Check if staff offers this service
             if (!$this->staffOffersService($staff, $service)) {
                 continue;
             }
 
-            // Check if staff is available during the time slot
             $isAvailable = true;
             foreach ($existingBookings as $booking) {
-                if ($booking->staff_id !== $staff->id) {
+                // Match booking to staff by staff_id only (canonical local identity)
+                $bookingStaffId = $booking->staff_id;
+                if ($bookingStaffId !== $staff->id) {
                     continue;
                 }
 
-                $bookingStart = Carbon::parse($booking->time);
-                $bookingEnd = $bookingStart->copy()->addMinutes($booking->service->duration ?? 60);
+                $bookingStart = Carbon::parse($booking->start_time ?? $booking->time);
+                $bookingEnd = $booking->end_time
+                    ? Carbon::parse($booking->end_time)
+                    : $bookingStart->copy()->addMinutes($booking->service->duration ?? 60);
 
-                if ($slotStart < $bookingEnd && $slotEnd > $bookingStart) {
+                if ($slotStart->lt($bookingEnd) && $slotEnd->gt($bookingStart)) {
                     $isAvailable = false;
                     break;
                 }
@@ -270,13 +321,49 @@ class CustomerAvailabilityService
         ];
     }
 
-    /**
-     * Check if staff offers a specific service
-     */
     private function staffOffersService(Staff $staff, Service $service): bool
     {
-        // This is a simplified check - in a real implementation,
-        // you might have a staff_services pivot table
-        return true; // For now, assume all staff offer all services
+        return true;
+    }
+
+    public function getSpecialistsForService(string $salonId, string $serviceId): array
+    {
+        $service = Service::withoutGlobalScope('salon')->find($serviceId);
+        if (!$service) {
+            throw new \Exception('Service not found');
+        }
+
+        $allStaff = Staff::withoutGlobalScope('salon')
+            ->where('salon_id', $salonId)
+            ->where('active', true)
+            ->get();
+
+        \Log::info('getSpecialistsForService', [
+            'salon_id' => $salonId,
+            'service_id' => $serviceId,
+            'staff_count' => $allStaff->count(),
+        ]);
+
+        $specialists = [];
+
+        foreach ($allStaff as $staff) {
+            if (!$this->staffOffersService($staff, $service)) {
+                continue;
+            }
+
+            $specialists[] = [
+                'id' => $staff->id,
+                'name' => $staff->name,
+                'specializations' => $staff->specializations,
+                'avatar' => $staff->avatar,
+                'available' => true,
+            ];
+        }
+
+        return [
+            'service_id' => $serviceId,
+            'salon_id' => $salonId,
+            'available_staff' => $specialists,
+        ];
     }
 }

@@ -10,8 +10,8 @@ class ResolvePortalContext
 {
     /**
      * Handle an incoming request for portal routes.
-     * Resolves salon context through customer-salon relationship.
-     * Salon can be specified via query parameter or header, defaults to customer's first salon.
+     * Resolves provider context through customer-salon relationship.
+     * Provider can be specified via query parameter or header, defaults to customer's first salon's provider.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
@@ -56,7 +56,11 @@ class ResolvePortalContext
                 ], 403);
             }
 
-            // Inject salon context into request for controllers to use
+            // Get provider from salon (optional — don't block if salon has no provider)
+            $provider = $salon->provider;
+
+            // Inject context into request for controllers to use
+            $request->attributes->set('provider_id', $provider?->id);
             $request->attributes->set('salon_id', $salonId);
             $request->attributes->set('customer_id', $customer->id);
             $request->attributes->set('portal_account_id', $portalAccount->id);

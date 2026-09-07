@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('email')->nullable();
             $table->string('address')->nullable();
             $table->string('city')->nullable();
-            $table->json('opening_hours')->nullable();
+
             $table->timestamps();
 
             $table->index('slug');

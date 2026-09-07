@@ -4,25 +4,37 @@ namespace App\Services\Payments;
 
 use App\Models\Subscription;
 use App\Models\Invoice;
-use App\Services\BillingService;
+use App\Services\InvoiceService;
 use App\Services\SubscriptionService;
+use App\Services\Payments\Contracts\PaymentProviderInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * PlatformPaymentService - Orchestrate invoice/payment/subscription flow
+ * 
+ * This service orchestrates the payment flow for platform subscriptions:
+ * 1. Create Invoice
+ * 2. Initialize Payment
+ * 3. Verify Payment
+ * 4. Activate Subscription
+ * 
+ * It delegates to InvoiceService and SubscriptionService for business logic.
+ */
 class PlatformPaymentService
 {
     private PaymentProviderInterface $provider;
-    private BillingService $billingService;
+    private InvoiceService $invoiceService;
     private SubscriptionService $subscriptionService;
 
     public function __construct(
         PaymentProviderInterface $provider,
-        BillingService $billingService,
+        InvoiceService $invoiceService,
         SubscriptionService $subscriptionService
     ) {
         $this->provider = $provider;
-        $this->billingService = $billingService;
+        $this->invoiceService = $invoiceService;
         $this->subscriptionService = $subscriptionService;
     }
 
@@ -41,11 +53,7 @@ class PlatformPaymentService
         string $customerName,
         ?string $customerPhone = null
     ): array {
-        $invoice = $this->billingService->getInvoiceById($invoiceId);
-
-        if (!$invoice) {
-            throw new \Exception('Invoice not found');
-        }
+        $invoice = Invoice::findOrFail($invoiceId);
 
         if ($invoice->status === 'paid') {
             throw new \Exception('Invoice is already paid');
@@ -120,7 +128,7 @@ class PlatformPaymentService
                 ];
             }
 
-            // Mark invoice as paid
+            // Mark invoice as paid using InvoiceService
             $paymentData = [
                 'payment_method' => $verificationResult['payment_method'],
                 'payment_gateway' => $this->provider->getProviderName(),
@@ -128,36 +136,10 @@ class PlatformPaymentService
                 'gateway_response' => $verificationResult['data'],
             ];
 
-            $updatedInvoice = $this->billingService->markInvoiceAsPaid($invoice->id, $paymentData);
+            $updatedInvoice = $this->invoiceService->markAsPaid($invoice->id, $verificationResult['payment_method'], $paymentData);
 
-            // Activate or renew subscription
-            $subscription = $this->subscriptionService->getSubscriptionBySalon($invoice->subscription->salon_id);
-
-            if ($subscription) {
-                if ($subscription->status === 'trialing' || $subscription->status === 'past_due') {
-                    $this->subscriptionService->activateSubscription($subscription->id);
-                } elseif ($subscription->status === 'active') {
-                    // Renew subscription - extend the renewal date
-                    $renewsAt = $subscription->billing_cycle === 'yearly'
-                        ? $subscription->renews_at->addYear()
-                        : $subscription->renews_at->addMonth();
-
-                    $subscription->update([
-                        'renews_at' => $renewsAt,
-                        'ends_at' => $renewsAt,
-                    ]);
-
-                    $this->subscriptionService->recordBillingEvent(
-                        $subscription->id,
-                        'subscription_renewed',
-                        'Subscription renewed via payment',
-                        [
-                            'invoice_id' => $invoice->id,
-                            'payment_reference' => $reference,
-                        ]
-                    );
-                }
-            }
+            // Get subscription from invoice
+            $subscription = $invoice->subscription;
 
             return [
                 'success' => true,
@@ -212,11 +194,7 @@ class PlatformPaymentService
      */
     public function refundSubscriptionPayment(string $invoiceId, ?float $amount = null): array
     {
-        $invoice = $this->billingService->getInvoiceById($invoiceId);
-
-        if (!$invoice) {
-            throw new \Exception('Invoice not found');
-        }
+        $invoice = Invoice::findOrFail($invoiceId);
 
         if ($invoice->status !== 'paid') {
             throw new \Exception('Invoice is not paid');
@@ -240,17 +218,6 @@ class PlatformPaymentService
                     'refund_amount' => $refundResult['amount_refunded'],
                 ]),
             ]);
-
-            // Record billing event
-            $this->subscriptionService->recordBillingEvent(
-                $invoice->subscription_id,
-                'payment_refunded',
-                'Payment refunded',
-                [
-                    'invoice_id' => $invoice->id,
-                    'refund_amount' => $refundResult['amount_refunded'],
-                ]
-            );
         }
 
         return $refundResult;

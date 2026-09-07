@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Service;
 use App\Models\Customer;
 use App\Models\Staff;
@@ -34,6 +35,12 @@ class AnalyticsDemoSeeder extends Seeder
 
         $this->command->info('🎨 Starting Analytics Demo Seeder for: ' . $salon->name);
 
+        // Get the provider for this salon
+        $provider = $salon->provider ?? \App\Models\Provider::firstOrCreate(
+            ['slug' => $salon->slug],
+            ['type' => 'salon', 'status' => 'active', 'display_name' => $salon->name, 'active' => true]
+        );
+
         // ── 1. Services ──────────────────────────────────────────────────────
         $serviceData = [
             ['name' => 'Executive Hair Cut', 'price' => 120000, 'duration' => 45, 'category' => 'Hair'],
@@ -45,10 +52,11 @@ class AnalyticsDemoSeeder extends Seeder
         ];
         $services = [];
         foreach ($serviceData as $data) {
-            $services[] = Service::firstOrCreate(
-                ['salon_id' => $salon->id, 'name' => $data['name']],
-                array_merge($data, ['salon_id' => $salon->id, 'active' => true])
+            $service = Service::firstOrCreate(
+                ['provider_id' => $provider->id, 'name' => $data['name']],
+                array_merge($data, ['provider_id' => $provider->id, 'active' => true])
             );
+            $services[] = $service;
         }
         $this->command->info('✅ Services seeded: ' . count($services));
 
@@ -157,6 +165,7 @@ class AnalyticsDemoSeeder extends Seeder
                 }
 
                 $booking = Booking::create([
+                    'provider_id' => $provider->id,
                     'salon_id'   => $salon->id,
                     'customer_id' => $customer->id,
                     'staff_id'   => $staffMember->id,

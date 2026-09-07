@@ -21,7 +21,7 @@ export function NotificationCenter() {
 
   const fetchNotifications = async () => {
     try {
-      const response = await apiClient.get('/notifications');
+      const response = await apiClient.get('/v1/notifications');
       setNotifications(response.notifications.data);
       setUnreadCount(response.unread_count);
     } catch (error) {
@@ -31,7 +31,7 @@ export function NotificationCenter() {
 
   const markAsRead = async (id: number) => {
     try {
-      await apiClient.post(`/notifications/${id}/read`);
+      await apiClient.put(`/v1/notifications/${id}/read`);
       fetchNotifications();
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
@@ -40,7 +40,7 @@ export function NotificationCenter() {
 
   const markAllAsRead = async () => {
     try {
-      await apiClient.post('/notifications/read-all');
+      await apiClient.put('/v1/notifications/read-all');
       fetchNotifications();
     } catch (error) {
       console.error('Failed to mark all notifications as read:', error);

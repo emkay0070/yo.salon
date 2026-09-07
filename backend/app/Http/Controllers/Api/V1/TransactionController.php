@@ -4,18 +4,22 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\PaymentMethod;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use App\Services\FeeEngine;
+use App\Services\Payments\PaymentRoutingService;
 
 class TransactionController extends Controller
 {
     protected FeeEngine $feeEngine;
+    protected PaymentRoutingService $paymentRoutingService;
 
-    public function __construct(FeeEngine $feeEngine)
+    public function __construct(FeeEngine $feeEngine, PaymentRoutingService $paymentRoutingService)
     {
         $this->feeEngine = $feeEngine;
+        $this->paymentRoutingService = $paymentRoutingService;
     }
 
     public function index(Request $request): JsonResponse
@@ -62,8 +66,8 @@ class TransactionController extends Controller
             'customer_id'       => 'nullable|exists:customers,id',
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'payment_method'    => 'nullable|string',
-            'type'              => 'required|in:payment,refund,adjustment,payout',
-            'amount'            => 'required|numeric|min:0', // Still accept 'amount' from client but map to gross
+            'type'              => 'required|in:payment,refund,adjustment',
+            'amount'            => 'required|numeric|min:0',
             'currency'          => 'sometimes|string|max:10',
             'notes'             => 'nullable|string',
             'provider_reference'=> 'nullable|string',
@@ -80,17 +84,20 @@ class TransactionController extends Controller
                 ]
             );
             $paymentMethodId = $pm->id;
-            $paymentMethodId = $pm->id;
         }
 
-        $paymentMethod = $paymentMethodId ? \App\Models\PaymentMethod::find($paymentMethodId) : null;
+        $paymentMethod = $paymentMethodId ? PaymentMethod::find($paymentMethodId) : null;
         $fees = $this->feeEngine->calculateFees((float) $validated['amount'], $paymentMethod);
+        
+        // Determine payment account
+        $paymentAccount = $paymentMethod ? $this->paymentRoutingService->determinePaymentAccount($paymentMethod) : null;
 
         $transaction = Transaction::create([
             'salon_id'           => $salonId,
             'booking_id'         => $validated['booking_id'] ?? null,
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
+            'payment_account_id' => $paymentAccount?->id,
             'type'               => $validated['type'],
             'gross_amount'       => $fees['gross_amount'],
             'gateway_fee'        => $fees['gateway_fee'],
@@ -125,7 +132,7 @@ class TransactionController extends Controller
     }
 
     /**
-     * Today's Summary — metrics for the Wallet dashboard.
+     * Today's Summary — metrics for the dashboard.
      */
     public function summary(Request $request): JsonResponse
     {
@@ -145,7 +152,6 @@ class TransactionController extends Controller
             ->get();
 
         $totalReceived     = $todayTransactions->where('type', 'payment')->sum('gross_amount');
-        $totalNetReceived  = $todayTransactions->where('type', 'payment')->sum('net_amount');
         $totalRefunds      = $todayTransactions->where('type', 'refund')->sum('gross_amount');
         $transactionCount  = $todayTransactions->where('type', 'payment')->count();
         $averageSale       = $transactionCount > 0 ? $totalReceived / $transactionCount : 0;
@@ -157,7 +163,6 @@ class TransactionController extends Controller
         return response()->json([
             'date'              => $date,
             'total_received'    => $totalReceived,
-            'total_net_received'=> $totalNetReceived,
             'transaction_count' => $transactionCount,
             'average_sale'      => round($averageSale, 0),
             'total_refunds'     => $totalRefunds,

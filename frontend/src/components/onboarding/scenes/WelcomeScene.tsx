@@ -8,7 +8,7 @@ export default function WelcomeScene() {
   const { goNext } = useOnboarding();
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+    <div className="fixed inset-0 flex items-center justify-center relative overflow-hidden z-50">
       {/* Background image */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -17,11 +17,12 @@ export default function WelcomeScene() {
       <div className="absolute inset-0 bg-gradient-to-br from-[#060608]/70 via-[#060608]/50 to-[#060608]/85" />
       <div className="absolute inset-0 bg-gradient-to-t from-[#060608]/95 via-transparent to-[#060608]/40" />
 
-      <div className="relative z-10 text-center px-8 max-w-3xl">
+      <div className="relative z-10 text-center px-8 w-full h-full flex flex-col items-center justify-center">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+          className="w-full"
         >
           {/* Logo */}
           <div className="flex items-center justify-center gap-3 mb-10">

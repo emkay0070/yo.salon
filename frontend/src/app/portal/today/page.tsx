@@ -8,6 +8,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FeatureGuard } from '@/components/ui/FeatureGuard';
 import { useRouter } from 'next/navigation';
 
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function formatTime(timeStr: string): string {
+  if (!timeStr) return '';
+  const time = new Date(timeStr);
+  return time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
 export default function PortalHomePage() {
   const { customer, salon, isLoading: authLoading } = usePortalAuth();
   const queryClient = useQueryClient();
@@ -120,8 +132,8 @@ export default function PortalHomePage() {
                   <p className="text-sm text-text-secondary">{upcomingBooking.staff?.name}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-text-primary">{upcomingBooking.date}</p>
-                  <p className="text-sm text-text-secondary">{upcomingBooking.time}</p>
+                  <p className="font-semibold text-text-primary">{formatDate(upcomingBooking.date)}</p>
+                  <p className="text-sm text-text-secondary">{formatTime(upcomingBooking.time)}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -300,8 +312,8 @@ export default function PortalHomePage() {
                       <p className="text-xs text-text-secondary">{visit.staff?.name}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-text-primary">{visit.date}</p>
-                      <p className="text-xs text-text-secondary">{visit.time}</p>
+                      <p className="text-sm text-text-primary">{formatDate(visit.date)}</p>
+                      <p className="text-xs text-text-secondary">{formatTime(visit.time)}</p>
                     </div>
                   </div>
                 ))}

@@ -3,147 +3,103 @@
 namespace App\Services;
 
 use App\Models\Invoice;
-use App\Models\Payment;
+use App\Models\InvoicePayment;
 use App\Models\Subscription;
+use App\Models\Plan;
 use App\Models\BillingEvent;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
+/**
+ * BillingService - Charge calculation and renewal management
+ * 
+ * This service handles billing calculations, subscription renewals, and invoice generation.
+ * It works with InvoiceService for invoice creation and SubscriptionService for subscription management.
+ */
 class BillingService
 {
-    public function createInvoice(array $data): Invoice
+    public function calculateCharge(Subscription $subscription): array
     {
-        return DB::transaction(function () use ($data) {
-            $invoice = Invoice::create($data);
-
-            // Generate invoice number
-            $invoiceNumber = $this->generateInvoiceNumber($invoice->id);
-            $invoice->update(['invoice_number' => $invoiceNumber]);
-
-            // Record billing event
-            $this->recordBillingEvent($invoice->subscription_id, 'invoice_created', 'Invoice created', [
-                'invoice_id' => $invoice->id,
-                'invoice_number' => $invoiceNumber,
-                'amount' => $invoice->total,
-            ]);
-
-            return $invoice->fresh();
-        });
-    }
-
-    public function getInvoiceById(string $id): ?Invoice
-    {
-        return Invoice::find($id);
-    }
-
-    public function getInvoicesBySubscription(string $subscriptionId, int $limit = 20): \Illuminate\Database\Eloquent\Collection
-    {
-        return Invoice::where('subscription_id', $subscriptionId)
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get();
-    }
-
-    public function markInvoiceAsPaid(string $invoiceId, array $paymentData = []): Invoice
-    {
-        return DB::transaction(function () use ($invoiceId, $paymentData) {
-            $invoice = Invoice::findOrFail($invoiceId);
-
-            $invoice->update([
-                'status' => 'paid',
-                'paid_at' => Carbon::now(),
-                'payment_method' => $paymentData['payment_method'] ?? null,
-            ]);
-
-            // Create payment record
-            if (!empty($paymentData)) {
-                Payment::create([
-                    'invoice_id' => $invoice->id,
-                    'status' => 'completed',
-                    'currency' => $invoice->currency,
-                    'amount' => $invoice->total,
-                    'payment_method' => $paymentData['payment_method'] ?? null,
-                    'payment_gateway' => $paymentData['payment_gateway'] ?? null,
-                    'transaction_id' => $paymentData['transaction_id'] ?? null,
-                    'processed_at' => Carbon::now(),
-                    'gateway_response' => $paymentData['gateway_response'] ?? null,
-                ]);
-            }
-
-            // Record billing event
-            $this->recordBillingEvent($invoice->subscription_id, 'payment_succeeded', 'Payment succeeded', [
-                'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'amount' => $invoice->total,
-            ]);
-
-            return $invoice->fresh();
-        });
-    }
-
-    public function markInvoiceAsFailed(string $invoiceId, string $reason = null): Invoice
-    {
-        return DB::transaction(function () use ($invoiceId, $reason) {
-            $invoice = Invoice::findOrFail($invoiceId);
-
-            $invoice->update([
-                'status' => 'failed',
-            ]);
-
-            // Create failed payment record
-            Payment::create([
-                'invoice_id' => $invoice->id,
-                'status' => 'failed',
-                'currency' => $invoice->currency,
-                'amount' => $invoice->total,
-                'processed_at' => Carbon::now(),
-            ]);
-
-            // Record billing event
-            $this->recordBillingEvent($invoice->subscription_id, 'payment_failed', 'Payment failed', [
-                'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'amount' => $invoice->total,
-                'reason' => $reason,
-            ]);
-
-            return $invoice->fresh();
-        });
-    }
-
-    public function generateInvoiceForSubscription(string $subscriptionId): Invoice
-    {
-        $subscription = Subscription::findOrFail($subscriptionId);
         $plan = $subscription->plan;
 
-        $price = $subscription->billing_cycle === 'yearly'
+        $amount = $subscription->billing_cycle === 'yearly'
             ? $plan->yearly_price
             : $plan->monthly_price;
 
-        return $this->createInvoice([
-            'subscription_id' => $subscriptionId,
-            'status' => 'pending',
-            'currency' => 'UGX',
-            'subtotal' => $price,
+        return [
+            'subtotal' => $amount,
             'tax' => 0,
             'discount' => 0,
-            'total' => $price,
-            'due_date' => Carbon::now()->addDays(7),
-            'line_items' => [
-                [
-                    'description' => "{$plan->name} Plan ({$subscription->billing_cycle})",
-                    'quantity' => 1,
-                    'unit_price' => $price,
-                    'total' => $price,
-                ],
-            ],
-        ]);
+            'total' => $amount,
+            'currency' => 'UGX',
+        ];
+    }
+
+    public function processRenewal(string $subscriptionId): array
+    {
+        return DB::transaction(function () use ($subscriptionId) {
+            $subscription = Subscription::findOrFail($subscriptionId);
+
+            if (!$subscription->isActive()) {
+                throw new \Exception('Cannot renew inactive subscription');
+            }
+
+            // Generate invoice for renewal
+            $invoice = app(InvoiceService::class)->generateSubscriptionInvoice($subscription);
+
+            // Renew subscription
+            $renewedSubscription = app(SubscriptionService::class)->renewSubscription($subscriptionId);
+
+            // Record billing event
+            $this->recordBillingEvent($subscriptionId, 'renewal_processed', 'Renewal processed', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'amount' => $invoice->total,
+                'renews_at' => $renewedSubscription->renews_at?->toIso8601String(),
+            ]);
+
+            return [
+                'subscription' => $renewedSubscription,
+                'invoice' => $invoice,
+            ];
+        });
+    }
+
+    public function checkAndProcessDueRenewals(): array
+    {
+        $subscriptions = Subscription::where('status', 'active')
+            ->where('renews_at', '<=', Carbon::now())
+            ->get();
+
+        $processed = [];
+        $failed = [];
+
+        foreach ($subscriptions as $subscription) {
+            try {
+                $result = $this->processRenewal($subscription->id);
+                $processed[] = [
+                    'subscription_id' => $subscription->id,
+                    'invoice_id' => $result['invoice']->id,
+                ];
+            } catch (\Exception $e) {
+                $failed[] = [
+                    'subscription_id' => $subscription->id,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'processed' => $processed,
+            'failed' => $failed,
+            'total' => $subscriptions->count(),
+        ];
     }
 
     public function getBillingTimeline(string $subscriptionId): array
     {
         $events = BillingEvent::where('subscription_id', $subscriptionId)
-            ->recent()
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return $events->map(function ($event) {
@@ -157,9 +113,35 @@ class BillingService
         })->toArray();
     }
 
-    private function generateInvoiceNumber(string $invoiceId): string
+    public function getUpcomingRenewals(int $days = 7): \Illuminate\Database\Eloquent\Collection
     {
-        return 'INV-' . strtoupper(substr($invoiceId, 0, 8)) . '-' . date('Ymd');
+        return Subscription::where('status', 'active')
+            ->where('renews_at', '>', Carbon::now())
+            ->where('renews_at', '<=', Carbon::now()->addDays($days))
+            ->with('plan', 'provider')
+            ->orderBy('renews_at')
+            ->get();
+    }
+
+    public function getOverdueInvoices(): \Illuminate\Database\Eloquent\Collection
+    {
+        return Invoice::where('status', 'pending')
+            ->where('due_date', '<', Carbon::now())
+            ->with('subscription', 'provider')
+            ->orderBy('due_date')
+            ->get();
+    }
+
+    public function getInvoicesBySubscription(string $subscriptionId): \Illuminate\Database\Eloquent\Collection
+    {
+        return Invoice::where('subscription_id', $subscriptionId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    public function getInvoiceById(string $invoiceId): ?Invoice
+    {
+        return Invoice::find($invoiceId);
     }
 
     private function recordBillingEvent(string $subscriptionId, string $type, string $description, array $payload = []): void

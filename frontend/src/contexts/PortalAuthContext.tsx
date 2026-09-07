@@ -67,27 +67,54 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
 
   const hydrateFromContext = useCallback((data: any) => {
     console.log('Hydrating from context:', data);
-    setCustomer(data.customer);
-    setSalon(data.active_salon);
-    setSalons(data.salons || []);
-    setPortalAccount(data.portal_account);
-    setCapabilities(data.capabilities || {});
+    if (data.customer) {
+      setCustomer(data.customer);
+    } else {
+      console.warn('No customer data in context response');
+    }
+    if (data.active_salon) {
+      setSalon(data.active_salon);
+    } else {
+      console.warn('No active_salon data in context response');
+    }
+    if (data.salons) {
+      setSalons(data.salons);
+    }
+    if (data.portal_account) {
+      setPortalAccount(data.portal_account);
+    }
+    if (data.capabilities) {
+      setCapabilities(data.capabilities);
+    }
+    console.log('After hydration - customer:', data.customer, 'salon:', data.active_salon);
   }, []);
 
-  const refresh = useCallback(async () => {
+    const refresh = useCallback(async () => {
+    // Check if we're on the server
+    if (typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem('portal_auth_token');
     if (token) {
       try {
         const data = await portalApiClient.get('/portal/context');
         hydrateFromContext(data);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to load portal user:", error);
-        // If 401, apiClient interceptor will handle redirect
-        localStorage.removeItem('portal_auth_token');
+        // Only clear the token on a genuine 401 Unauthorized.
+        // For other errors (403, 500, network) keep the token so the user
+        // isn't silently logged out due to a transient backend issue.
+        const status = error?.response?.status;
+        if (status === 401) {
+          localStorage.removeItem('portal_auth_token');
+        }
       }
     }
     setIsLoading(false);
   }, [hydrateFromContext]);
+
 
   useEffect(() => {
     refresh();

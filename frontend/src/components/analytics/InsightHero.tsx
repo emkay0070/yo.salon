@@ -22,12 +22,12 @@ export function InsightHero({ title, narrative, metric, trend, imagePath }: Insi
     >
       {imagePath && (
         <>
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url('${imagePath}')` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-background)]/95 via-[var(--color-background)]/80 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-background)]/60 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#070707]/95 via-[#070707]/80 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#070707] via-[#070707]/70 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-[#FFD700]/50 via-[#FFD700]/10 to-transparent" />
         </>
       )}

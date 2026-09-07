@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Calendar } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import BookingSteps from '@/components/booking/BookingSteps';
 import CalendarPicker from '@/components/booking/CalendarPicker';
@@ -11,6 +12,7 @@ import BookingSummary from '@/components/booking/BookingSummary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/contexts/RoleContext';
 import { apiClient } from '@/lib/api-client';
+import { salonRoutes } from '@/lib/routes';
 
 interface Service {
   id: string;
@@ -33,7 +35,12 @@ export default function BookingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { salonId } = useRole();
+  const { salonId: authenticatedSalonId, salonSlug } = useRole();
+  const routes = salonRoutes(salonSlug);
+  
+  // Get salon from URL params for guest booking, or use authenticated salon
+  const salonId = searchParams.get('salonId') || authenticatedSalonId;
+  
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedService, setSelectedService] = useState<Service | undefined>();
   const [selectedStylist, setSelectedStylist] = useState<Stylist | undefined>();
@@ -44,13 +51,13 @@ export default function BookingContent() {
 
   const { data: servicesData = [], isLoading: servicesLoading } = useQuery({
     queryKey: ['services', salonId],
-    queryFn: () => apiClient.getServices({ salon_id: salonId }),
+    queryFn: () => apiClient.getServices({ salon_id: salonId! }),
     enabled: !!salonId,
   });
 
   const { data: staffData = [], isLoading: staffLoading } = useQuery({
     queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId }),
+    queryFn: () => apiClient.getStaff({ salon_id: salonId! }),
     enabled: !!salonId,
   });
 
@@ -132,7 +139,7 @@ export default function BookingContent() {
                       <p className="text-text-primary font-semibold text-left text-sm lg:text-base truncate">{service.name}</p>
                       <p className="text-text-secondary text-xs lg:text-sm mt-1 text-left">{service.duration} minutes</p>
                     </div>
-                    <span className="text-gold font-bold text-sm lg:text-lg ml-2 flex-shrink-0">UGX {service.price.toLocaleString()}</span>
+                    <span className="text-gold font-bold text-sm lg:text-lg ml-2 flex-shrink-0">UGX {service.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                   </div>
                 </button>
               ))
@@ -259,7 +266,7 @@ export default function BookingContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings', salonId] });
-      router.push('/bookings');
+      router.push(routes.bookings);
     },
     onError: (error) => {
       console.error('Failed to create booking:', error);
@@ -290,6 +297,28 @@ export default function BookingContent() {
   return (
     <DashboardLayout>
       <div className="h-full font-sans overflow-x-hidden">
+        {/* No salon selected state */}
+        {!salonId && (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center mb-4">
+              <Calendar className="w-8 h-8 text-gold" />
+            </div>
+            <h2 className="text-xl font-semibold text-text-primary mb-2">No Salon Selected</h2>
+            <p className="text-text-secondary mb-6 max-w-md">
+              Please select a salon from the discovery page to continue with your booking.
+            </p>
+            <button
+              onClick={() => router.push('/')}
+              className="px-6 py-2.5 bg-gold text-black rounded-xl font-medium hover:bg-gold/90 transition-colors"
+            >
+              Discover Salons
+            </button>
+          </div>
+        )}
+
+        {/* Booking flow - only shown when salonId exists */}
+        {salonId && (
+          <>
         <div className="mb-4 lg:mb-8">
           <h1 className="font-serif text-2xl lg:text-3xl font-bold text-text-primary tracking-tight">Book Your Appointment</h1>
           <p className="text-text-secondary mt-2 text-sm lg:text-base">Follow the steps to schedule your visit</p>
@@ -355,6 +384,8 @@ export default function BookingContent() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );

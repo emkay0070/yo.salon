@@ -14,8 +14,10 @@ return new class extends Migration
         // Clear existing tokens since they have integer IDs that can't be cast to UUID
         DB::table('personal_access_tokens')->delete();
 
-        // Use raw SQL for PostgreSQL with proper casting
-        DB::statement('ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id TYPE UUID USING tokenable_id::text::uuid');
+        if (DB::getDriverName() !== 'sqlite') {
+            // First cast to text, then to uuid to avoid "cannot be cast automatically" errors
+            DB::statement('ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id TYPE UUID USING tokenable_id::text::uuid');
+        }
     }
 
     /**
@@ -23,7 +25,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Revert back to bigint
-        DB::statement('ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id TYPE BIGINT USING tokenable_id::text::bigint');
+        if (DB::getDriverName() !== 'sqlite') {
+            // First cast back to text, then to bigint
+            DB::statement('ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id TYPE BIGINT USING tokenable_id::text::bigint');
+        }
     }
 };

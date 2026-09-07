@@ -49,7 +49,7 @@ export default function StaffLeaderboard({ staff }: StaffLeaderboardProps) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-text-primary">{member.name}</h3>
-                  <p className="text-xs text-text-secondary">{member.bookings} bookings • UGX {member.revenue_generated.toLocaleString()}</p>
+                  <span className="text-gold font-medium">UGX {member.revenue_generated.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
               

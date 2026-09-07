@@ -15,70 +15,94 @@ class PortalRecommendationService
      */
     public function getRecommendedServices(Customer $customer, string $salonId, int $limit = 6): array
     {
-        $customerId = $customer->id;
+        try {
+            $customerId = $customer->id;
 
-        // Get customer's booking history to find frequently booked services at this salon
-        $frequentlyBookedServiceIds = Booking::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
-            ->where('status', 'completed')
-            ->select('service_id', DB::raw('COUNT(*) as count'))
-            ->groupBy('service_id')
-            ->orderBy('count', 'desc')
-            ->limit(3)
-            ->pluck('service_id')
-            ->toArray();
+            // Get salon to find its provider_id
+            $salon = \App\Models\Salon::find($salonId);
+            $providerId = $salon ? $salon->provider_id : null;
 
-        // Get customer's preferred stylist for this salon
-        $preferredStaffId = \App\Models\CustomerPreference::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
-            ->first()?->preferred_staff_id;
+            if (!$providerId) {
+                return [];
+            }
 
-        // Get services from the same category as frequently booked services
-        $categoryIds = [];
-        if (!empty($frequentlyBookedServiceIds)) {
-            $categoryIds = Service::whereIn('id', $frequentlyBookedServiceIds)
-                ->where('salon_id', $salonId)
-                ->pluck('category')
-                ->unique()
+            // Get customer's booking history to find frequently booked services at this provider
+            $frequentlyBookedServiceIds = Booking::where('customer_id', $customerId)
+                ->where('provider_id', $providerId)
+                ->where('status', 'completed')
+                ->select('service_id', DB::raw('COUNT(*) as count'))
+                ->groupBy('service_id')
+                ->orderBy('count', 'desc')
+                ->limit(3)
+                ->pluck('service_id')
                 ->toArray();
+
+            // Get customer's preferred stylist for this salon
+            $preferredStaffId = \App\Models\CustomerPreference::where('customer_id', $customerId)
+                ->where('salon_id', $salonId)
+                ->first()?->preferred_staff_id;
+
+            // Get services from the same category as frequently booked services
+            $categoryIds = [];
+            if (!empty($frequentlyBookedServiceIds)) {
+                $categoryIds = Service::whereIn('id', $frequentlyBookedServiceIds)
+                    ->where('provider_id', $providerId)
+                    ->pluck('category')
+                    ->unique()
+                    ->toArray();
+            }
+
+            // Build query for recommended services
+            $query = Service::where('provider_id', $providerId)
+                ->where('active', true);
+
+            // Prioritize services from same category as frequently booked
+            if (!empty($categoryIds)) {
+                // Use a case statement approach that's more database-agnostic
+                $categoryPriority = implode(',', array_map(function($id) { return "'$id'"; }, $categoryIds));
+                try {
+                    $query->orderByRaw("CASE WHEN category IN ($categoryPriority) THEN 0 ELSE 1 END");
+                } catch (\Exception $e) {
+                    // If the raw query fails, just skip the ordering
+                    \Log::warning('Failed to order by category priority', ['error' => $e->getMessage()]);
+                }
+            }
+
+            // If customer has preferred stylist, prioritize services they offer
+            if ($preferredStaffId) {
+                // This would require a staff_services pivot table
+                // For now, we'll just get active services
+            }
+
+            // Exclude already frequently booked services to suggest new ones
+            if (!empty($frequentlyBookedServiceIds)) {
+                $query->whereNotIn('id', $frequentlyBookedServiceIds);
+            }
+
+            $services = $query->limit($limit)
+                ->get()
+                ->map(function ($service) {
+                    return [
+                        'id' => $service->id,
+                        'name' => $service->name,
+                        'description' => $service->description,
+                        'price' => $service->price,
+                        'duration' => $service->duration,
+                        'category' => $service->category,
+                        'image_url' => $service->image_url,
+                    ];
+                })
+                ->toArray();
+
+            return $services;
+        } catch (\Exception $e) {
+            \Log::error('getRecommendedServices error', [
+                'error' => $e->getMessage(),
+                'customer_id' => $customer->id,
+                'salon_id' => $salonId,
+            ]);
+            return [];
         }
-
-        // Build query for recommended services
-        $query = Service::where('salon_id', $salonId)
-            ->where('active', true);
-
-        // Prioritize services from same category as frequently booked
-        if (!empty($categoryIds)) {
-            $query->orderByRaw('FIELD(category, ' . implode(',', array_fill(0, count($categoryIds), '?')) . ') DESC', $categoryIds);
-        }
-
-        // If customer has preferred stylist, prioritize services they offer
-        if ($preferredStaffId) {
-            // This would require a staff_services pivot table
-            // For now, we'll just get active services
-        }
-
-        // Exclude already frequently booked services to suggest new ones
-        if (!empty($frequentlyBookedServiceIds)) {
-            $query->whereNotIn('id', $frequentlyBookedServiceIds);
-        }
-
-        $services = $query->limit($limit)
-            ->get()
-            ->map(function ($service) {
-                return [
-                    'id' => $service->id,
-                    'name' => $service->name,
-                    'description' => $service->description,
-                    'price' => $service->price,
-                    'duration' => $service->duration,
-                    'category' => $service->category,
-                    'image' => $service->image,
-                ];
-            })
-            ->toArray();
-
-        return $services;
     }
 
     /**
@@ -89,7 +113,15 @@ class PortalRecommendationService
     {
         $thirtyDaysAgo = now()->subDays(30);
 
-        $trendingServiceIds = Booking::where('salon_id', $salonId)
+        // Get provider_id from salon
+        $salon = \App\Models\Salon::find($salonId);
+        $providerId = $salon ? $salon->provider_id : null;
+
+        if (!$providerId) {
+            return [];
+        }
+
+        $trendingServiceIds = Booking::where('provider_id', $providerId)
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->where('status', '!=', 'cancelled')
             ->select('service_id', DB::raw('COUNT(*) as count'))
@@ -143,7 +175,15 @@ class PortalRecommendationService
      */
     public function getPopularServices(string $salonId, int $limit = 6): array
     {
-        $popularServiceIds = Booking::where('salon_id', $salonId)
+        // Get provider_id from salon
+        $salon = \App\Models\Salon::find($salonId);
+        $providerId = $salon ? $salon->provider_id : null;
+
+        if (!$providerId) {
+            return [];
+        }
+
+        $popularServiceIds = Booking::where('provider_id', $providerId)
             ->where('status', '!=', 'cancelled')
             ->select('service_id', DB::raw('COUNT(*) as count'))
             ->groupBy('service_id')

@@ -8,6 +8,7 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentRequest;
 use App\Models\Transaction;
 use App\Services\FeeEngine;
+use App\Services\Payments\Contracts\PaymentProviderInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Event;
@@ -17,13 +18,16 @@ class SalonPaymentService
 {
     private PaymentProviderInterface $provider;
     private FeeEngine $feeEngine;
+    private PaymentRoutingService $paymentRoutingService;
 
     public function __construct(
         PaymentProviderInterface $provider,
-        FeeEngine $feeEngine
+        FeeEngine $feeEngine,
+        PaymentRoutingService $paymentRoutingService
     ) {
         $this->provider = $provider;
         $this->feeEngine = $feeEngine;
+        $this->paymentRoutingService = $paymentRoutingService;
     }
 
     /**
@@ -199,7 +203,20 @@ class SalonPaymentService
             }
 
             $paymentMethod = PaymentMethod::find($paymentRequest->payment_method_id);
-            $fees = $this->feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
+            
+            // Use provider's actual fees if available, otherwise use default zero fees
+            if (isset($verificationResult['fees'])) {
+                $fees = $this->feeEngine->calculateFeesFromProvider(
+                    (float) $paymentRequest->amount,
+                    $paymentMethod,
+                    $verificationResult
+                );
+            } else {
+                $fees = $this->feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
+            }
+            
+            // Determine payment account
+            $paymentAccount = $this->paymentRoutingService->determinePaymentAccount($paymentMethod);
 
             // Create transaction
             $transaction = Transaction::create([
@@ -207,6 +224,7 @@ class SalonPaymentService
                 'booking_id' => $paymentRequest->booking_id,
                 'customer_id' => $paymentRequest->customer_id,
                 'payment_method_id' => $paymentRequest->payment_method_id,
+                'payment_account_id' => $paymentAccount?->id,
                 'type' => 'payment',
                 'status' => 'completed',
                 'gross_amount' => $fees['gross_amount'],
@@ -236,11 +254,9 @@ class SalonPaymentService
             $booking = Booking::find($paymentRequest->booking_id);
             if ($booking) {
                 Event::dispatch(new PaymentConfirmed(
-                    $booking->id,
-                    $booking->customer_id,
-                    $booking->salon_id,
-                    $fees['gross_amount'],
-                    $paymentMethod->display_name
+                    $booking,
+                    $transaction,
+                    $booking->customer_id
                 ));
             }
 
@@ -318,6 +334,9 @@ class SalonPaymentService
 
             // Calculate fees
             $fees = $this->feeEngine->calculateFees($amount, $paymentMethodRecord);
+            
+            // Determine payment account
+            $paymentAccount = $this->paymentRoutingService->determinePaymentAccount($paymentMethodRecord);
 
             // Create transaction
             $transaction = Transaction::create([
@@ -325,6 +344,7 @@ class SalonPaymentService
                 'booking_id' => $bookingId,
                 'customer_id' => $customerId,
                 'payment_method_id' => $paymentMethodRecord->id,
+                'payment_account_id' => $paymentAccount?->id,
                 'type' => 'payment',
                 'status' => 'completed',
                 'gross_amount' => $fees['gross_amount'],
@@ -406,6 +426,7 @@ class SalonPaymentService
             'booking_id' => $originalTransaction->booking_id,
             'customer_id' => $originalTransaction->customer_id,
             'payment_method_id' => $originalTransaction->payment_method_id,
+            'payment_account_id' => $originalTransaction->payment_account_id,
             'type' => 'refund',
             'status' => 'completed',
             'gross_amount' => -$refundAmount,
@@ -428,6 +449,19 @@ class SalonPaymentService
                 'refund_amount' => $refundAmount,
             ]),
         ]);
+
+        // Dispatch RefundConfirmed event to trigger Finance domain processing
+        $booking = $originalTransaction->booking;
+        if ($booking) {
+            event(new \App\Events\RefundConfirmed(
+                $originalTransaction,
+                $refundTransaction,
+                $booking,
+                $originalTransaction->customer_id,
+                $refundAmount,
+                'UGX'
+            ));
+        }
 
         return [
             'success' => true,

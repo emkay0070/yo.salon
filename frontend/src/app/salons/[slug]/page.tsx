@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Phone, Mail, Clock, ArrowRight, Scissors, Star, Shield, Loader2 } from 'lucide-react';
+import { MapPin, Phone, Mail, Clock, ArrowRight, Scissors, Star, Shield, Loader2, Menu, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { TenantBrandProvider, useTenantBrand } from '@/contexts/TenantBrandContext';
 
@@ -32,36 +32,43 @@ interface StaffMember {
   role: string;
 }
 
-function SalonLandingPageContent({ params }: { params: { slug: string } }) {
+function SalonLandingPageContent({ params }: { params: Promise<{ slug: string }> }) {
   const router = useRouter();
   const { brand } = useTenantBrand();
+  const unwrappedParams = use(params);
   const [salon, setSalon] = useState<SalonData | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
 
   useEffect(() => {
     async function loadData() {
       try {
-        const salonData = await apiClient.getSalonBySlug(params.slug);
+        const salonData = await apiClient.getSalonBySlug(unwrappedParams.slug);
         setSalon(salonData);
-        
+
         const [servicesData, staffData] = await Promise.all([
-          apiClient.getSalonServices(params.slug),
-          apiClient.getSalonStaff(params.slug)
+          apiClient.getSalonServices(unwrappedParams.slug),
+          apiClient.getSalonSpecialistsBySlug(unwrappedParams.slug)
         ]);
-        
+
         setServices(servicesData);
         setStaff(staffData);
+
+        // Load scoped reviews for this salon
+        const reviewsData = await apiClient.get(`/reviews?subject_type=salon&subject_id=${salonData.id}`);
+        setSalon(prev => prev ? { ...prev, reviews: reviewsData.data } : prev);
       } catch (err) {
         console.error("Failed to load salon data", err);
       } finally {
         setIsLoading(false);
       }
     }
-    
+
     loadData();
-  }, [params.slug]);
+  }, [unwrappedParams.slug]);
 
   if (isLoading) {
     return (
@@ -82,8 +89,141 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
 
   return (
     <div className="min-h-screen text-white selection:bg-gold/30" style={{ backgroundColor: 'var(--brand-background, #050505)' }}>
+      {/* ── HEADER NAVIGATION ─────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-white/5">
+        <div className="container mx-auto px-6 max-w-5xl">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              {salon.logo ? (
+                <img src={salon.logo} alt={salon.name} className="w-10 h-10 rounded-xl object-cover" />
+              ) : (
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold"
+                  style={{ 
+                    background: `linear-gradient(to bottom right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+                    color: '#000'
+                  }}
+                >
+                  {salon.name.substring(0, 2)}
+                </div>
+              )}
+              <span className="font-sora font-semibold text-white hidden sm:block">{salon.name}</span>
+            </div>
+
+            {/* Desktop Nav Tabs */}
+            <nav className="hidden md:flex items-center gap-1">
+              {[
+                { id: 'home', label: 'Home' },
+                { id: 'services', label: 'Services' },
+                { id: 'team', label: 'Team' },
+                { id: 'contact', label: 'Contact' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    const element = document.getElementById(tab.id);
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === tab.id
+                      ? 'text-black'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                  style={{
+                    background: activeTab === tab.id 
+                      ? `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`
+                      : 'transparent'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
+            {/* Book Button (Desktop) */}
+            <motion.button
+              onClick={() => router.push(`/salons/${unwrappedParams.slug}/book`)}
+              className="hidden md:block px-5 py-2 text-black font-semibold rounded-xl text-sm"
+              style={{ 
+                background: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+                borderRadius: 'var(--brand-border-radius, 12px)'
+              }}
+            >
+              Book Now
+            </motion.button>
+
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-white/60 hover:text-white"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="md:hidden py-4 border-t border-white/5"
+            >
+              <div className="flex flex-col gap-2">
+                {[
+                  { id: 'home', label: 'Home' },
+                  { id: 'services', label: 'Services' },
+                  { id: 'team', label: 'Team' },
+                  { id: 'contact', label: 'Contact' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setMobileMenuOpen(false);
+                      const element = document.getElementById(tab.id);
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
+                    className={`px-4 py-3 rounded-lg text-left text-sm font-medium transition-all ${
+                      activeTab === tab.id
+                        ? 'text-black'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                    style={{
+                      background: activeTab === tab.id
+                        ? `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`
+                        : 'transparent'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+                <motion.button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push(`/salons/${unwrappedParams.slug}/book`);
+                  }}
+                  className="px-4 py-3 text-black font-semibold rounded-lg text-sm mt-2"
+                  style={{ 
+                    background: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
+                    borderRadius: 'var(--brand-border-radius, 12px)'
+                  }}
+                >
+                  Book Now
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      </header>
+
       {/* ── HERO SECTION ─────────────────────────────────────────────── */}
-      <section className="relative pt-32 pb-24 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
+      <section id="home" className="relative pt-32 pb-24 lg:pt-48 lg:pb-32 overflow-hidden border-b border-white/5">
         <div className="absolute inset-0 z-0">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#1a1a1a,#050505_70%)]" />
           <div 
@@ -142,7 +282,7 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            onClick={() => router.push('/book')}
+            onClick={() => router.push(`/book?salon_slug=${unwrappedParams.slug}`)}
             className="px-8 py-4 text-black font-semibold rounded-2xl shadow-xl flex items-center justify-center gap-3 mx-auto group cursor-pointer transition-all"
             style={{ 
               background: `linear-gradient(to right, var(--brand-primary, #FFD700), var(--brand-secondary, #C9A227))`,
@@ -163,7 +303,7 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
       </section>
 
       {/* ── SERVICES SECTION ─────────────────────────────────────────── */}
-      <section className="py-24 relative">
+      <section id="services" className="py-24 relative">
         <div className="container mx-auto px-6 max-w-5xl">
           <div className="text-center mb-16">
             <h2 
@@ -202,7 +342,7 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
                   <p className="text-white/40 text-sm">{service.duration} mins • {service.category}</p>
                 </div>
                 <div className="font-mono font-medium" style={{ color: 'var(--brand-primary, #FFD700)' }}>
-                  UGX {service.price.toLocaleString()}
+                  UGX {service.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
               </motion.div>
             ))}
@@ -218,7 +358,7 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
 
       {/* ── TEAM SECTION ─────────────────────────────────────────────── */}
       {staff.length > 0 && (
-        <section className="py-24 bg-white/[0.01] border-y border-white/5">
+        <section id="team" className="py-24 bg-white/[0.01] border-y border-white/5">
           <div className="container mx-auto px-6 max-w-5xl">
             <div className="text-center mb-16">
               <h2 
@@ -260,7 +400,7 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
       )}
 
       {/* ── ABOUT / CONTACT SECTION ──────────────────────────────────── */}
-      <section className="py-24 relative overflow-hidden">
+      <section id="contact" className="py-24 relative overflow-hidden">
         <div 
           className="absolute bottom-0 left-0 w-[600px] h-[600px] rounded-full blur-[100px] mix-blend-screen pointer-events-none"
           style={{ 
@@ -359,9 +499,10 @@ function SalonLandingPageContent({ params }: { params: { slug: string } }) {
   );
 }
 
-export default function SalonLandingPage({ params }: { params: { slug: string } }) {
+export default function SalonLandingPage({ params }: { params: Promise<{ slug: string }> }) {
+  const unwrappedParams = use(params);
   return (
-    <TenantBrandProvider slug={params.slug}>
+    <TenantBrandProvider slug={unwrappedParams.slug}>
       <SalonLandingPageContent params={params} />
     </TenantBrandProvider>
   );

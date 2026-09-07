@@ -17,6 +17,11 @@ class ResolveSalonContext
      */
     public function handle(Request $request, Closure $next)
     {
+        // Skip salon context resolution for specific endpoints
+        if ($request->is('api/v1/check-slug') || $request->is('api/v1/salons/check-slug') || $request->is('api/v1/salons/*/staff')) {
+            return $next($request);
+        }
+
         // Check if user is authenticated
         if (Auth::check()) {
             $user = Auth::user();
@@ -45,6 +50,7 @@ class ResolveSalonContext
                 }
                 
                 // Inject salon context into request for controllers to use
+                $request->attributes->set('salon', $currentSalon);
                 $request->attributes->set('salon_id', $currentSalon->id);
             }
             

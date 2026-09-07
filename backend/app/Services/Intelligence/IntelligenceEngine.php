@@ -3,8 +3,9 @@
 namespace App\Services\Intelligence;
 
 use App\Models\Salon;
-use App\Models\Transaction;
 use App\Models\Booking;
+use App\Services\Finance\FinanceAnalyticsService;
+use App\Services\OperationalAnalyticsService;
 use Carbon\Carbon;
 
 class IntelligenceEngine
@@ -12,9 +13,13 @@ class IntelligenceEngine
     protected array $analyzers = [];
     protected RuleEngine $ruleEngine;
     protected BriefingBuilder $briefingBuilder;
+    protected FinanceAnalyticsService $financeAnalyticsService;
+    protected OperationalAnalyticsService $operationalAnalyticsService;
 
-    public function __construct()
-    {
+    public function __construct(
+        FinanceAnalyticsService $financeAnalyticsService,
+        OperationalAnalyticsService $operationalAnalyticsService
+    ) {
         // Compose the engine with its specialized analyzers
         $this->analyzers = [
             new RevenueAnalyzer(),
@@ -25,22 +30,34 @@ class IntelligenceEngine
         
         $this->ruleEngine = new RuleEngine();
         $this->briefingBuilder = new BriefingBuilder();
+        $this->financeAnalyticsService = $financeAnalyticsService;
+        $this->operationalAnalyticsService = $operationalAnalyticsService;
     }
 
     /**
      * Generate the complete Intelligence DTO for a salon.
+     * 
+     * IMPORTANT: Intelligence now receives canonical facts from two domains:
+     * - Financial facts from FinanceAnalyticsService (Finance → Intelligence boundary)
+     * - Operational facts from OperationalAnalyticsService (Operations → Intelligence boundary)
+     * 
+     * This preserves the domain separation and ensures Intelligence never queries
+     * Transaction, LedgerEntry, or Booking directly for analytics.
      */
     public function generate(Salon $salon): array
     {
         $startTime = microtime(true);
         $now = Carbon::now();
         
-        // Fetch raw data once
-        $transactions = Transaction::where('salon_id', $salon->id)
-            ->whereIn('status', ['completed', 'paid'])
-            ->get();
+        // Fetch canonical financial facts from Finance domain
+        $financialFacts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        
+        // Fetch canonical operational facts from Operations domain
+        $operationalFacts = $this->operationalAnalyticsService->getOperationalFacts($salon);
             
-        $bookings = Booking::with(['customer', 'staff', 'service'])
+        // Fetch operational data (bookings) for non-financial analysis
+        // TODO: Eventually eliminate this by passing operational facts to analyzers
+        $bookings = Booking::with(['customer', 'staff', 'service', 'specialist'])
             ->where('salon_id', $salon->id)
             ->get();
 
@@ -56,9 +73,9 @@ class IntelligenceEngine
             '_copilot_context' => []
         ];
 
-        // 1. Run all analyzers and merge their results
+        // 1. Run all analyzers with canonical facts
         foreach ($this->analyzers as $analyzer) {
-            $result = $analyzer->analyze($transactions, $bookings);
+            $result = $analyzer->analyze($financialFacts, $operationalFacts, $bookings);
             
             // Deep merge the result into the DTO
             foreach ($result as $key => $value) {

@@ -232,7 +232,7 @@ class CapabilityService
     {
         return [
             'customer_count' => CustomerSalon::where('salon_id', $salon->id)->count(),
-            'booking_count' => Booking::where('salon_id', $salon->id)->count(),
+            'booking_count' => Booking::where('provider_id', $salon->provider_id)->count(),
             'payments_enabled' => $salon->paymentMethods()->exists(),
             'subscription_tier' => $this->getSubscriptionTier($salon),
         ];
@@ -285,7 +285,7 @@ class CapabilityService
      */
     private function evaluateBookingCountPolicy(Salon $salon, array $ruleValue): bool
     {
-        $count = Booking::where('salon_id', $salon->id)->count();
+        $count = Booking::where('provider_id', $salon->provider_id)->count();
         $operator = $ruleValue[0];
         $threshold = $ruleValue[1];
 
@@ -311,7 +311,7 @@ class CapabilityService
      */
     private function evaluateCustomerHistoryPolicy(Salon $salon, bool $ruleValue): bool
     {
-        $hasHistory = Booking::where('salon_id', $salon->id)->exists();
+        $hasHistory = Booking::where('provider_id', $salon->provider_id)->exists();
         return $hasHistory === $ruleValue;
     }
 

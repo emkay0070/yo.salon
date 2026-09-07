@@ -6,7 +6,7 @@ use Illuminate\Support\Collection;
 
 class ChurnAnalyzer implements AnalyzerInterface
 {
-    public function analyze(Collection $transactions, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
     {
         $customerGroups = $bookings->groupBy('customer_id');
         $churnRisks = [];
@@ -14,6 +14,9 @@ class ChurnAnalyzer implements AnalyzerInterface
         $totalCustomers = $customerGroups->count();
         $uniqueThisMonth = $bookings->filter(fn($b) => \Carbon\Carbon::parse($b->date)->isCurrentMonth())->pluck('customer_id')->unique()->count();
         $retainedCustomers = 0;
+
+        // Get revenue by customer from financial facts
+        $byCustomer = $financialFacts['by_customer'];
 
         foreach ($customerGroups as $customerId => $customerBookings) {
             if (!$customerId) continue;
@@ -31,9 +34,8 @@ class ChurnAnalyzer implements AnalyzerInterface
                 // If they haven't booked in 45-90 days, flag as risk
                 if ($daysSinceLastBooking >= 45 && $daysSinceLastBooking <= 90) {
                     
-                    // Calculate LTV (Lifetime Value)
-                    $bookingIds = $customerBookings->pluck('id')->toArray();
-                    $ltv = $transactions->whereIn('booking_id', $bookingIds)->sum('net_amount');
+                    // Use canonical financial facts for LTV (from Ledger)
+                    $ltv = $byCustomer[$customerId]['net_revenue'] ?? 0;
                     
                     // Risk Score 0-100 (90 days = 100%, 45 days = 50%)
                     $riskScore = min(100, round(($daysSinceLastBooking / 90) * 100));

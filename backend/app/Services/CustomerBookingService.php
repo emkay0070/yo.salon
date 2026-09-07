@@ -12,6 +12,13 @@ use Carbon\Carbon;
 
 class CustomerBookingService
 {
+    private CustomerSpecialistService $specialistService;
+
+    public function __construct(CustomerSpecialistService $specialistService)
+    {
+        $this->specialistService = $specialistService;
+    }
+
     /**
      * Create a new booking for a customer
      */
@@ -19,8 +26,8 @@ class CustomerBookingService
     {
         return DB::transaction(function () use ($data) {
             $customer = Customer::find($data['customer_id']);
-            $service = Service::find($data['service_id']);
-            $staff = isset($data['staff_id']) ? Staff::find($data['staff_id']) : null;
+            $service = Service::withoutGlobalScope('salon')->find($data['service_id']);
+            $staff = isset($data['staff_id']) ? Staff::withoutGlobalScope('salon')->find($data['staff_id']) : null;
             $salon = Salon::find($data['salon_id']);
 
             if (!$customer || !$service || !$salon) {
@@ -30,23 +37,58 @@ class CustomerBookingService
             // Calculate price
             $price = $this->calculatePrice($service, $data);
 
+            // Resolve staff_id from SpecialistAssignment when specialist_id is provided
+            $staffId = $data['staff_id'] ?? null;
+            if (!$staffId && isset($data['specialist_id'])) {
+                $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $data['specialist_id'])
+                    ->where('salon_id', $data['salon_id'])
+                    ->whereNotNull('staff_id')
+                    ->first();
+                $staffId = $assignment?->staff_id;
+            }
+
+            // Validate staff_id if provided
+            if ($staffId) {
+                $staffExists = \App\Models\Staff::where('id', $staffId)
+                    ->where('salon_id', $data['salon_id'])
+                    ->exists();
+                if (!$staffExists) {
+                    throw new \Exception('Invalid staff_id for this salon');
+                }
+            }
+
             // Create booking
             $booking = Booking::create([
                 'customer_id' => $data['customer_id'],
                 'salon_id' => $data['salon_id'],
+                'provider_id' => $salon->provider_id,
                 'service_id' => $data['service_id'],
-                'staff_id' => $data['staff_id'] ?? null,
+                'staff_id' => $staffId,
+                'specialist_id' => $data['specialist_id'] ?? null,
                 'date' => $data['date'],
                 'time' => $data['time'],
                 'status' => 'confirmed',
-                'price' => $price,
                 'notes' => $data['notes'] ?? null,
+            ]);
+
+            \Log::info('Booking created', [
+                'booking_id' => $booking->id,
+                'customer_id' => $data['customer_id'],
+                'salon_id' => $data['salon_id'],
+                'service_id' => $data['service_id'],
+                'staff_id' => $staffId,
+                'specialist_id' => $data['specialist_id'] ?? null,
             ]);
 
             // Update customer visit count
             $this->incrementCustomerVisits($customer, $salon);
 
-            return $booking->load(['service', 'staff', 'customer']);
+            // Track customer-specialist relationship if specialist is assigned
+            if ($booking->specialist_id) {
+                $this->specialistService->trackRelationshipFromBooking($booking);
+            }
+
+            return $booking->load(['service', 'staff', 'customer', 'specialist']);
         });
     }
 
@@ -62,8 +104,8 @@ class CustomerBookingService
             $errors[] = 'Booking date must be in the future';
         }
 
-        // Check if time is valid
-        if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/', $data['time'])) {
+        // Check if time is valid (accept both HH:MM and HH:MM:SS formats)
+        if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/', $data['time'])) {
             $errors[] = 'Invalid time format';
         }
 
@@ -100,12 +142,29 @@ class CustomerBookingService
     }
 
     /**
+     * Validate that a specialist_id exists in the specialists table.
+     * NOTE: Do NOT pass a staff_id here. specialist_id → specialists.id exclusively.
+     * Staff ID resolution happens via SpecialistAssignment.
+     */
+    private function getValidSpecialistId(?string $specialistId): ?string
+    {
+        if (!$specialistId) {
+            return null;
+        }
+
+        // Only accepts a valid Specialist UUID (not a Staff UUID)
+        return \App\Models\Specialist::where('id', $specialistId)->exists()
+            ? $specialistId
+            : null;
+    }
+
+    /**
      * Rebook from a previous booking
      */
     public function rebookFromPrevious(string $previousBookingId, array $newData): Booking
     {
         return DB::transaction(function () use ($previousBookingId, $newData) {
-            $previousBooking = Booking::with(['service', 'staff'])->findOrFail($previousBookingId);
+            $previousBooking = Booking::withoutGlobalScope('salon')->with(['service', 'staff'])->findOrFail($previousBookingId);
 
             // Copy service and staff from previous booking
             $bookingData = array_merge($newData, [
@@ -187,7 +246,7 @@ class CustomerBookingService
             ->where('salon_id', $salonId)
             ->where('date', '>=', now()->toDateString())
             ->where('status', '!=', 'cancelled')
-            ->with(['service', 'staff'])
+            ->with(['service', 'staff', 'specialist'])
             ->orderBy('date')
             ->orderBy('time')
             ->get();
@@ -208,6 +267,10 @@ class CustomerBookingService
                     'id' => $booking->staff->id,
                     'name' => $booking->staff->name,
                 ] : null,
+                'specialist' => $booking->specialist ? [
+                    'id' => $booking->specialist->id,
+                    'name' => $booking->specialist->name,
+                ] : null,
             ];
         })->toArray();
     }
@@ -217,14 +280,15 @@ class CustomerBookingService
      */
     public function getBookingHistory(string $customerId, string $salonId, int $limit = 20): array
     {
-        $bookings = Booking::where('customer_id', $customerId)
+        $query = Booking::where('customer_id', $customerId)
             ->where('salon_id', $salonId)
             ->where('status', 'completed')
-            ->with(['service', 'staff'])
+            ->with(['service', 'staff', 'specialist'])
             ->orderBy('date', 'desc')
             ->orderBy('time', 'desc')
-            ->limit($limit)
-            ->get();
+            ->limit($limit);
+
+        $bookings = $query->get();
 
         return $bookings->map(function ($booking) {
             return [
@@ -241,6 +305,10 @@ class CustomerBookingService
                 'staff' => $booking->staff ? [
                     'id' => $booking->staff->id,
                     'name' => $booking->staff->name,
+                ] : null,
+                'specialist' => $booking->specialist ? [
+                    'id' => $booking->specialist->id,
+                    'name' => $booking->specialist->name,
                 ] : null,
             ];
         })->toArray();

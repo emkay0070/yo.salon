@@ -11,13 +11,13 @@ class CustomerController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::query();
-        if ($request->has('salon_id')) {
-            $salonId = $request->query('salon_id');
-            $query->whereHas('bookings', function($q) use ($salonId) {
+        $salonId = auth()->user()->currentSalon()?->id;
+        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        
+        $query = Customer::query()
+            ->whereHas('bookings', function($q) use ($salonId) {
                 $q->where('salon_id', $salonId);
             });
-        }
         $customers = $query->with('bookings')->get();
         return response()->json($customers);
     }

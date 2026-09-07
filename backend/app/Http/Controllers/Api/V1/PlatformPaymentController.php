@@ -138,7 +138,7 @@ class PlatformPaymentController extends Controller
     public function getInvoicePaymentStatus(string $invoiceId): JsonResponse
     {
         try {
-            $invoice = Invoice::with('payment')->findOrFail($invoiceId);
+            $invoice = Invoice::with('payments')->findOrFail($invoiceId);
 
             return response()->json([
                 'invoice_id' => $invoice->id,
@@ -146,20 +146,113 @@ class PlatformPaymentController extends Controller
                 'status' => $invoice->status,
                 'amount' => $invoice->total,
                 'currency' => $invoice->currency,
-                'payment' => $invoice->payment ? [
-                    'status' => $invoice->payment->status,
-                    'amount' => $invoice->payment->amount,
-                    'payment_method' => $invoice->payment->payment_method,
-                    'payment_gateway' => $invoice->payment->payment_gateway,
-                    'transaction_id' => $invoice->payment->transaction_id,
-                    'processed_at' => $invoice->payment->processed_at,
-                ] : null,
+                'payments' => $invoice->payments->map(function ($payment) {
+                    return [
+                        'status' => $payment->status,
+                        'amount' => $payment->amount,
+                        'payment_method' => $payment->payment_method,
+                        'payment_gateway' => $payment->payment_gateway,
+                        'transaction_id' => $payment->transaction_id,
+                        'processed_at' => $payment->processed_at,
+                    ];
+                }),
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get payment status: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Initialize cash payment for an invoice (creates pending invoice).
+     * This is used when a provider pays cash in person.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function initializeCashPayment(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+        ]);
+
+        try {
+            $invoice = Invoice::findOrFail($validated['invoice_id']);
+
+            if ($invoice->status === 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice is already paid',
+                ], 400);
+            }
+
+            // Mark invoice as pending for cash payment
+            $updatedInvoice = app(\App\Services\InvoiceService::class)->markAsPending($invoice->id, 'cash');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cash payment initialized. Awaiting confirmation.',
+                'invoice' => $updatedInvoice,
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Cash payment initialization failed', [
+                'error' => $e->getMessage(),
+                'invoice_id' => $validated['invoice_id'],
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initialize cash payment: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Confirm cash payment for an invoice (admin only).
+     * This is used when an admin confirms receipt of cash payment.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function confirmCashPayment(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+            'reference' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $confirmationData = [
+                'confirmed_by' => auth()->id(),
+                'reference' => $validated['reference'] ?? null,
+                'notes' => $validated['notes'] ?? null,
+            ];
+
+            $invoice = app(\App\Services\InvoiceService::class)->confirmCashPayment(
+                $validated['invoice_id'],
+                $confirmationData
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cash payment confirmed and subscription activated.',
+                'invoice' => $invoice,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cash payment confirmation failed', [
+                'error' => $e->getMessage(),
+                'invoice_id' => $validated['invoice_id'],
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to confirm cash payment: ' . $e->getMessage(),
             ], 500);
         }
     }

@@ -216,32 +216,45 @@ class CustomerPortalService
      */
     public function getRecentVisits(Customer $customer, string $salonId, int $limit = 5): array
     {
-        $bookings = Booking::where('customer_id', $customer->id)
-            ->where('salon_id', $salonId)
-            ->where('status', 'completed')
-            ->with(['service', 'staff'])
-            ->orderBy('date', 'desc')
-            ->orderBy('time', 'desc')
-            ->limit($limit)
-            ->get();
+        try {
+            // Get salon to find its provider_id
+            $salon = \App\Models\Salon::find($salonId);
+            $providerId = $salon ? $salon->provider_id : null;
 
-        return $bookings->map(function ($booking) {
-            return [
-                'id' => $booking->id,
-                'date' => $booking->date,
-                'time' => $booking->time,
-                'service' => [
-                    'id' => $booking->service->id,
-                    'name' => $booking->service->name,
-                    'price' => $booking->service->price,
-                    'duration' => $booking->service->duration,
-                ],
-                'staff' => $booking->staff ? [
-                    'id' => $booking->staff->id,
-                    'name' => $booking->staff->name,
-                ] : null,
-            ];
-        })->toArray();
+            $bookings = Booking::where('customer_id', $customer->id)
+                ->where('provider_id', $providerId)
+                ->where('status', 'completed')
+                ->with(['service', 'staff'])
+                ->orderBy('date', 'desc')
+                ->orderBy('time', 'desc')
+                ->limit($limit)
+                ->get();
+
+            return $bookings->map(function ($booking) {
+                return [
+                    'id' => $booking->id,
+                    'date' => $booking->date,
+                    'time' => $booking->time,
+                    'service' => $booking->service ? [
+                        'id' => $booking->service->id,
+                        'name' => $booking->service->name,
+                        'price' => $booking->service->price,
+                        'duration' => $booking->service->duration,
+                    ] : null,
+                    'staff' => $booking->staff ? [
+                        'id' => $booking->staff->id,
+                        'name' => $booking->staff->name,
+                    ] : null,
+                ];
+            })->toArray();
+        } catch (\Exception $e) {
+            \Log::error('getRecentVisits error', [
+                'error' => $e->getMessage(),
+                'customer_id' => $customer->id,
+                'salon_id' => $salonId,
+            ]);
+            return [];
+        }
     }
 
     /**
@@ -249,33 +262,46 @@ class CustomerPortalService
      */
     public function getLastBooking(Customer $customer, string $salonId): ?array
     {
-        $booking = Booking::where('customer_id', $customer->id)
-            ->where('salon_id', $salonId)
-            ->where('status', 'completed')
-            ->with(['service', 'staff'])
-            ->orderBy('date', 'desc')
-            ->orderBy('time', 'desc')
-            ->first();
+        try {
+            // Get salon to find its provider_id
+            $salon = \App\Models\Salon::find($salonId);
+            $providerId = $salon ? $salon->provider_id : null;
 
-        if (!$booking) {
+            $booking = Booking::where('customer_id', $customer->id)
+                ->where('provider_id', $providerId)
+                ->where('status', 'completed')
+                ->with(['service', 'staff'])
+                ->orderBy('date', 'desc')
+                ->orderBy('time', 'desc')
+                ->first();
+
+            if (!$booking) {
+                return null;
+            }
+
+            return [
+                'id' => $booking->id,
+                'date' => $booking->date,
+                'time' => $booking->time,
+                'service' => $booking->service ? [
+                    'id' => $booking->service->id,
+                    'name' => $booking->service->name,
+                    'price' => $booking->service->price,
+                    'duration' => $booking->service->duration,
+                    'category' => $booking->service->category,
+                ] : null,
+                'staff' => $booking->staff ? [
+                    'id' => $booking->staff->id,
+                    'name' => $booking->staff->name,
+                ] : null,
+            ];
+        } catch (\Exception $e) {
+            \Log::error('getLastBooking error', [
+                'error' => $e->getMessage(),
+                'customer_id' => $customer->id,
+                'salon_id' => $salonId,
+            ]);
             return null;
         }
-
-        return [
-            'id' => $booking->id,
-            'date' => $booking->date,
-            'time' => $booking->time,
-            'service' => [
-                'id' => $booking->service->id,
-                'name' => $booking->service->name,
-                'price' => $booking->service->price,
-                'duration' => $booking->service->duration,
-                'category' => $booking->service->category,
-            ],
-            'staff' => $booking->staff ? [
-                'id' => $booking->staff->id,
-                'name' => $booking->staff->name,
-            ] : null,
-        ];
     }
 }

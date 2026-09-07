@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 
 type ProviderId = 'cash' | 'mtn' | 'airtel' | 'flutterwave' | 'visa';
-type WizardStep = 'choose' | 'explain' | 'setup-guide' | 'configure' | 'success';
+type WizardStep = 'choose' | 'explain' | 'configure' | 'success';
 
 interface AddMethodWizardProps {
   isOpen: boolean;
@@ -27,51 +27,18 @@ const PROVIDERS: Record<ProviderId, {
   color: string;
   gradient: string;
   fields: { name: string; label: string; placeholder: string; type: string; optional?: boolean }[];
-  requiresApiCredentials?: boolean;
-  setupSteps?: { title: string; description: string; action?: string }[];
 }> = {
   mtn: {
     id: 'mtn',
     name: 'MTN Mobile Money',
     type: 'mobile_money',
     Icon: Smartphone,
-    description: 'Connect your MTN MoMo Business account. Customers will receive payment prompts directly on their phones. Funds settle into your MTN Business account.',
-    color: 'text-[var(--color-gold)]',
+    description: 'Customers will receive payment prompts directly on their phones. Funds settle into your MTN Business account.',
+    color: 'text-gold',
     gradient: 'from-[#C9A227]/20 to-[#FFD700]/5',
-    requiresApiCredentials: true,
-    setupSteps: [
-      {
-        title: 'Create MTN Developer Account',
-        description: 'Visit developers.mtn.com and register for a developer account using your business email.',
-        action: 'Go to developers.mtn.com'
-      },
-      {
-        title: 'Subscribe to Collections Product',
-        description: 'In the MTN developer portal, subscribe to the "Collections" product to enable payment requests.',
-        action: 'Subscribe to Collections'
-      },
-      {
-        title: 'Create API User',
-        description: 'Generate an API User ID in your MTN dashboard. This will be your merchant identifier.',
-        action: 'Create API User'
-      },
-      {
-        title: 'Generate API Key & Secret',
-        description: 'Create API Key and Secret credentials for authentication. Keep these secure.',
-        action: 'Generate Credentials'
-      },
-      {
-        title: 'Get Subscription Key',
-        description: 'Copy your Subscription Key from the MTN developer portal for API access.',
-        action: 'Get Subscription Key'
-      }
-    ],
     fields: [
-      { name: 'merchant_id', label: 'API User / Merchant ID', placeholder: 'e.g. your_mtn_api_user', type: 'text' },
-      { name: 'api_key', label: 'API Key', placeholder: 'e.g. your_mtn_api_key', type: 'text' },
-      { name: 'api_secret', label: 'API Secret', placeholder: 'e.g. your_mtn_api_secret', type: 'password' },
-      { name: 'api_subscription_key', label: 'Subscription Key', placeholder: 'e.g. your_subscription_key', type: 'text' },
-      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
+      { name: 'account_identifier', label: 'Merchant Code or Phone', placeholder: 'e.g. 123456 or 077XXXXXXX', type: 'text' },
+      { name: 'account_name', label: 'Account Name', placeholder: 'e.g. Yo Salon Ltd', type: 'text' }
     ]
   },
   airtel: {
@@ -79,36 +46,12 @@ const PROVIDERS: Record<ProviderId, {
     name: 'Airtel Money',
     type: 'mobile_money',
     Icon: Smartphone,
-    description: 'Connect your Airtel Money Business account. Customers will receive payment prompts directly on their phones. Funds settle into your Airtel Merchant account.',
+    description: 'Customers will receive payment prompts directly on their phones. Funds settle into your Airtel Merchant account.',
     color: 'text-red-400',
     gradient: 'from-red-900/40 to-red-900/10',
-    requiresApiCredentials: true,
-    setupSteps: [
-      {
-        title: 'Create Airtel Developer Account',
-        description: 'Visit developers.airtel.africa and register for a developer account using your business email.',
-        action: 'Go to developers.airtel.africa'
-      },
-      {
-        title: 'Register Application',
-        description: 'Create a new application in the Airtel developer portal and select Uganda as your country.',
-        action: 'Register Application'
-      },
-      {
-        title: 'Generate Client Credentials',
-        description: 'Generate Client ID and Client Secret for API authentication. Keep these secure.',
-        action: 'Generate Credentials'
-      },
-      {
-        title: 'Configure Environment',
-        description: 'Choose sandbox for testing or production for live payments. Configure your callback URL.',
-        action: 'Configure Environment'
-      }
-    ],
     fields: [
-      { name: 'api_key', label: 'Client ID', placeholder: 'e.g. your_airtel_client_id', type: 'text' },
-      { name: 'api_secret', label: 'Client Secret', placeholder: 'e.g. your_airtel_client_secret', type: 'password' },
-      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
+      { name: 'account_identifier', label: 'Merchant Code or Phone', placeholder: 'e.g. 123456 or 075XXXXXXX', type: 'text' },
+      { name: 'account_name', label: 'Account Name', placeholder: 'e.g. Yo Salon Ltd', type: 'text' }
     ]
   },
   flutterwave: {
@@ -119,33 +62,9 @@ const PROVIDERS: Record<ProviderId, {
     description: 'Accept global card payments, Apple Pay, and Google Pay via secure payment links sent to your customers.',
     color: 'text-[#A29BFE]',
     gradient: 'from-[#6C5CE7]/30 to-[#A29BFE]/10',
-    requiresApiCredentials: true,
-    setupSteps: [
-      {
-        title: 'Create Flutterwave Account',
-        description: 'Visit dashboard.flutterwave.com and sign up for a merchant account using your business details.',
-        action: 'Go to Flutterwave Dashboard'
-      },
-      {
-        title: 'Get API Keys',
-        description: 'Navigate to Settings > API Keys to generate your Public Key and Secret Key.',
-        action: 'Generate API Keys'
-      },
-      {
-        title: 'Configure Webhook',
-        description: 'Set up webhook URL in Flutterwave settings to receive payment status updates.',
-        action: 'Configure Webhook'
-      },
-      {
-        title: 'Test Integration',
-        description: 'Use Flutterwave sandbox to test your integration before going live.',
-        action: 'Test in Sandbox'
-      }
-    ],
     fields: [
-      { name: 'api_key', label: 'Public Key', placeholder: 'FLWPUBK-XXXXXXXXX', type: 'text' },
-      { name: 'api_secret', label: 'Secret Key', placeholder: 'FLWSECK-XXXXXXXXX', type: 'password' },
-      { name: 'environment', label: 'Environment', placeholder: 'sandbox', type: 'text' }
+      { name: 'account_identifier', label: 'Public Key', placeholder: 'FLWPUBK-XXXXXXXXX', type: 'text' },
+      { name: 'metadata', label: 'Secret Key', placeholder: 'FLWSECK-XXXXXXXXX', type: 'password' }
     ]
   },
   cash: {
@@ -199,33 +118,8 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
       queryClient.invalidateQueries({ queryKey: ['payment-methods'] });
       setStep('success');
     },
-    onError: (error: any) => {
-      setError(error.response?.data?.message || 'Failed to connect payment method. Please try again.');
-    }
-  });
-
-  const testConnectionMutation = useMutation({
-    mutationFn: (data: any) => apiClient.testPaymentMethodConnection(data),
-    onSuccess: () => {
-      setError('');
-      // Proceed to save after successful test
-      mutation.mutate({
-        salon_id: salonId,
-        provider: selectedProvider,
-        type: provider?.type,
-        display_name: provider?.name,
-        account_name: formData.account_name || undefined,
-        account_identifier: formData.account_identifier || undefined,
-        merchant_id: formData.merchant_id || undefined,
-        api_key: formData.api_key || undefined,
-        api_secret: formData.api_secret || undefined,
-        api_subscription_key: formData.api_subscription_key || undefined,
-        environment: formData.environment || 'sandbox',
-        currency: 'UGX',
-      });
-    },
-    onError: (error: any) => {
-      setError(error.response?.data?.message || 'Connection test failed. Please check your credentials.');
+    onError: () => {
+      setError('Failed to connect payment method. Please try again.');
     }
   });
 
@@ -234,13 +128,6 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
     if (step === 'choose' && selectedProvider) {
       setStep('explain');
     } else if (step === 'explain') {
-      // Skip setup guide for non-API providers
-      if (provider?.requiresApiCredentials) {
-        setStep('setup-guide');
-      } else {
-        setStep('configure');
-      }
-    } else if (step === 'setup-guide') {
       setStep('configure');
     } else if (step === 'configure') {
       // Validate
@@ -250,28 +137,17 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
         return;
       }
       
-      // Test connection first for providers that require API credentials
-      if (provider?.requiresApiCredentials) {
-        testConnectionMutation.mutate({
-          provider: selectedProvider,
-          merchant_id: formData.merchant_id,
-          api_key: formData.api_key,
-          api_secret: formData.api_secret,
-          api_subscription_key: formData.api_subscription_key,
-          environment: formData.environment || 'sandbox',
-        });
-      } else {
-        // Direct save for non-API providers (cash, card terminal)
-        mutation.mutate({
-          salon_id: salonId,
-          provider: selectedProvider,
-          type: provider?.type,
-          display_name: provider?.name,
-          account_name: formData.account_name || undefined,
-          account_identifier: formData.account_identifier || undefined,
-          currency: 'UGX',
-        });
-      }
+      // Submit
+      mutation.mutate({
+        salon_id: salonId,
+        provider: selectedProvider,
+        type: provider?.type,
+        display_name: provider?.name,
+        account_name: formData.account_name || undefined,
+        account_identifier: formData.account_identifier || undefined,
+        metadata: formData.metadata ? { secret: formData.metadata } : undefined,
+        currency: 'UGX',
+      });
     }
   };
 
@@ -289,7 +165,7 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={handleClose}
-          className="fixed inset-0 bg-[var(--color-overlay)] backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         >
           <motion.div
             initial={{ opacity: 0, y: 40, scale: 0.95 }}
@@ -297,25 +173,25 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
             exit={{ opacity: 0, y: 40, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 35 }}
             onClick={e => e.stopPropagation()}
-            className="w-full max-w-lg bg-[var(--color-card)] border border-[var(--color-border-light)] rounded-3xl overflow-hidden shadow-2xl relative"
+            className="w-full max-w-lg bg-[#111111] border border-border-light rounded-3xl overflow-hidden shadow-2xl relative"
           >
             {/* Header */}
             {step !== 'success' && (
-              <div className="flex items-center justify-between p-6 border-b border-[var(--color-border-light)] relative z-10">
+              <div className="flex items-center justify-between p-6 border-b border-border-light relative z-10">
                 <div className="flex items-center gap-4">
                   {step !== 'choose' && (
                     <button 
-                      onClick={() => setStep(step === 'configure' ? 'setup-guide' : step === 'setup-guide' ? 'explain' : 'choose')}
-                      className="w-8 h-8 rounded-full bg-[var(--color-card)] hover:bg-white/10 flex items-center justify-center transition-colors"
+                      onClick={() => setStep(step === 'configure' ? 'explain' : 'choose')}
+                      className="w-8 h-8 rounded-full bg-card hover:bg-white/10 flex items-center justify-center transition-colors"
                     >
-                      <ArrowLeft className="w-4 h-4 text-[var(--color-text-primary)]/70" />
+                      <ArrowLeft className="w-4 h-4 text-text-primary/70" />
                     </button>
                   )}
-                  <h2 className="text-xl font-bold text-[var(--color-text-primary)] tracking-tight">Connect Channel</h2>
+                  <h2 className="text-xl font-bold text-text-primary tracking-tight">Connect Channel</h2>
                 </div>
                 <button
                   onClick={handleClose}
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--color-card)] hover:bg-white/10 text-[var(--color-text-primary)]/70 hover:text-[var(--color-text-primary)] transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-card hover:bg-white/10 text-text-primary/70 hover:text-text-primary transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -347,7 +223,7 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                     transition={{ duration: 0.2 }}
                     className="flex-1 flex flex-col"
                   >
-                    <p className="text-[var(--color-text-secondary)] mb-6">Select a payment provider to add to your wallet.</p>
+                    <p className="text-text-secondary mb-6">Select a payment provider to add to your wallet.</p>
                     <div className="grid grid-cols-2 gap-4 flex-1">
                       {(Object.keys(PROVIDERS) as ProviderId[]).map((pid) => {
                         const p = PROVIDERS[pid];
@@ -359,13 +235,13 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                             className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border transition-all duration-300 ${
                               isSelected 
                                 ? 'bg-white/10 border-white/30 scale-[1.02]' 
-                                : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-[var(--color-border-light)]'
+                                : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-border-light'
                             }`}
                           >
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-[var(--color-card)] border-2 ${isSelected ? 'border-transparent' : 'border-white/5'}`}>
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-card border-2 ${isSelected ? 'border-transparent' : 'border-white/5'}`}>
                               <p.Icon className={`w-6 h-6 ${p.color}`} />
                             </div>
-                            <span className="text-[var(--color-text-primary)] font-medium text-sm">{p.name}</span>
+                            <span className="text-text-primary font-medium text-sm">{p.name}</span>
                           </button>
                         );
                       })}
@@ -383,65 +259,18 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                     transition={{ duration: 0.2 }}
                     className="flex-1 flex flex-col items-center justify-center text-center py-8"
                   >
-                    <div className="w-20 h-20 rounded-2xl bg-[var(--color-card)] border border-[var(--color-border-light)] flex items-center justify-center mb-8 shadow-2xl relative">
+                    <div className="w-20 h-20 rounded-2xl bg-card border border-border-light flex items-center justify-center mb-8 shadow-2xl relative">
                       <provider.Icon className={`w-10 h-10 ${provider.color}`} />
                       <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/10" />
                     </div>
-                    <h3 className="text-2xl font-bold text-[var(--color-text-primary)] mb-4 tracking-tight">How it works</h3>
-                    <p className="text-[var(--color-text-secondary)] text-lg leading-relaxed max-w-sm mx-auto mb-10">
+                    <h3 className="text-2xl font-bold text-text-primary mb-4 tracking-tight">How it works</h3>
+                    <p className="text-text-secondary text-lg leading-relaxed max-w-sm mx-auto mb-10">
                       {provider.description}
                     </p>
                   </motion.div>
                 )}
 
-                {/* STEP 3: SETUP GUIDE */}
-                {step === 'setup-guide' && provider && provider.setupSteps && (
-                  <motion.div
-                    key="setup-guide"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex-1 flex flex-col"
-                  >
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--color-card)] border border-[var(--color-border-light)] flex items-center justify-center shadow-lg">
-                        <provider.Icon className={`w-6 h-6 ${provider.color}`} />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-[var(--color-text-primary)] tracking-tight">Setup Guide</h3>
-                        <p className="text-[var(--color-text-secondary)] text-sm">Follow these steps to connect {provider.name}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 flex-1 overflow-y-auto max-h-[300px]">
-                      {provider.setupSteps.map((setupStep, index) => (
-                        <div key={index} className="flex gap-4 p-4 rounded-2xl bg-[var(--color-card)] border border-[var(--color-border-light)]">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#6C5CE7]/20 border border-[#6C5CE7]/30 flex items-center justify-center text-[#6C5CE7] font-bold text-sm">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-[var(--color-text-primary)] mb-1">{setupStep.title}</h4>
-                            <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{setupStep.description}</p>
-                            {setupStep.action && (
-                              <button className="mt-2 text-xs font-medium text-[#6C5CE7] hover:text-[#A29BFE] transition-colors">
-                                {setupStep.action} →
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-6 p-4 rounded-2xl bg-[#6C5CE7]/5 border border-[#6C5CE7]/20">
-                      <p className="text-sm text-[var(--color-text-secondary)]">
-                        <span className="font-semibold text-[#6C5CE7]">💡 Tip:</span> Keep your API credentials secure. Never share them publicly or commit them to version control.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* STEP 4: CONFIGURE */}
+                {/* STEP 3: CONFIGURE */}
                 {step === 'configure' && provider && (
                   <motion.div
                     key="configure"
@@ -452,28 +281,28 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                     className="flex-1 flex flex-col"
                   >
                     <div className="flex items-center gap-4 mb-8">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--color-card)] border border-[var(--color-border-light)] flex items-center justify-center shadow-lg">
+                      <div className="w-12 h-12 rounded-xl bg-card border border-border-light flex items-center justify-center shadow-lg">
                         <provider.Icon className={`w-6 h-6 ${provider.color}`} />
                       </div>
                       <div>
-                        <h3 className="text-xl font-bold text-[var(--color-text-primary)] tracking-tight">{provider.name} Details</h3>
-                        <p className="text-[var(--color-text-secondary)] text-sm">Provide your integration credentials.</p>
+                        <h3 className="text-xl font-bold text-text-primary tracking-tight">{provider.name} Details</h3>
+                        <p className="text-text-secondary text-sm">Provide your integration credentials.</p>
                       </div>
                     </div>
 
                     <div className="space-y-5 flex-1">
                       {provider.fields.map(field => (
                         <div key={field.name}>
-                          <label className="text-sm font-medium text-[var(--color-text-secondary)] block mb-2 flex justify-between">
+                          <label className="text-sm font-medium text-text-secondary block mb-2 flex justify-between">
                             <span>{field.label}</span>
-                            {field.optional && <span className="text-[var(--color-text-primary)]/20">Optional</span>}
+                            {field.optional && <span className="text-text-primary/20">Optional</span>}
                           </label>
                           <input
                             type={field.type}
                             placeholder={field.placeholder}
                             value={formData[field.name] || ''}
                             onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
-                            className="w-full px-4 py-3.5 bg-surface-base border border-border-subtle rounded-2xl text-[var(--color-text-primary)] placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors"
+                            className="w-full px-4 py-3.5 bg-surface-base border border-border-subtle rounded-2xl text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary transition-colors"
                           />
                         </div>
                       ))}
@@ -503,8 +332,8 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                     >
                       <CheckCircle className="w-12 h-12 text-emerald-500" />
                     </motion.div>
-                    <h3 className="text-3xl font-bold text-[var(--color-text-primary)] mb-3 tracking-tight">Connected</h3>
-                    <p className="text-[var(--color-text-secondary)] text-lg mb-10 max-w-sm">
+                    <h3 className="text-3xl font-bold text-text-primary mb-3 tracking-tight">Connected</h3>
+                    <p className="text-text-secondary text-lg mb-10 max-w-sm">
                       {provider.name} has been added to your wallet. You're ready to receive payments.
                     </p>
                     <button
@@ -523,18 +352,18 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
                 <div className="mt-8 pt-6 border-t border-white/5">
                   <button
                     onClick={handleNext}
-                    disabled={step === 'choose' && !selectedProvider || mutation.isPending || testConnectionMutation.isPending}
+                    disabled={step === 'choose' && !selectedProvider || mutation.isPending}
                     className="w-full py-4 bg-white hover:bg-gray-100 text-black rounded-2xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {mutation.isPending || testConnectionMutation.isPending ? (
+                    {mutation.isPending ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        {testConnectionMutation.isPending ? 'Testing Connection...' : 'Connecting...'}
+                        Connecting...
                       </>
                     ) : (
                       <>
-                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'View Setup Guide' : step === 'setup-guide' ? 'Enter Credentials' : (provider?.requiresApiCredentials ? 'Test & Connect' : 'Connect Channel')}
-                        {step !== 'configure' && step !== 'setup-guide' && <ArrowRight className="w-5 h-5" />}
+                        {step === 'choose' ? 'Continue' : step === 'explain' ? 'Configure Integration' : 'Connect Channel'}
+                        {step !== 'configure' && <ArrowRight className="w-5 h-5" />}
                       </>
                     )}
                   </button>

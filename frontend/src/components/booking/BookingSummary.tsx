@@ -49,7 +49,7 @@ export default function BookingSummary({
               <p className="text-text-secondary text-[10px] lg:text-sm">Service</p>
               <p className="text-text-primary font-semibold mt-0.5 lg:mt-1 text-xs lg:text-base truncate">{service.name}</p>
               <div className="flex items-center gap-1.5 lg:gap-3 mt-0.5 lg:mt-1">
-                <span className="text-gold text-xs lg:text-sm font-medium">UGX {service.price.toLocaleString()}</span>
+                <span className="text-gold text-xs lg:text-sm font-medium">UGX {service.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 <span className="text-text-secondary text-[10px] lg:text-sm">•</span>
                 <span className="text-text-secondary text-[10px] lg:text-sm">{service.duration} min</span>
               </div>
@@ -105,7 +105,7 @@ export default function BookingSummary({
               <span className="text-gold font-bold text-xs lg:text-sm">UGX</span>
               <span className="text-text-primary font-semibold text-xs lg:text-base">Total</span>
             </div>
-            <span className="text-lg lg:text-2xl font-bold text-gold">UGX {totalPrice.toLocaleString()}</span>
+            <span className="text-lg lg:text-2xl font-bold text-gold">UGX {totalPrice.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
           </div>
         </div>
       )}

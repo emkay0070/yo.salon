@@ -24,7 +24,7 @@ export function LiveDashboardWidgets() {
 
   const fetchStats = async () => {
     try {
-      const response = await apiClient.get('/dashboard/live-stats');
+      const response = await apiClient.get('/v1/dashboard/live-stats');
       setStats(response);
     } catch (error) {
       console.error('Failed to fetch live stats:', error);
@@ -113,7 +113,7 @@ export function LiveDashboardWidgets() {
             <div>
               <p className="text-sm text-gray-400">Revenue Today</p>
               <p className="text-2xl font-bold text-white">
-                {stats.revenue_today.toLocaleString()} UGX
+                {stats.revenue_today.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} UGX
               </p>
             </div>
           </div>

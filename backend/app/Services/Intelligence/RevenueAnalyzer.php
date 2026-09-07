@@ -6,45 +6,43 @@ use Illuminate\Support\Collection;
 
 class RevenueAnalyzer implements AnalyzerInterface
 {
-    public function analyze(Collection $transactions, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
     {
-        $gross = $transactions->sum('gross_amount');
-        $gatewayFees = $transactions->sum('gateway_fee');
-        $platformFees = $transactions->sum('platform_fee');
-        $refunds = 0; // TODO: Implement refunds when model supports it
-        $net = $transactions->sum('net_amount');
+        // Use canonical financial facts from FinanceAnalyticsService
+        $totals = $financialFacts['totals'];
+        $trend = $financialFacts['trend'];
+        $settlements = $financialFacts['settlements'];
+
+        $gross = $totals['gross_revenue'];
+        $net = $totals['net_revenue'];
+        $processingFees = $totals['processing_fees'];
         
-        // Pending settlement - sum of net amount for transactions not yet settled
-        $pending = $transactions->whereNull('settlement_id')->sum('net_amount');
+        // Pending settlement from Settlement domain (not Transaction)
+        $pending = $settlements['pending_amount'];
         
-        // Cash in hand is net minus pending (assuming settled goes to bank)
+        // Cash in hand is net minus pending
         $cashInHand = $net - $pending;
 
+        // Refunds not currently tracked separately in Ledger
+        // Would need to be added to FinanceAnalyticsService if needed
+        $refunds = 0;
+
         $grossPct = 100;
-        $gatewayPct = $gross > 0 ? round(($gatewayFees / $gross) * 100, 1) : 0;
-        $platformPct = $gross > 0 ? round(($platformFees / $gross) * 100, 1) : 0;
+        $gatewayPct = $gross > 0 ? round(($processingFees / $gross) * 100, 1) : 0;
+        $platformPct = 0; // Not posted to Ledger in current implementation
         $refundsPct = $gross > 0 ? round(($refunds / $gross) * 100, 1) : 0;
         $netPct = $gross > 0 ? round(($net / $gross) * 100, 1) : 0;
 
-        // Group by payment method
+        // Payment channel breakdown not available from Ledger
+        // Would need to be added to FinanceAnalyticsService if needed
         $byChannel = [];
-        $txByMethod = $transactions->groupBy('payment_method_id');
-        foreach ($txByMethod as $methodId => $txs) {
-            $method = $txs->first()->paymentMethod;
-            $channelName = $method ? $method->display_name : 'Unknown';
-            $channelFees = $txs->sum(fn($tx) => $tx->gateway_fee + $tx->platform_fee);
-            $byChannel[] = [
-                'channel' => $channelName,
-                'fees' => $channelFees
-            ];
-        }
 
         return [
             'analytics' => [
                 'revenue' => [
                     'gross' => $gross,
-                    'gateway_fees' => $gatewayFees,
-                    'platform_fees' => $platformFees,
+                    'gateway_fees' => $processingFees, // Ledger only tracks gateway fees
+                    'platform_fees' => 0, // Not posted to Ledger
                     'refunds' => $refunds,
                     'net' => $net,
                     'settlement_pending' => $pending,
@@ -58,22 +56,22 @@ class RevenueAnalyzer implements AnalyzerInterface
                     'net_pct' => $netPct,
                     'by_channel' => $byChannel,
                 ],
-                'revenue_trend' => $this->buildRevenueTrend($transactions),
+                'revenue_trend' => $this->buildRevenueTrend($trend),
             ]
         ];
     }
 
-    private function buildRevenueTrend(Collection $transactions): array
+    private function buildRevenueTrend(array $trend): array
     {
-        return $transactions
-            ->groupBy(fn($tx) => date('Y-m-d', strtotime($tx->created_at)))
-            ->map(fn($group) => [
-                'date' => date('M d', strtotime($group->first()->created_at)),
-                'revenue' => $group->sum('gross_amount'),
-                'net'     => $group->sum('net_amount'),
-            ])
-            ->sortKeys()
-            ->values()
+        // Transform FinanceAnalyticsService trend format to Intelligence format
+        return collect($trend)
+            ->map(function ($day) {
+                return [
+                    'date' => date('M d', strtotime($day['date'])),
+                    'revenue' => $day['revenue'],
+                    'net' => $day['net_revenue'],
+                ];
+            })
             ->toArray();
     }
 }

@@ -12,6 +12,7 @@ class Invoice extends Model
     use HasUuids;
 
     protected $fillable = [
+        'provider_id',
         'subscription_id',
         'invoice_number',
         'status',
@@ -38,6 +39,11 @@ class Invoice extends Model
         'metadata' => 'array',
     ];
 
+    public function provider(): BelongsTo
+    {
+        return $this->belongsTo(Provider::class);
+    }
+
     public function subscription(): BelongsTo
     {
         return $this->belongsTo(Subscription::class);
@@ -45,7 +51,7 @@ class Invoice extends Model
 
     public function payments(): HasMany
     {
-        return $this->hasMany(Payment::class);
+        return $this->hasMany(InvoicePayment::class);
     }
 
     public function scopePaid($query)

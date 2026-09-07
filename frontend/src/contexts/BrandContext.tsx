@@ -77,7 +77,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
   
   const { data: brand, isLoading, error, refetch } = useQuery({
     queryKey: ['brand-experience', salonId],
-    queryFn: () => apiClient.get('/brand-experience'),
+    queryFn: () => apiClient.get('/v1/brand-experience'),
     enabled: !!salonId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet
@@ -85,6 +85,11 @@ export function BrandProvider({ children }: { children: ReactNode }) {
 
   // Apply brand fonts to document
   useEffect(() => {
+    // Check if we're on the server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     if (brand?.brand && brand?.experience) {
       const root = document.documentElement;
       

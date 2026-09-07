@@ -23,7 +23,7 @@ interface RevenuePipelineProps {
 }
 
 export default function RevenuePipeline({ revenue, fees }: RevenuePipelineProps) {
-  const formatAmt = (amt: number) => `UGX ${amt.toLocaleString()}`;
+  const formatAmt = (amt: number) => `UGX ${amt.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   const nodes = [
     { label: 'Gross Revenue', amount: revenue.gross, pct: fees.gross_pct, color: 'text-text-primary' },

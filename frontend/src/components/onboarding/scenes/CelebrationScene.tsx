@@ -7,11 +7,13 @@ import { useRole } from '@/contexts/RoleContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Crown, CheckCircle2, ArrowRight, Loader2, Copy, Check } from 'lucide-react';
 import BringingSalonToLife from '../BringingSalonToLife';
+import { salonRoutes } from '@/lib/routes';
 
 export default function CelebrationScene() {
   const router = useRouter();
   const { salonData, staff, services, resetOnboarding, completeOnboarding, loading } = useOnboarding();
-  const { refreshUser } = useRole();
+  const { refreshUser, salonSlug } = useRole();
+  const routes = salonRoutes(salonSlug);
   const [isBringingToLife, setIsBringingToLife] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -22,9 +24,9 @@ export default function CelebrationScene() {
       const origin = window.location.origin; // e.g. http://localhost:3000
       // Strip protocol to match the display aesthetic
       const cleanDomain = origin.replace(/https?:\/\//, '');
-      return `${cleanDomain}/book/${salonData.draftSlug || 'your-salon'}`;
+      return `${cleanDomain}/${salonData.draftSlug || 'your-salon'}`;
     }
-    return `yosalon.com/book/${salonData.draftSlug || 'your-salon'}`;
+    return `yosalon.com/${salonData.draftSlug || 'your-salon'}`;
   };
 
   const salonLink = getSalonLink();
@@ -51,7 +53,7 @@ export default function CelebrationScene() {
       await refreshUser();
       setTimeout(() => {
         resetOnboarding();
-        router.push('/dashboard');
+        router.push(routes.dashboard);
       }, 4000);
     } catch (err) {
       setError('Something went wrong. Please try again.');

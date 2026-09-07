@@ -105,7 +105,7 @@ export default function MembershipScene() {
                 <h3 className="text-base font-bold text-white mb-0.5">{plan.name}</h3>
                 <div className="flex items-baseline gap-1 mb-3">
                   <span className="text-2xl font-bold text-white">
-                    {plan.monthly_price ? plan.monthly_price.toLocaleString() : '0'}
+                    {plan.monthly_price ? plan.monthly_price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0'}
                   </span>
                   <span className="text-white/30 text-xs">UGX/mo</span>
                 </div>

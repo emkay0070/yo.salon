@@ -65,15 +65,17 @@ class BookingService
             $booking = Booking::create([
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
-                'staff_id' => $data['staff_id'] ?? null,
+                'specialist_id' => $data['specialist_id'] ?? null,
                 'service_id' => $data['service_id'],
                 'date' => $data['date'],
                 'time' => $data['time'],
                 'status' => $data['status'] ?? 'pending',
+                'idempotency_key' => $data['idempotency_key'] ?? null,
                 'notes' => $data['notes'] ?? null,
+                'slot_locked_until' => $data['slot_locked_until'] ?? null,
             ]);
 
-            return $booking->load(['salon', 'customer', 'staff', 'service']);
+            return $booking->load(['salon', 'customer', 'specialist', 'service']);
         });
     }
 
@@ -101,40 +103,51 @@ class BookingService
 
             $customer = $customerResult['customer'];
 
-            // Get salon to check booking policy
+            // Get salon and service price securely
             $salon = \App\Models\Salon::find($data['salon_id']);
+            $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
             
-            // Determine if deposit is required
-            $requiresDeposit = $salon->booking_deposit_enabled ?? false;
-            $depositRequiredFor = $salon->deposit_required_for ?? 'all';
+            $catalogQuery = new \App\Domain\Catalog\Queries\BranchCatalogQuery();
+            $resolvedService = $catalogQuery->queryAllServices($salon)->where('services.id', $serviceId)->first();
+            $servicePrice = $resolvedService ? $resolvedService->price : 0;
             
-            // Determine if deposit is required based on salon policy
-            if ($requiresDeposit && $depositRequiredFor === 'never') {
-                $requiresDeposit = false;
-            } elseif ($requiresDeposit && $depositRequiredFor === 'first_time') {
-                $requiresDeposit = $customerResult['is_new'];
-            } elseif ($requiresDeposit && $depositRequiredFor === 'high_value') {
-                // Check if any service price is above minimum threshold
-                $serviceIds = is_array($data['service_id']) ? $data['service_id'] : [$data['service_id']];
-                $services = \App\Models\Service::whereIn('id', $serviceIds)->get();
-                $requiresDeposit = $services->some(fn($s) => $s->price >= ($salon->deposit_min_service_amount ?? 0));
-            }
+            // Generate PaymentInstruction snapshot
+            $paymentRulesEngine = app(\App\Services\PaymentRulesEngine::class);
+            $paymentInstruction = $paymentRulesEngine->generatePaymentInstructions($serviceId, $salon->id, $servicePrice);
 
-            // Set booking status based on deposit requirement
+            // Determine deposit requirement and payment status
+            $requiresDeposit = $paymentInstruction->customerAction === 'pay_now';
             $bookingStatus = $requiresDeposit ? 'pending_payment' : 'confirmed';
-            $paymentStatus = $requiresDeposit ? 'pending' : 'paid';
+            $paymentStatus = $requiresDeposit ? 'pending' : 'not_required';
+
+            $paymentSnapshotArray = (array) $paymentInstruction;
+            if ($requiresDeposit && !empty($data['payment_method_id'])) {
+                $paymentSnapshotArray['selected_method_id'] = $data['payment_method_id'];
+            }
 
             // Create booking
             $booking = Booking::create([
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
-                'staff_id' => $data['staff_id'] ?? null,
-                'service_id' => is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'], // Keep single service_id for backward compatibility
+                'specialist_id' => $data['specialist_id'] ?? null,
+                'service_id' => $serviceId, // Keep single service_id for backward compatibility
                 'date' => $data['date'],
                 'time' => $data['time'],
                 'status' => $bookingStatus,
+                
+                // Payment Architecture v1 Snapshot
+                'payment_strategy' => $paymentInstruction->strategy,
+                'deposit_required' => $requiresDeposit,
+                'amount_due' => $paymentInstruction->amountDueNow,
+                'amount_paid' => 0,
+                'amount_remaining' => $paymentInstruction->amountRemaining,
                 'payment_status' => $paymentStatus,
+                'payment_expires_at' => $data['slot_locked_until'] ?? null,
+                'payment_snapshot' => $paymentSnapshotArray,
+                
+                'idempotency_key' => $data['idempotency_key'] ?? null,
                 'notes' => $data['notes'] ?? null,
+                'slot_locked_until' => $data['slot_locked_until'] ?? null,
             ]);
 
             // Attach services (support both single service_id and array of service_ids)
@@ -182,7 +195,7 @@ class BookingService
             }
 
             return [
-                'booking' => $booking->load(['salon', 'customer', 'staff', 'service']),
+                'booking' => $booking->load(['salon', 'customer', 'specialist', 'service']),
                 'customer' => $customer,
                 'portal_account' => $portalAccount,
                 'is_new_customer' => $customerResult['is_new'],
@@ -215,7 +228,7 @@ class BookingService
             $booking = Booking::create([
                 'salon_id' => $data['salon_id'],
                 'customer_id' => $customer->id,
-                'staff_id' => $data['staff_id'] ?? null,
+                'specialist_id' => $data['specialist_id'] ?? null,
                 'service_id' => $data['service_id'],
                 'date' => $data['date'],
                 'time' => $data['time'],
@@ -223,7 +236,7 @@ class BookingService
                 'notes' => $data['notes'] ?? null,
             ]);
 
-            return $booking->load(['salon', 'customer', 'staff', 'service']);
+            return $booking->load(['salon', 'customer', 'specialist', 'service']);
         });
     }
 
@@ -237,7 +250,7 @@ class BookingService
     public function updateBooking(Booking $booking, array $data): Booking
     {
         $booking->update($data);
-        return $booking->load(['salon', 'customer', 'staff', 'service']);
+        return $booking->load(['salon', 'customer', 'specialist', 'service']);
     }
 
     /**
@@ -268,5 +281,45 @@ class BookingService
             
             return $booking->fresh();
         });
+    }
+    /**
+     * Transition booking status (State Machine)
+     * 
+     * @param Booking $booking
+     * @param string $newStatus
+     * @return Booking
+     * @throws ValidationException
+     */
+    public function transitionStatus(Booking $booking, string $newStatus): Booking
+    {
+        $allowedTransitions = [
+            'pending' => ['confirmed', 'cancelled'],
+            'pending_payment' => ['confirmed', 'cancelled'],
+            'reserved' => ['pending', 'pending_payment', 'confirmed', 'cancelled'],
+            'confirmed' => ['in_progress', 'cancelled', 'no_show'],
+            'in_progress' => ['completed'],
+            'completed' => [],
+            'cancelled' => [],
+            'no_show' => [],
+        ];
+
+        $currentStatus = $booking->status;
+
+        if (!isset($allowedTransitions[$currentStatus]) || !in_array($newStatus, $allowedTransitions[$currentStatus])) {
+            throw ValidationException::withMessages([
+                'status' => "Invalid state transition from {$currentStatus} to {$newStatus}"
+            ]);
+        }
+
+        // Delegate to specific methods if they exist for extra logic
+        if ($newStatus === 'completed') {
+            return $this->completeBooking($booking);
+        }
+        if ($newStatus === 'cancelled') {
+            return $this->cancelBooking($booking);
+        }
+
+        $booking->update(['status' => $newStatus]);
+        return $booking->fresh(['salon', 'customer', 'specialist', 'service']);
     }
 }

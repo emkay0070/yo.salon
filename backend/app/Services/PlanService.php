@@ -45,16 +45,43 @@ class PlanService
         $currentPlan = Plan::findOrFail($currentPlanId);
         $newPlan = Plan::findOrFail($newPlanId);
 
+        // Get entitlement changes using PlanEntitlement system instead of direct plan fields
+        $staffChange = $this->getEntitlementChange($currentPlanId, $newPlanId, 'STAFF_SEAT');
+        $branchesChange = $this->getEntitlementChange($currentPlanId, $newPlanId, 'BRANCH');
+        $storageChange = $this->getEntitlementChange($currentPlanId, $newPlanId, 'STORAGE_GB');
+
         return [
             'current' => $currentPlan,
             'new' => $newPlan,
             'is_upgrade' => $newPlan->monthly_price > $currentPlan->monthly_price,
             'is_downgrade' => $newPlan->monthly_price < $currentPlan->monthly_price,
             'price_difference' => $newPlan->monthly_price - $currentPlan->monthly_price,
-            'staff_change' => $newPlan->staff_limit - $currentPlan->staff_limit,
-            'branches_change' => $newPlan->branches_limit - $currentPlan->branches_limit,
-            'storage_change' => $newPlan->storage_limit_gb - $currentPlan->storage_limit_gb,
+            'staff_change' => $staffChange,
+            'branches_change' => $branchesChange,
+            'storage_change' => $storageChange,
         ];
+    }
+
+    /**
+     * Get the change in entitlement limit between two plans for a specific resource.
+     * Uses PlanEntitlement system instead of direct plan fields.
+     */
+    private function getEntitlementChange(string $currentPlanId, string $newPlanId, string $resourceCode): int
+    {
+        $currentEntitlement = \App\Models\PlanEntitlement::where('plan_id', $currentPlanId)
+            ->where('resource_code', $resourceCode)
+            ->where('is_active', true)
+            ->first();
+
+        $newEntitlement = \App\Models\PlanEntitlement::where('plan_id', $newPlanId)
+            ->where('resource_code', $resourceCode)
+            ->where('is_active', true)
+            ->first();
+
+        $currentLimit = $currentEntitlement ? $currentEntitlement->limit : 0;
+        $newLimit = $newEntitlement ? $newEntitlement->limit : 0;
+
+        return $newLimit - $currentLimit;
     }
 
     public function getPlanFeatures(string $planId): array

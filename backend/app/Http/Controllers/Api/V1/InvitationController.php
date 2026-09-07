@@ -16,36 +16,60 @@ use Illuminate\Support\Str;
 class InvitationController extends Controller
 {
     /**
+     * List invitations for the current salon (authenticated owner/manager)
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $salonId = auth()->user()->currentSalon()?->id
+            ?? $request->attributes->get('salon_id');
+        if (!$salonId) {
+            return response()->json(['message' => 'No active salon context'], 403);
+        }
+
+        $invitations = Invitation::where('salon_id', $salonId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json(['invitations' => $invitations]);
+    }
+
+    /**
      * Create a new invitation (authenticated owner/manager)
      */
     public function store(Request $request): JsonResponse
     {
         $salonId = auth()->user()->currentSalon()?->id;
         if (!$salonId) {
+            $salonId = $request->attributes->get('salon_id');
+        }
+        if (!$salonId) {
             return response()->json(['message' => 'No active salon context'], 403);
         }
 
         $validated = $request->validate([
-            'role' => 'required|in:customer,staff',
+            'role' => 'required|in:customer,staff,specialist,manager,receptionist',
             'email' => 'nullable|email',
-            'target_id' => 'nullable|uuid', // e.g. Customer ID
+            'target_id' => 'nullable|uuid', // e.g. Customer ID or Staff ID
         ]);
 
-        $token = Str::random(32);
-
-        $invitation = Invitation::create([
+        $issueData = Invitation::issue([
             'salon_id' => $salonId,
             'role' => $validated['role'],
             'email' => $validated['email'] ?? null,
             'target_id' => $validated['target_id'] ?? null,
-            'token' => $token,
             'status' => 'pending',
-            'expires_at' => now()->addDays(7),
-        ]);
+        ], now()->addDays(7));
+
+        $invitation = $issueData['invitation'];
+        $rawToken = $issueData['rawToken'];
+        
+        $joinUrl = $invitation->publicJoinUrl($rawToken);
 
         return response()->json([
             'message' => 'Invitation created successfully',
             'invitation' => $invitation,
+            'join_url' => $joinUrl,
+            'raw_token' => $rawToken,
         ], 201);
     }
 
@@ -54,11 +78,13 @@ class InvitationController extends Controller
      */
     public function show(string $token): JsonResponse
     {
-        $invitation = Invitation::with('salon')->where('token', $token)->first();
+        $invitation = Invitation::findByToken($token);
 
         if (!$invitation) {
             return response()->json(['message' => 'Invitation not found'], 404);
         }
+
+        $invitation->load('salon');
 
         if (!$invitation->isValid()) {
             return response()->json(['message' => 'Invitation is expired or already accepted'], 400);
@@ -77,7 +103,7 @@ class InvitationController extends Controller
      */
     public function accept(Request $request, string $token): JsonResponse
     {
-        $invitation = Invitation::where('token', $token)->first();
+        $invitation = Invitation::findByToken($token);
 
         if (!$invitation || !$invitation->isValid()) {
             return response()->json(['message' => 'Invalid or expired invitation'], 400);
@@ -91,8 +117,11 @@ class InvitationController extends Controller
 
         if ($invitation->role === 'customer') {
             return $this->acceptCustomer($invitation, $validated);
+        } elseif ($invitation->role === 'specialist') {
+            return $this->acceptSpecialist($invitation, $validated);
         } else {
-            return $this->acceptStaff($invitation, $validated);
+            // staff, manager, receptionist all go to salon workspace
+            return $this->acceptStaff($invitation, $validated, $invitation->role);
         }
     }
 
@@ -114,11 +143,22 @@ class InvitationController extends Controller
         // If still no customer, create a new one (guest turning into regular)
         if (!$customer) {
             $customer = Customer::create([
-                'name' => $validated['name'],
+                'name'  => $validated['name'],
                 'email' => $validated['email'],
                 'phone' => 'TBD', // Requires phone update later
             ]);
-            $customer->salons()->attach($invitation->salon_id);
+        }
+
+        // Always ensure the customer has a salon relationship for this invitation's salon.
+        // This is critical for existing customers found by target_id — they may have been
+        // added to the system (e.g. via a booking) but never formally linked to the salon pivot.
+        $hasSalonRelationship = $customer->salons()->where('salons.id', $invitation->salon_id)->exists();
+        if (!$hasSalonRelationship) {
+            $customer->salons()->attach($invitation->salon_id, [
+                'id'        => (string) Str::uuid(),
+                'visits'    => 0,
+                'joined_at' => now(),
+            ]);
         }
 
         // 2. Create Portal Account
@@ -133,63 +173,162 @@ class InvitationController extends Controller
 
         $portalAccount = PortalAccount::create([
             'customer_id' => $customer->id,
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
+            'email'       => $validated['email'],
+            'password'    => Hash::make($validated['password']),
         ]);
 
         $invitation->update([
-            'status' => 'accepted',
+            'status'      => 'accepted',
             'accepted_at' => now(),
         ]);
 
         return response()->json([
-            'message' => 'Customer account created successfully',
+            'message'        => 'Customer account created successfully',
             'portal_account' => $portalAccount,
         ]);
     }
 
-    private function acceptStaff(Invitation $invitation, array $validated): JsonResponse
+    private function acceptSpecialist(Invitation $invitation, array $validated): JsonResponse
     {
-        // 1. Create or Find User account
-        if (User::where('email', $validated['email'])->exists()) {
-            return response()->json(['message' => 'Email is already registered'], 409);
+        // Load salon with provider relationship
+        $invitation->load('salon.provider');
+        $salon = $invitation->salon;
+        
+        if (!$salon || !$salon->provider) {
+            return response()->json(['message' => 'Invalid salon or provider'], 400);
         }
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'status' => 'active', // Staff bypass onboarding
-        ]);
+        // Check if SpecialistAccount already exists
+        $existingAccount = \App\Models\SpecialistAccount::where('email', $validated['email'])->first();
+        
+        if ($existingAccount) {
+            // Case A: Existing SpecialistAccount - verify password
+            if (!Hash::check($validated['password'], $existingAccount->password)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+            
+            $specialist = $existingAccount->specialist;
+            
+            if (!$specialist) {
+                return response()->json(['message' => 'Specialist account exists but has no specialist profile'], 400);
+            }
+        } else {
+            // Case B: New specialist - create Specialist + SpecialistAccount
+            $specialist = \App\Models\Specialist::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'active' => true,
+            ]);
 
-        // 2. Attach User to Salon
-        $user->salons()->attach($invitation->salon_id, ['role' => 'staff']);
+            $account = \App\Models\SpecialistAccount::create([
+                'id' => \Illuminate\Support\Str::uuid(),
+                'specialist_id' => $specialist->id,
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'is_active' => true,
+            ]);
+        }
 
-        // 3. Mark Invitation Accepted
+        // Create SpecialistAssignment to the inviting salon/provider
+        // Use firstOrCreate for idempotency based on specialist_id + provider_id + salon_id
+        $assignment = \App\Models\SpecialistAssignment::firstOrCreate(
+            [
+                'specialist_id' => $specialist->id,
+                'provider_id' => $salon->provider_id,
+                'salon_id' => $salon->id,
+            ],
+            [
+                'is_primary' => false,
+                'status' => 'ACTIVE',
+                'role' => 'SPECIALIST',
+                'employment_type' => 'EMPLOYEE',
+                'starts_at' => now(),
+            ]
+        );
+
+        // Mark Invitation Accepted
         $invitation->update([
             'status' => 'accepted',
             'accepted_at' => now(),
         ]);
 
-        // In a real app we'd also link or create the `Staff` record
+        return response()->json([
+            'message' => 'Specialist invitation accepted successfully',
+            'specialist' => $specialist,
+            'assignment' => $assignment,
+        ]);
+    }
+
+    private function acceptStaff(Invitation $invitation, array $validated, string $role = 'staff'): JsonResponse
+    {
+        // Case A/B: Find or create User account
+        $user = User::where('email', $validated['email'])->first();
+
+        if (!$user) {
+            // Case A: New User - create account
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'status' => 'active', // Staff bypass onboarding
+            ]);
+        } else {
+            // Case B: Existing User - verify password
+            if (!Hash::check($validated['password'], $user->password)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+        }
+
+        // Attach User to Salon with the specified role (idempotent)
+        $user->salons()->syncWithoutDetaching([$invitation->salon_id => ['role' => $role]]);
+
+        // Case C: invitation has target_id pointing to existing Staff
         if ($invitation->target_id) {
             $staff = \App\Models\Staff::find($invitation->target_id);
             if ($staff) {
-                $staff->update(['email' => $validated['email']]);
+                // Ensure Staff belongs to the inviting salon
+                if ($staff->salon_id !== $invitation->salon_id) {
+                    return response()->json(['message' => 'Staff record does not belong to this salon'], 400);
+                }
+                // Link Staff to User
+                $staff->update([
+                    'user_id' => $user->id,
+                    'email' => $validated['email'],
+                    'name' => $validated['name'],
+                ]);
+            } else {
+                return response()->json(['message' => 'Target staff record not found'], 404);
             }
         } else {
-            \App\Models\Staff::create([
-                'salon_id' => $invitation->salon_id,
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'active' => true,
-                'role' => 'Staff',
-            ]);
+            // Case D: Create or find Staff record for this salon/user
+            $staff = \App\Models\Staff::firstOrCreate(
+                [
+                    'salon_id' => $invitation->salon_id,
+                    'user_id' => $user->id,
+                ],
+                [
+                    'name' => $validated['name'],
+                    'email' => $validated['email'],
+                    'active' => true,
+                    'role' => ucfirst($role),
+                ]
+            );
         }
 
+        // Mark Invitation Accepted
+        $invitation->update([
+            'status' => 'accepted',
+            'accepted_at' => now(),
+        ]);
+
         return response()->json([
-            'message' => 'Staff account created successfully',
+            'message' => ucfirst($role) . ' account created successfully',
             'user' => $user,
+            'staff' => $staff,
         ]);
     }
 }

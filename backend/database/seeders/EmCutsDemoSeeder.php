@@ -37,10 +37,10 @@ class EmCutsDemoSeeder extends Seeder
         $user = User::where('email', 'emcuts@yosalon.com')->first();
         if (!$user) {
             $user = User::create([
-                'name' => 'Em Cuts Owner',
-                'email' => 'emcuts@yosalon.com',
-                'password' => Hash::make('password123'),
-                'status' => 'active',
+                'name'     => 'Em Cuts Owner',
+                'email'    => 'emcuts@yosalon.com',
+                'password' => 'password123', // plain text — User model casts to 'hashed' automatically
+                'status'   => 'active',
             ]);
             $this->command->info('Created user: emcuts@yosalon.com / password123');
         }
@@ -90,19 +90,47 @@ class EmCutsDemoSeeder extends Seeder
             ],
         ];
 
-        foreach ($services as $serviceData) {
-            $service = Service::where('salon_id', $salon->id)
-                ->where('name', $serviceData['name'])
-                ->first();
-
-            if (!$service) {
-                Service::create([
-                    ...$serviceData,
-                    'salon_id' => $salon->id,
+        // Ensure the salon has a Provider
+        $provider = \App\Models\Provider::where('slug', 'em-cuts')->first();
+        if (!$provider) {
+            $provider = \App\Models\Provider::create([
+                'type' => 'salon',
+                'status' => 'active',
+                'display_name' => 'Em Cuts',
+                'slug' => 'em-cuts',
+                'active' => true,
+            ]);
+            $salon->update(['provider_id' => $provider->id]);
+            $serviceList = [];
+            foreach ($services as $data) {
+                $service = Service::create([
+                    'provider_id' => $provider->id,
+                    'name'        => $data['name'],
+                    'description' => $data['description'] ?? null,
+                    'price'       => $data['price'],
+                    'duration'    => $data['duration'],
+                    'category'    => $data['category'],
+                    'active'      => true,
                 ]);
-                $this->command->info("Added service: {$serviceData['name']}");
-            } else {
-                $this->command->info("Service already exists: {$serviceData['name']}");
+                $serviceList[] = $service;
+                
+                $this->command->info('Added service: ' . $service->name);
+            }
+        } else {
+            foreach ($services as $serviceData) {
+                $service = Service::where('provider_id', $provider->id)
+                    ->where('name', $serviceData['name'])
+                    ->first();
+
+                if (!$service) {
+                    $service = Service::create([
+                        ...$serviceData,
+                        'provider_id' => $provider->id,
+                    ]);
+                    $this->command->info("Added service: {$serviceData['name']}");
+                } else {
+                    $this->command->info("Service already exists: {$serviceData['name']}");
+                }
             }
         }
 
@@ -131,11 +159,23 @@ class EmCutsDemoSeeder extends Seeder
                 ->first();
 
             if (!$staff) {
+                $role = $staffData['role'];
+
                 Staff::create([
                     ...$staffData,
                     'salon_id' => $salon->id,
                 ]);
-                $this->command->info("Added staff: {$staffData['name']}");
+
+                // Also create a specialist since the architecture migrated
+                // Note: 'role' is NOT a column on specialists — it lives on the pivot
+                $specialist = \App\Models\Specialist::create([
+                    'name'        => $staffData['name'],
+                    'active'      => $staffData['active'],
+                    'provider_id' => $provider->id,
+                ]);
+                $specialist->salons()->attach($salon->id, ['role' => $role]);
+
+                $this->command->info("Added staff/specialist: {$staffData['name']}");
             } else {
                 $this->command->info("Staff already exists: {$staffData['name']}");
             }

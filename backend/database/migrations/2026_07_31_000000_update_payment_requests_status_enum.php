@@ -25,13 +25,17 @@ return new class extends Migration
 
         // For PostgreSQL, use a check constraint instead of enum for status
         // This is more compatible and easier to modify
-        DB::statement("ALTER TABLE payment_requests ADD CONSTRAINT check_payment_requests_status CHECK (status IN ('pending', 'processing', 'successful', 'failed', 'cancelled', 'expired'))");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE payment_requests ADD CONSTRAINT check_payment_requests_status CHECK (status IN ('pending', 'processing', 'successful', 'failed', 'cancelled', 'expired'))");
+        }
     }
 
     public function down(): void
     {
         // Drop the check constraint
-        DB::statement("ALTER TABLE payment_requests DROP CONSTRAINT check_payment_requests_status");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE payment_requests DROP CONSTRAINT check_payment_requests_status");
+        }
         Schema::table('payment_requests', function (Blueprint $table) {
             $table->dropColumn('phone_number');
             $table->dropColumn('provider');

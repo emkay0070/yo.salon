@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/contexts/RoleContext';
+import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,33 @@ function getDaysUntil(dateString: string): number {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+// Transform old quota format to new format
+function transformQuota(quota: any) {
+  if (!quota) return null;
+  if ('base_limit' in quota) return quota; // Already in new format
+  return {
+    used: quota.used,
+    base_limit: quota.limit,
+    addon_limit: 0,
+    effective_limit: quota.limit,
+    available: quota.remaining,
+    is_over_limit: quota.isOverLimit,
+  };
+}
+
+// Transform credits format to quota format
+function transformCredits(credits: any) {
+  if (!credits) return null;
+  return {
+    used: 0,
+    base_limit: credits.available,
+    addon_limit: 0,
+    effective_limit: credits.available,
+    available: credits.available,
+    is_over_limit: false,
+  };
+}
+
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -121,28 +149,47 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Usage Card ───────────────────────────────────────────────────────────────
 
-function UsageCard({ metric }: { metric: UsageMetric }) {
+function UsageCard({ 
+  resourceCode, 
+  quota 
+}: { 
+  resourceCode: string;
+  quota: {
+    used: number;
+    base_limit: number;
+    addon_limit: number;
+    effective_limit: number;
+    available: number;
+    is_over_limit: boolean;
+  } | null;
+}) {
   const icons: Record<string, any> = {
-    staff: Users,
-    branches: Building2,
-    storage: HardDrive,
-    sms_credits: MessageSquare,
-    bookings: Calendar,
+    STAFF_SEAT: Users,
+    BRANCH: Building2,
+    STORAGE_GB: HardDrive,
+    SMS: MessageSquare,
   };
 
   const labels: Record<string, string> = {
-    staff: 'Staff',
-    branches: 'Branches',
-    storage: 'Storage',
-    sms_credits: 'SMS Credits',
-    bookings: 'Bookings',
+    STAFF_SEAT: 'Staff',
+    BRANCH: 'Branches',
+    STORAGE_GB: 'Storage',
+    SMS: 'SMS Credits',
   };
 
-  const Icon = icons[metric.metric] || Zap;
-  const label = labels[metric.metric] || metric.metric;
+  const Icon = icons[resourceCode] || Zap;
+  const label = labels[resourceCode] || resourceCode;
 
-  const isWarning = metric.is_near_limit && !metric.is_over_limit;
-  const isCritical = metric.is_over_limit;
+  if (!quota) {
+    return null;
+  }
+
+  const isUnlimited = quota.effective_limit === -1;
+  const isNotIncluded = quota.effective_limit === 0;
+  const isWarning = !isUnlimited && !isNotIncluded && quota.available <= 1 && !quota.is_over_limit;
+  const isCritical = quota.is_over_limit || (isNotIncluded && quota.used > 0);
+
+  const percentage = isUnlimited ? 100 : isNotIncluded ? (quota.used > 0 ? 100 : 0) : (quota.used / quota.effective_limit) * 100;
 
   return (
     <div className={`bg-card border rounded-xl p-4 ${
@@ -156,31 +203,41 @@ function UsageCard({ metric }: { metric: UsageMetric }) {
         {isCritical && (
           <AlertTriangle className="w-4 h-4 text-red-400" />
         )}
+        {isUnlimited && (
+          <span className="text-xs font-semibold text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-full">∞</span>
+        )}
       </div>
 
       <div className="flex items-end justify-between mb-2">
         <div>
           <span className={`text-2xl font-bold ${isCritical ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-text-primary'}`}>
-            {metric.current_value}
+            {isNotIncluded && quota.used === 0 ? '—' : quota.used}
           </span>
-          <span className="text-text-secondary text-sm ml-1">/ {metric.limit}</span>
+          <span className="text-text-secondary text-sm ml-1">
+            {isUnlimited ? '/ ∞' : isNotIncluded ? '' : `/ ${quota.effective_limit}`}
+          </span>
         </div>
         <span className={`text-xs font-medium ${isCritical ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-text-secondary'}`}>
-          {metric.remaining} remaining
+          {isUnlimited ? 'Unlimited' : isNotIncluded ? 'Not included' : `${quota.available} remaining`}
         </span>
       </div>
 
       <div className="h-2 bg-surface rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${
-            isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-gradient-to-r from-[#FFD700] to-[#C9A227]'
+            isUnlimited
+              ? 'bg-gradient-to-r from-[#FFD700]/30 to-[#C9A227]/30'
+              : isNotIncluded
+                ? (isCritical ? 'bg-red-500' : 'bg-surface')
+                : isCritical ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-gradient-to-r from-[#FFD700] to-[#C9A227]'
           }`}
-          style={{ width: `${Math.min(metric.percentage, 100)}%` }}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
         />
       </div>
     </div>
   );
 }
+
 
 // ─── Feature List ─────────────────────────────────────────────────────────────
 
@@ -341,7 +398,10 @@ export default function MembershipPage() {
   const queryClient = useQueryClient();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  // Fetch subscription data
+  // Use the new capability system
+  const { capabilities, loading: capabilitiesLoading, can, getQuota, getCredits, refresh } = usePlanFeatures(salonId);
+
+  // Fetch subscription data (legacy - for plan info, invoices, timeline)
   const { data: subscriptionData, isLoading: subscriptionLoading } = useQuery({
     queryKey: ['membership', salonId],
     queryFn: () => apiClient.getMembership(),
@@ -350,14 +410,6 @@ export default function MembershipPage() {
   });
 
   const hasSubscription = !!subscriptionData?.subscription;
-
-  // Fetch usage data (only if subscription exists)
-  const { data: usageData } = useQuery({
-    queryKey: ['membership-usage', salonId],
-    queryFn: () => apiClient.getMembershipUsage(),
-    enabled: !!salonId && hasSubscription,
-    retry: false,
-  });
 
   // Fetch invoices (only if subscription exists)
   const { data: invoicesData } = useQuery({
@@ -386,13 +438,12 @@ export default function MembershipPage() {
     mutationFn: (planId: string) => apiClient.changeMembershipPlan(planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership'] });
-      queryClient.invalidateQueries({ queryKey: ['membership-usage'] });
+      refresh(); // Refresh capabilities
       setShowUpgradeModal(false);
     },
   });
 
   const subscription = subscriptionData?.subscription;
-  const usage = usageData?.usage || [];
   const invoices = invoicesData?.invoices || [];
   const timeline = timelineData?.timeline || [];
   const plans = plansData?.plans || [];
@@ -503,9 +554,10 @@ export default function MembershipPage() {
             Usage Overview
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {usage.map((metric: UsageMetric) => (
-              <UsageCard key={metric.metric} metric={metric} />
-            ))}
+            <UsageCard resourceCode="STAFF_SEAT" quota={transformQuota(getQuota('STAFF_SEAT'))} />
+            <UsageCard resourceCode="BRANCH" quota={transformQuota(getQuota('BRANCH'))} />
+            <UsageCard resourceCode="STORAGE_GB" quota={transformQuota(getQuota('STORAGE_GB'))} />
+            <UsageCard resourceCode="SMS" quota={transformCredits(getCredits('SMS'))} />
           </div>
         </div>
 

@@ -12,11 +12,11 @@ interface ClientLayoutProps {
 }
 
 const navItems = [
-  { icon: Home, label: 'Home', href: '/portal/home' },
-  { icon: Calendar, label: 'Bookings', href: '/portal/bookings' },
-  { icon: Sparkles, label: 'Discover', href: '/portal/discover' },
-  { icon: Wallet, label: 'Wallet', href: '/portal/wallet' },
-  { icon: User, label: 'Profile', href: '/portal/profile' },
+  { icon: Home, label: 'Today', href: '/portal/home' },
+  { icon: Sparkles, label: 'Explore', href: '/portal/discover' },
+  { icon: Calendar, label: 'Book', href: '/portal/bookings' },
+  { icon: Wallet, label: 'Rewards', href: '/portal/wallet' },
+  { icon: User, label: 'Me', href: '/portal/profile' },
 ];
 
 export default function ClientLayout({ children }: ClientLayoutProps) {

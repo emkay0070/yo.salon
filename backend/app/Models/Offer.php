@@ -33,9 +33,29 @@ class Offer extends Model
         'active' => 'boolean',
     ];
 
+    protected $appends = [
+        'image_url',
+    ];
+
     public function salon(): BelongsTo
     {
         return $this->belongsTo(Salon::class);
+    }
+
+    public function imageMedia(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'image');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if ($this->image && \Illuminate\Support\Str::isUuid($this->image)) {
+            return $this->imageMedia?->url;
+        }
+        if ($this->image) {
+            return asset('storage/' . $this->image);
+        }
+        return null;
     }
 
     /**

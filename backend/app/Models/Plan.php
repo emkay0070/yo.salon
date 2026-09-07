@@ -11,6 +11,7 @@ class Plan extends Model
     use HasUuids;
 
     protected $fillable = [
+        'provider_type',
         'name',
         'slug',
         'description',
@@ -37,6 +38,11 @@ class Plan extends Model
         return $this->hasMany(Subscription::class);
     }
 
+    public function entitlements(): HasMany
+    {
+        return $this->hasMany(PlanEntitlement::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -45,5 +51,10 @@ class Plan extends Model
     public function scopeOrdered($query)
     {
         return $query->orderBy('sort_order')->orderBy('monthly_price');
+    }
+
+    public function scopeForProvider($query, string $providerType)
+    {
+        return $query->where('provider_type', $providerType);
     }
 }

@@ -21,8 +21,9 @@ return new class extends Migration
             $table->string('type')->default('api');
         });
         
-        // Add check constraint using raw SQL for PostgreSQL
-        DB::statement("ALTER TABLE payment_methods ADD CONSTRAINT payment_methods_type_check CHECK (type IN ('api', 'manual', 'offline', 'gateway', 'mobile_money', 'card', 'cash'))");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE payment_methods ADD CONSTRAINT payment_methods_type_check CHECK (type IN ('api', 'manual', 'offline', 'gateway', 'mobile_money', 'card', 'cash'))");
+        }
     }
 
     /**
@@ -30,8 +31,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Drop the check constraint
-        DB::statement("ALTER TABLE payment_methods DROP CONSTRAINT payment_methods_type_check");
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE payment_methods DROP CONSTRAINT payment_methods_type_check");
+        }
         
         Schema::table('payment_methods', function (Blueprint $table) {
             // Revert back to simple string without constraint

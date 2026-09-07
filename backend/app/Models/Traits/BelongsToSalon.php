@@ -14,9 +14,14 @@ trait BelongsToSalon
         // Add global scope to automatically filter by salon_id
         static::addGlobalScope('salon', function (Builder $query) {
             if (auth()->check()) {
-                $salonId = auth()->user()->currentSalon()?->id;
-                if ($salonId) {
-                    $query->where('salon_id', $salonId);
+                $user = auth()->user();
+                // Only apply salon scope if user has currentSalon method (admin/staff users)
+                // Portal accounts don't have salon scoping
+                if (method_exists($user, 'currentSalon')) {
+                    $salonId = $user->currentSalon()?->id;
+                    if ($salonId) {
+                        $query->where('salon_id', $salonId);
+                    }
                 }
             }
         });
@@ -24,9 +29,13 @@ trait BelongsToSalon
         // Automatically set salon_id on creation
         static::creating(function ($model) {
             if (auth()->check() && empty($model->salon_id)) {
-                $salonId = auth()->user()->currentSalon()?->id;
-                if ($salonId) {
-                    $model->salon_id = $salonId;
+                $user = auth()->user();
+                // Only apply salon scope if user has currentSalon method (admin/staff users)
+                if (method_exists($user, 'currentSalon')) {
+                    $salonId = $user->currentSalon()?->id;
+                    if ($salonId) {
+                        $model->salon_id = $salonId;
+                    }
                 }
             }
         });

@@ -7,6 +7,7 @@ use App\Models\PaymentRequest;
 use App\Models\Booking;
 use App\Services\FeeEngine;
 use App\Services\Payments\PaymentManager;
+use App\Services\Payments\PaymentRoutingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
@@ -16,11 +17,13 @@ class PaymentRequestController extends Controller
 {
     protected FeeEngine $feeEngine;
     protected PaymentManager $paymentManager;
+    protected PaymentRoutingService $paymentRoutingService;
 
-    public function __construct(FeeEngine $feeEngine, PaymentManager $paymentManager)
+    public function __construct(FeeEngine $feeEngine, PaymentManager $paymentManager, PaymentRoutingService $paymentRoutingService)
     {
         $this->feeEngine = $feeEngine;
         $this->paymentManager = $paymentManager;
+        $this->paymentRoutingService = $paymentRoutingService;
     }
     public function index(Request $request): JsonResponse
     {
@@ -53,7 +56,40 @@ class PaymentRequestController extends Controller
             'payment_method'    => 'nullable|string',
             'amount'            => 'required|numeric|min:1',
             'phone_number'      => 'nullable|string',
+            'idempotency_key'   => 'nullable|string|max:255',
         ]);
+
+        // IDEMPOTENCY CHECK: Check for existing payment request with same idempotency key
+        if (!empty($validated['idempotency_key'])) {
+            $existingRequest = PaymentRequest::where('idempotency_key', $validated['idempotency_key'])
+                ->where('salon_id', $salonId)
+                ->first();
+
+            if ($existingRequest) {
+                Log::info('Returning existing payment request (idempotent)', [
+                    'idempotency_key' => $validated['idempotency_key'],
+                    'payment_request_id' => $existingRequest->id,
+                ]);
+                return response()->json($existingRequest->load(['booking', 'customer', 'paymentMethod']), 200);
+            }
+        }
+
+        // IDEMPOTENCY CHECK: Check for existing pending payment request for same booking
+        if ($validated['booking_id']) {
+            $existingRequest = PaymentRequest::where('booking_id', $validated['booking_id'])
+                ->where('status', 'pending')
+                ->where('expires_at', '>', now())
+                ->latest()
+                ->first();
+
+            if ($existingRequest) {
+                Log::info('Returning existing pending payment request', [
+                    'booking_id' => $validated['booking_id'],
+                    'payment_request_id' => $existingRequest->id,
+                ]);
+                return response()->json($existingRequest->load(['booking', 'customer', 'paymentMethod']), 200);
+            }
+        }
 
         $paymentMethodId = $validated['payment_method_id'] ?? null;
         if (!$paymentMethodId && !empty($validated['payment_method'])) {
@@ -75,20 +111,21 @@ class PaymentRequestController extends Controller
         // VALIDATE AMOUNT: Backend should calculate amount, not trust frontend
         $calculatedAmount = $validated['amount'];
         if ($validated['booking_id']) {
-            $booking = Booking::with('services')->find($validated['booking_id']);
+            $booking = Booking::with(['services', 'salon'])->find($validated['booking_id']);
             if ($booking) {
-                // Calculate actual amount from booking services
-                $serviceTotal = $booking->services->sum('price');
-                // Check if salon has deposit policy
-                $salonPolicy = \App\Models\FeatureFlag::where('salon_id', $salonId)
-                    ->where('key', 'booking_deposit_enabled')
-                    ->first();
-                
-                if ($salonPolicy && $salonPolicy->value === true) {
-                    $calculatedAmount = $serviceTotal * 0.3; // 30% deposit
-                } else {
-                    $calculatedAmount = $serviceTotal;
+                // Use BookingPolicyResolver for authoritative deposit calculation
+                $salon = $booking->salon;
+                $serviceTotal = 0;
+                $depositAmount = 0;
+
+                foreach ($booking->services as $service) {
+                    $resolver = new \App\Services\BookingPolicyResolver($salon, $service);
+                    $serviceTotal += $resolver->effectivePrice();
+                    $depositAmount += $resolver->depositAmount();
                 }
+
+                // If deposit is required, use deposit amount; otherwise use full amount
+                $calculatedAmount = $depositAmount > 0 ? $depositAmount : $serviceTotal;
 
                 // Validate that frontend amount matches backend calculation (with small tolerance for rounding)
                 $tolerance = 100; // Allow 100 UGX difference for rounding
@@ -97,29 +134,14 @@ class PaymentRequestController extends Controller
                         'booking_id' => $validated['booking_id'],
                         'frontend_amount' => $validated['amount'],
                         'backend_amount' => $calculatedAmount,
+                        'service_total' => $serviceTotal,
+                        'deposit_amount' => $depositAmount,
                     ]);
                     return response()->json([
                         'message' => 'Amount mismatch. Please refresh and try again.',
                         'expected_amount' => $calculatedAmount,
                     ], 400);
                 }
-            }
-        }
-
-        // IDEMPOTENCY CHECK: Check for existing pending payment request
-        if ($validated['booking_id']) {
-            $existingRequest = PaymentRequest::where('booking_id', $validated['booking_id'])
-                ->where('status', 'pending')
-                ->where('expires_at', '>', now())
-                ->latest()
-                ->first();
-
-            if ($existingRequest) {
-                Log::info('Returning existing pending payment request', [
-                    'booking_id' => $validated['booking_id'],
-                    'payment_request_id' => $existingRequest->id,
-                ]);
-                return response()->json($existingRequest->load(['booking', 'customer', 'paymentMethod']), 200);
             }
         }
 
@@ -132,12 +154,13 @@ class PaymentRequestController extends Controller
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
             'provider'           => $providerName,
-            'amount'             => $calculatedAmount, // Use backend-calculated amount
+            'amount'             => $calculatedAmount,
             'phone_number'       => $validated['phone_number'] ?? null,
             'status'             => 'pending',
             'provider_reference' => $reference,
             'requested_at'       => now(),
             'expires_at'         => now()->addMinutes(15),
+            'idempotency_key'    => $validated['idempotency_key'] ?? null,
         ]);
 
         // Dispatch to provider if it's a mobile money provider
@@ -154,7 +177,7 @@ class PaymentRequestController extends Controller
             }
 
             $paymentData = [
-                'amount' => $calculatedAmount, // Use backend-calculated amount
+                'amount' => $calculatedAmount,
                 'currency' => 'UGX',
                 'phone_number' => $paymentRequest->phone_number,
                 'reference' => $reference,
@@ -224,17 +247,18 @@ class PaymentRequestController extends Controller
 
         // If paid, create a completed transaction and mark booking as paid
         if ($validated['status'] === 'paid') {
-            $paymentMethod = $paymentRequest->payment_method_id
-                ? \App\Models\PaymentMethod::find($paymentRequest->payment_method_id)
-                : null;
-
+            $paymentMethod = \App\Models\PaymentMethod::find($paymentRequest->payment_method_id);
             $fees = $this->feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
+            
+            // Determine payment account
+            $paymentAccount = $paymentMethod ? $this->paymentRoutingService->determinePaymentAccount($paymentMethod) : null;
 
             $transaction = \App\Models\Transaction::create([
                 'salon_id'           => $paymentRequest->salon_id,
                 'booking_id'         => $paymentRequest->booking_id,
                 'customer_id'        => $paymentRequest->customer_id,
                 'payment_method_id'  => $paymentRequest->payment_method_id,
+                'payment_account_id' => $paymentAccount?->id,
                 'type'               => 'payment',
                 'status'             => 'completed',
                 'gross_amount'       => $fees['gross_amount'],

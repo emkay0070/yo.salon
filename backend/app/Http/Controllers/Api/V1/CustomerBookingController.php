@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Services\CustomerAvailabilityService;
 use App\Services\CustomerBookingService;
+use App\Domain\Availability\Statuses\AvailabilityStatusMapper;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -12,13 +13,16 @@ class CustomerBookingController extends Controller
 {
     protected CustomerAvailabilityService $availabilityService;
     protected CustomerBookingService $bookingService;
+    protected AvailabilityStatusMapper $statusMapper;
 
     public function __construct(
         CustomerAvailabilityService $availabilityService,
-        CustomerBookingService $bookingService
+        CustomerBookingService      $bookingService,
+        AvailabilityStatusMapper   $statusMapper,
     ) {
         $this->availabilityService = $availabilityService;
-        $this->bookingService = $bookingService;
+        $this->bookingService      = $bookingService;
+        $this->statusMapper        = $statusMapper;
     }
 
     /**
@@ -53,10 +57,18 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'service_id' => 'nullable|uuid',
             'staff_id' => 'nullable|uuid',
-            'date' => 'required|date',
+            'date' => 'nullable|date',
         ]);
 
         $salonId = $request->attributes->get('salon_id');
+
+        // If no date provided, return empty slots
+        if (empty($validated['date'])) {
+            return response()->json([
+                'slots' => [],
+                'date' => null,
+            ]);
+        }
 
         try {
             $availability = $this->availabilityService->getAvailableSlots(
@@ -66,7 +78,13 @@ class CustomerBookingController extends Controller
                 $validated['date']
             );
 
-            return response()->json($availability);
+            // Ensure customer portal responses also go through the
+            // status mapper. CustomerAvailabilityService currently returns
+            // legacy-shaped payloads (no `domain_status`); the mapper's
+            // `inferDomainStatus` back-compat path handles that gracefully.
+            $public = $this->statusMapper->toPublicResponse($availability);
+
+            return response()->json($public);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to get availability',
@@ -105,24 +123,31 @@ class CustomerBookingController extends Controller
 
     /**
      * Get available staff for a service and time slot
+     * If date/time not provided, returns all specialists who offer the service at the salon
      */
     public function availableStaff(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid',
-            'date' => 'required|date',
-            'time' => 'required',
+            'date' => 'nullable|date',
+            'time' => 'nullable',
         ]);
 
         $salonId = $request->attributes->get('salon_id');
 
         try {
-            $staff = $this->availabilityService->getAvailableStaff(
-                $salonId,
-                $validated['service_id'],
-                $validated['date'],
-                $validated['time']
-            );
+            // If date and time are provided, check availability for that specific slot
+            if (!empty($validated['date']) && !empty($validated['time'])) {
+                $staff = $this->availabilityService->getAvailableStaff(
+                    $salonId,
+                    $validated['service_id'],
+                    $validated['date'],
+                    $validated['time']
+                );
+            } else {
+                // Otherwise, return all specialists who offer this service at the salon
+                $staff = $this->availabilityService->getSpecialistsForService($salonId, $validated['service_id']);
+            }
 
             return response()->json($staff);
         } catch (\Exception $e) {
@@ -141,6 +166,7 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'service_id' => 'required|uuid',
             'staff_id' => 'nullable|uuid',
+            'specialist_id' => 'nullable|uuid',
             'date' => 'required|date',
             'time' => 'required',
             'notes' => 'nullable|string',
@@ -151,12 +177,18 @@ class CustomerBookingController extends Controller
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            // Validate booking
+            // specialist_id and staff_id are now distinct identities.
+            // specialist_id = global professional (specialists.id)
+            // staff_id = salon-local employee (staff.id)
+            // The domain resolves staff_id via SpecialistAssignment when needed.
             $bookingData = array_merge($validated, [
                 'customer_id' => $customerId,
                 'salon_id' => $salonId,
+                // staff_id only used if explicitly provided (e.g. salon-direct booking)
+                'staff_id' => $validated['staff_id'] ?? null,
             ]);
 
+            // Validate booking
             $errors = $this->bookingService->validateBooking($bookingData);
             if (!empty($errors)) {
                 return response()->json([

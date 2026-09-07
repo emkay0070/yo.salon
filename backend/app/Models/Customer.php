@@ -8,25 +8,17 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Customer extends Model
 {
-    use HasUuids;
+    use HasUuids, HasFactory;
 
     protected $fillable = [
         'name',
         'phone',
         'email',
-        'photo',
-        'notes',
     ];
-
-    protected $appends = ['photo_url'];
-
-    public function getPhotoUrlAttribute()
-    {
-        return $this->photo ? asset('storage/' . $this->photo) : null;
-    }
 
     public function bookings(): HasMany
     {

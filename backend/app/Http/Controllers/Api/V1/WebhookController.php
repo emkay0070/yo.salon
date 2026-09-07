@@ -160,27 +160,35 @@ class WebhookController extends Controller
      */
     public function handleMTN(Request $request): JsonResponse
     {
-        $payload = $request->all();
+        $payload  = $request->all();
         $signature = $request->header('X-Reference-Id');
 
         Log::info('MTN MoMo webhook received', [
-            'payload' => $payload,
+            'payload'   => $payload,
             'signature' => $signature,
         ]);
 
         try {
+            // MTNMomoService::handleWebhook does the full lifecycle:
+            // - looks up the PaymentRequest by provider_reference
+            // - updates its status
+            // - creates the Transaction record
+            // - updates Booking payment_status
+            // - fires PaymentConfirmed event
+            // No further processing needed here.
             $result = $this->paymentManager->handleWebhook('mtn_momo', $payload, $signature);
 
             if ($result) {
                 return response()->json(['message' => 'MTN webhook processed successfully'], 200);
-            } else {
-                Log::warning('MTN webhook processing failed');
-                return response()->json(['message' => 'Webhook processing failed'], 500);
             }
+
+            Log::warning('MTN webhook processing returned no result');
+            return response()->json(['message' => 'Webhook processing failed'], 500);
+
         } catch (\Exception $e) {
             Log::error('MTN webhook processing failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'error'   => $e->getMessage(),
+                'trace'   => $e->getTraceAsString(),
                 'payload' => $payload,
             ]);
 

@@ -4,6 +4,13 @@ namespace App\Services;
 
 use App\Models\PaymentMethod;
 
+/**
+ * FeeEngine - Optional fee calculation service
+ * 
+ * This service is optional and can be used when the platform
+ * wants to implement fee-based revenue models. For now,
+ * fees are not calculated in the core payment flow.
+ */
 class FeeEngine
 {
     /**
@@ -15,37 +22,86 @@ class FeeEngine
      */
     public function calculateFees(float $grossAmount, ?PaymentMethod $paymentMethod): array
     {
+        // For now, return zero fees - platform operates without transaction fees
+        // This can be enabled later when implementing subscription-based revenue
+        
+        return [
+            'gross_amount' => $grossAmount,
+            'gateway_fee' => 0.0,
+            'platform_fee' => 0.0,
+            'tax_amount' => 0.0,
+            'net_amount' => $grossAmount,
+        ];
+    }
+
+    /**
+     * Calculate fees with custom configuration (for future use)
+     * 
+     * @param float $grossAmount
+     * @param PaymentMethod|null $paymentMethod
+     * @param array $config Custom fee configuration
+     * @return array
+     */
+    public function calculateFeesWithConfig(float $grossAmount, ?PaymentMethod $paymentMethod, array $config): array
+    {
         $gatewayFee = 0.0;
         $platformFee = 0.0;
         $taxAmount = 0.0;
 
-        // Platform fee is generally a fixed amount or percentage.
-        // For Yo.Salon, we can define a standard platform fee, e.g. UGX 2,500 
-        // We'll set it to 0 for Cash to be fair to salons, or keep it. Let's make it 2500 for digital.
-        
         $methodType = $paymentMethod ? strtolower($paymentMethod->type) : 'cash';
         
+        // Use custom config if provided, otherwise use defaults
+        $mobileMoneyRate = $config['mobile_money_rate'] ?? 0.02;
+        $cardRate = $config['card_rate'] ?? 0.035;
+        $platformFeeAmount = $config['platform_fee'] ?? 0;
+        
         if ($methodType === 'cash') {
-            // Cash transactions typically have no gateway or platform fees in basic tiers
             $gatewayFee = 0.0;
             $platformFee = 0.0;
         } elseif ($methodType === 'mobile_money') {
-            // Mobile money gateways usually charge ~2%
-            $gatewayFee = $grossAmount * 0.02;
-            $platformFee = 2500.0; // Flat platform fee
+            $gatewayFee = $grossAmount * $mobileMoneyRate;
+            $platformFee = $platformFeeAmount;
         } elseif ($methodType === 'card' || $methodType === 'credit_card') {
-            // Cards usually charge ~3.5%
-            $gatewayFee = $grossAmount * 0.035;
-            $platformFee = 2500.0; 
+            $gatewayFee = $grossAmount * $cardRate;
+            $platformFee = $platformFeeAmount;
         } else {
-            // Default fallback
             $gatewayFee = $grossAmount * 0.02;
-            $platformFee = 2500.0;
+            $platformFee = $platformFeeAmount;
         }
 
-        // Calculate Net Amount
         $netAmount = $grossAmount - $gatewayFee - $platformFee - $taxAmount;
 
+        return [
+            'gross_amount' => $grossAmount,
+            'gateway_fee' => $gatewayFee,
+            'platform_fee' => $platformFee,
+            'tax_amount' => $taxAmount,
+            'net_amount' => $netAmount,
+        ];
+    }
+
+    /**
+     * Calculate fees from provider response (actual gateway fees)
+     * 
+     * This method uses the actual fees returned by the payment provider
+     * to ensure accurate net amount calculation.
+     * 
+     * @param float $grossAmount
+     * @param PaymentMethod|null $paymentMethod
+     * @param array $providerResponse Provider's verification response
+     * @return array
+     */
+    public function calculateFeesFromProvider(float $grossAmount, ?PaymentMethod $paymentMethod, array $providerResponse): array
+    {
+        // Extract gateway fee from provider response
+        $gatewayFee = (float) ($providerResponse['fees'] ?? 0.0);
+        
+        // Platform fee remains zero (zero platform commission philosophy)
+        $platformFee = 0.0;
+        $taxAmount = 0.0;
+        
+        $netAmount = $grossAmount - $gatewayFee - $platformFee - $taxAmount;
+        
         return [
             'gross_amount' => $grossAmount,
             'gateway_fee' => $gatewayFee,

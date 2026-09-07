@@ -13,11 +13,13 @@ import { Button } from '@/components/ui/button';
 import { TrendChart } from '@/components/analytics/TrendChart';
 import { CopyLinkModal } from '@/components/ui/CopyLinkModal';
 import { LiveDashboardWidgets } from '@/components/Notifications/LiveDashboardWidgets';
+import BusinessHealthWidget from '@/components/dashboard/BusinessHealthWidget';
 import { useState } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
+import { salonRoutes } from '@/lib/routes';
 
 interface OwnerDashboardProps {
   userName: string;
@@ -26,7 +28,7 @@ interface OwnerDashboardProps {
 function formatUGX(val: number): string {
   if (val >= 1_000_000) return `UGX ${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `UGX ${(val / 1_000).toFixed(0)}K`;
-  return `UGX ${val.toLocaleString()}`;
+  return `UGX ${val.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
 const SIGNAL_COLOR: Record<string, string> = {
@@ -37,8 +39,8 @@ const SIGNAL_COLOR: Record<string, string> = {
 };
 
 export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
-  const { salonId, user } = useRole();
-  const salonSlug = user?.salons?.[0]?.slug;
+  const { salonId, user, salonSlug } = useRole();
+  const routes = salonRoutes(salonSlug);
   
   const publicBookingUrl = salonSlug
     ? `${window.location.origin}/salons/${salonSlug}`
@@ -255,6 +257,9 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
       {/* ═══ Live Dashboard Widgets ═══════════════════════════════════════ */}
       <LiveDashboardWidgets />
 
+      {/* ═══ Business Health ══════════════════════════════════════════════ */}
+      <BusinessHealthWidget />
+
       {/* ═══ ROW 1: Revenue Chart + Signals ══════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
@@ -301,7 +306,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
                     tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
                   <Tooltip
                     contentStyle={{ backgroundColor: 'var(--color-card)', borderRadius: 12, border: '1px solid var(--color-border-medium)' }}
-                    formatter={(v: any, name: any) => [`UGX ${Number(v).toLocaleString()}`, String(name) === 'revenue' ? 'Gross' : 'Net']}
+                    formatter={(v: any, name: any) => [`UGX ${Number(v).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, String(name) === 'revenue' ? 'Gross' : 'Net']}
                     labelStyle={{ color: 'var(--color-text-secondary)', fontSize: 11 }}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#6C5CE7" strokeWidth={2} fill="url(#gradGross)" name="revenue" />
@@ -466,7 +471,7 @@ export default function OwnerDashboard({ userName }: OwnerDashboardProps) {
           </div>
 
           {staffList.length > 0 && (
-            <Link href="/staff" className="mt-5 pt-4 border-t border-[var(--color-border-light)] flex items-center justify-center gap-1.5 text-xs text-gold hover:underline">
+            <Link href={routes.staff} className="mt-5 pt-4 border-t border-[var(--color-border-light)] flex items-center justify-center gap-1.5 text-xs text-gold hover:underline">
               Manage Staff <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           )}

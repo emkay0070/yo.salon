@@ -42,6 +42,7 @@ export default function OnboardingFlow() {
   // Header shows on form steps (not welcome, launch, celebration)
   const showHeader = !['welcome', 'celebration', 'launch-preview'].includes(scene);
   const showPreviewPane = !['welcome', 'celebration', 'launch-preview'].includes(scene);
+  const isFullScreenScene = ['welcome', 'celebration', 'launch-preview'].includes(scene);
 
   // Estimate minutes left (about 45s per remaining scene)
   const remainingScenes = SCENES.filter(s => !['welcome', 'celebration', 'launch-preview'].includes(s));
@@ -139,51 +140,70 @@ export default function OnboardingFlow() {
       {/* === Scene area === */}
       <div className="relative z-10 flex-1 flex flex-col lg:flex-row w-full h-full overflow-hidden">
         
-        {/* Left pane: Forms */}
-      <div className="flex-1 flex flex-col h-full relative z-10 overflow-y-auto overflow-x-hidden relative scroll-smooth lg:items-center">
+        {/* Full-screen scene (welcome, celebration, launch-preview) */}
+        {isFullScreenScene ? (
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={scene}
-              initial={{ opacity: 0, x: 32, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, x: -32, filter: 'blur(4px)' }}
-              transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-              className="flex-1 flex flex-col min-h-full w-full lg:max-w-2xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+              className="flex-1 w-full h-full"
             >
               {CurrentScene && <CurrentScene />}
             </motion.div>
           </AnimatePresence>
-        </div>
+        ) : (
+          /* Form scenes with split layout */
+          <>
+            {/* Left pane: Forms */}
+            <div className="flex-1 flex flex-col h-full relative z-10 overflow-y-auto overflow-x-hidden relative scroll-smooth lg:items-center">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={scene}
+                  initial={{ opacity: 0, x: 32, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                  exit={{ opacity: 0, x: -32, filter: 'blur(4px)' }}
+                  transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex-1 flex flex-col min-h-full w-full lg:max-w-2xl"
+                >
+                  {CurrentScene && <CurrentScene />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
 
-        {/* Right pane: Desktop Preview */}
-        <AnimatePresence>
-          {showPreviewPane && (
-            <motion.div 
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="hidden lg:flex w-[400px] xl:w-[500px] h-full border-l border-white/[0.04] bg-[#0A0A0C] z-20 flex-col shadow-2xl relative"
-            >
-              {/* Phone Frame wrapper to make it look like a mobile site preview */}
-              <div className="flex-1 w-full h-full p-6 xl:p-12 flex items-center justify-center bg-black/20 backdrop-blur-3xl">
-                <div className="w-[375px] h-[812px] bg-black rounded-[3rem] border-[8px] border-[#1C1C22] overflow-hidden shadow-2xl relative flex flex-col ring-1 ring-white/10 shrink-0 transform scale-90 xl:scale-100 origin-center transition-transform">
-                  {/* Fake Notch */}
-                  <div className="absolute top-0 inset-x-0 h-7 flex justify-center z-50">
-                    <div className="w-32 h-6 bg-[#1C1C22] rounded-b-3xl"></div>
+            {/* Right pane: Desktop Preview */}
+            <AnimatePresence>
+              {showPreviewPane && (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                  className="hidden lg:flex w-[400px] xl:w-[500px] h-full border-l border-white/[0.04] bg-[#0A0A0C] z-20 flex-col shadow-2xl relative"
+                >
+                  {/* Phone Frame wrapper to make it look like a mobile site preview */}
+                  <div className="flex-1 w-full h-full p-6 xl:p-12 flex items-center justify-center bg-black/20 backdrop-blur-3xl">
+                    <div className="w-[375px] h-[812px] bg-black rounded-[3rem] border-[8px] border-[#1C1C22] overflow-hidden shadow-2xl relative flex flex-col ring-1 ring-white/10 shrink-0 transform scale-90 xl:scale-100 origin-center transition-transform">
+                      {/* Fake Notch */}
+                      <div className="absolute top-0 inset-x-0 h-7 flex justify-center z-50">
+                        <div className="w-32 h-6 bg-[#1C1C22] rounded-b-3xl"></div>
+                      </div>
+                      
+                      <SalonProfileRenderer 
+                        mode="preview"
+                        salonData={salonData}
+                        services={services}
+                        team={staff}
+                      />
+                    </div>
                   </div>
-                  
-                  <SalonProfileRenderer 
-                    mode="preview"
-                    salonData={salonData}
-                    services={services}
-                    team={staff}
-                  />
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
       </div>
 
       {/* Mobile Preview Bottom Sheet Toggle */}

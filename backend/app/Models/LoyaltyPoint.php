@@ -22,6 +22,9 @@ class LoyaltyPoint extends Model
         'redeemed_at',
         'description',
         'metadata',
+        'offer_id',
+        'points',
+        'type',
     ];
 
     protected $casts = [
@@ -42,6 +45,11 @@ class LoyaltyPoint extends Model
     public function salon(): BelongsTo
     {
         return $this->belongsTo(Salon::class);
+    }
+
+    public function offer(): BelongsTo
+    {
+        return $this->belongsTo(Offer::class);
     }
 
     /**

@@ -12,7 +12,7 @@ class Subscription extends Model
     use HasUuids;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'plan_id',
         'status',
         'billing_cycle',
@@ -23,6 +23,9 @@ class Subscription extends Model
         'cancelled_at',
         'cancel_reason',
         'metadata',
+        'is_over_limit',
+        'is_grandfathered',
+        'grandfathering_metadata',
     ];
 
     protected $casts = [
@@ -32,11 +35,19 @@ class Subscription extends Model
         'renews_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'metadata' => 'array',
+        'is_over_limit' => 'boolean',
+        'is_grandfathered' => 'boolean',
+        'grandfathering_metadata' => 'array',
     ];
 
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
+    }
+
+    public function salon()
+    {
+        return $this->hasOneThrough(Salon::class, Provider::class, 'id', 'provider_id', 'provider_id', 'id');
     }
 
     public function plan(): BelongsTo

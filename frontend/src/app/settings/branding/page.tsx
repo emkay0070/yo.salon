@@ -57,7 +57,7 @@ export default function BrandingSettingsPage() {
     setSaveSuccess(false);
     
     try {
-      await apiClient.put('/brand-experience', formData);
+      await apiClient.put('/v1/brand-experience', formData);
       setSaveSuccess(true);
       refetch();
       setTimeout(() => setSaveSuccess(false), 3000);

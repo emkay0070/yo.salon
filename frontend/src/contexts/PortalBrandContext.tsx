@@ -76,9 +76,9 @@ export function PortalBrandProvider({ children }: { children: ReactNode }) {
   const { salon } = usePortalAuth();
   
   const { data: brand, isLoading, error, refetch } = useQuery({
-    queryKey: ['portal-brand-experience', salon?.id],
-    queryFn: () => portalApiClient.get('/brand-experience'),
-    enabled: !!salon?.id,
+    queryKey: ['portal-brand-experience', salon?.slug],
+    queryFn: () => portalApiClient.get(`/salons/${salon?.slug}/brand-experience`),
+    enabled: !!salon?.slug,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet
   });

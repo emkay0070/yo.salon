@@ -8,11 +8,14 @@ import {
   User,
   Clock,
   Search,
+  Lock,
+  Crown,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { motion } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useRole } from '@/contexts/RoleContext';
+import { usePlanFeatures } from '@/hooks/usePlanFeatures';
 
 interface Booking {
   id: string;
@@ -61,6 +64,11 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [error, setError] = useState<string | null>(null);
   const { salonId } = useRole();
+
+  // Use capability system to check calendar features
+  const { can } = usePlanFeatures(salonId);
+  const canUseWeekCalendar = can('CALENDAR_WEEK');
+  const canUseMonthCalendar = can('CALENDAR_MONTH');
 
   useEffect(() => {
     async function loadData() {
@@ -248,22 +256,44 @@ export default function CalendarPage() {
               >
                 Day
               </button>
-              <button
-                onClick={() => setViewMode('week')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  viewMode === 'week' ? 'bg-[#FFD700] text-obsidian' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
-                }`}
-              >
-                Week
-              </button>
-              <button
-                onClick={() => setViewMode('month')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  viewMode === 'month' ? 'bg-[#FFD700] text-obsidian' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
-                }`}
-              >
-                Month
-              </button>
+              {canUseWeekCalendar ? (
+                <button
+                  onClick={() => setViewMode('week')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    viewMode === 'week' ? 'bg-[#FFD700] text-obsidian' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+                  }`}
+                >
+                  Week
+                </button>
+              ) : (
+                <button
+                  onClick={() => window.location.href = '/settings/membership'}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-text-secondary flex items-center gap-1.5 hover:text-[#FFD700] transition-colors"
+                  title="Week calendar available on Professional plan"
+                >
+                  <Crown className="w-3 h-3" />
+                  Week
+                </button>
+              )}
+              {canUseMonthCalendar ? (
+                <button
+                  onClick={() => setViewMode('month')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    viewMode === 'month' ? 'bg-[#FFD700] text-obsidian' : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+                  }`}
+                >
+                  Month
+                </button>
+              ) : (
+                <button
+                  onClick={() => window.location.href = '/settings/membership'}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-text-secondary flex items-center gap-1.5 hover:text-[#FFD700] transition-colors"
+                  title="Month calendar available on Professional plan"
+                >
+                  <Crown className="w-3 h-3" />
+                  Month
+                </button>
+              )}
             </div>
 
             <button
@@ -359,7 +389,7 @@ export default function CalendarPage() {
                                       <p className="text-text-primary font-semibold text-sm truncate">{booking.customer.name}</p>
                                       <p className="text-text-secondary text-xs truncate">{getServiceNames(booking)}</p>
                                       <div className="flex items-center gap-2 mt-2">
-                                        <span className="text-gold text-xs font-semibold">{getTotalPrice(booking).toLocaleString()} UGX</span>
+                                        <span className="text-gold text-xs font-semibold">{getTotalPrice(booking).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} UGX</span>
                                         <span className="text-text-secondary text-xs">•</span>
                                         <span className="text-text-secondary text-xs">{booking.services.reduce((sum, s) => sum + s.duration, 0)} min</span>
                                       </div>

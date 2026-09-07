@@ -18,18 +18,44 @@ class OnboardingController extends Controller
      */
     public function show(Request $request): JsonResponse
     {
-        $session = $request->user()->onboardingSession;
+        $user = $request->user();
+        $session = $user->onboardingSession;
         
+        // Auto-create session if not exists
         if (!$session) {
-            return response()->json([
-                'message' => 'No onboarding session found',
-            ], 404);
+            $session = \App\Models\OnboardingSession::create([
+                'user_id' => $user->id,
+                'current_step' => 'welcome',
+                'draft_data' => [],
+            ]);
+        }
+
+        // Determine onboarding status from actual data
+        $salon = $user->salons()->first();
+        $salonCreated = $salon !== null;
+        
+        $teamAdded = false;
+        $servicesAdded = false;
+        $walletConfigured = false;
+        $firstBookingCreated = false;
+        
+        if ($salon) {
+            $teamAdded = $salon->staff()->count() > 0;
+            $servicesAdded = $salon->services()->count() > 0;
+            $walletConfigured = $salon->paymentMethods()->count() > 0;
+            $firstBookingCreated = $salon->bookings()->count() > 0;
         }
 
         return response()->json([
             'current_step' => $session->current_step,
             'draft_data' => $session->draft_data,
             'completed' => $session->completed,
+            'salon_created' => $salonCreated,
+            'team_added' => $teamAdded,
+            'services_added' => $servicesAdded,
+            'wallet_configured' => $walletConfigured,
+            'first_booking_created' => $firstBookingCreated,
+            'completed_steps' => $session->draft_data ? array_keys($session->draft_data) : [],
         ]);
     }
 

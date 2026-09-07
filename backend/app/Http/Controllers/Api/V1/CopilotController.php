@@ -5,17 +5,17 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\Transaction;
-use App\Services\IntelligenceEngine;
+use App\Services\Intelligence\IntelligenceEngine;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class CopilotController extends Controller
 {
-    protected IntelligenceEngine $engine;
+    protected IntelligenceEngine $intelligenceEngine;
 
-    public function __construct(IntelligenceEngine $engine)
+    public function __construct(IntelligenceEngine $intelligenceEngine)
     {
-        $this->engine = $engine;
+        $this->intelligenceEngine = $intelligenceEngine;
     }
 
     /**
@@ -36,14 +36,14 @@ class CopilotController extends Controller
         if ($context) {
             $response = $this->matchIntentWithContext($message, $context);
         } else {
-            // Legacy computation
-            $transactions = Transaction::where('salon_id', $salonId)
-                ->whereIn('status', ['completed', 'paid'])
-                ->get();
-            $bookings = Booking::with(['customer', 'staff', 'service'])
-                ->where('salon_id', $salonId)
-                ->get();
-            $response = $this->matchIntent($message, $transactions, $bookings);
+            // Use canonical Intelligence Engine for business context
+            $salon = auth()->user()->currentSalon();
+            if (!$salon) {
+                return response()->json(['error' => 'Salon not found'], 404);
+            }
+            
+            $intelligenceDto = $this->intelligenceEngine->generate($salon);
+            $response = $this->matchIntent($message, $intelligenceDto);
         }
 
         return response()->json([
@@ -71,8 +71,6 @@ class CopilotController extends Controller
         // ── Intent: Staff ────────────────────────────────────────────────────
         if ($this->matches($message, ['staff', 'employee', 'who is', 'best stylist', 'team', 'top'])) {
             if (!empty($context['top_staff_id'])) {
-                // In a real scenario we'd query the specific staff by ID, but context might just have ID.
-                // Assuming we might not have the name without a query, we just give a generic answer or query it.
                 $staff = \App\Models\Staff::find($context['top_staff_id']);
                 if ($staff) {
                     return [
@@ -101,15 +99,18 @@ class CopilotController extends Controller
     }
 
     /**
-     * Deterministic NLP intent matcher.
+     * Deterministic NLP intent matcher using canonical Intelligence Engine data.
      */
-    private function matchIntent(string $message, $transactions, $bookings): array
+    private function matchIntent(string $message, array $intelligenceDto): array
     {
-        $totalGross = $transactions->sum('gross_amount');
-        $totalNet   = $transactions->sum('net_amount');
-        $totalFees  = $transactions->sum(fn($tx) => $tx->gateway_fee + $tx->platform_fee);
-        $totalBookings = $bookings->count();
-        $uniqueCustomers = $bookings->pluck('customer_id')->unique()->count();
+        $financialFacts = $intelligenceDto['financial_facts'] ?? [];
+        $operationalFacts = $intelligenceDto['operational_facts'] ?? [];
+        
+        $totalGross = $financialFacts['totals']['gross_revenue'] ?? 0;
+        $totalNet = $financialFacts['totals']['net_revenue'] ?? 0;
+        $totalFees = $financialFacts['totals']['processing_fees'] ?? 0;
+        $totalBookings = $operationalFacts['totals']['total_bookings'] ?? 0;
+        $uniqueCustomers = count($operationalFacts['by_customer'] ?? []);
 
         // ── Intent: Revenue ──────────────────────────────────────────────────
         if ($this->matches($message, ['revenue', 'how much', 'money', 'earned', 'profit', 'net', 'gross'])) {
@@ -127,7 +128,7 @@ class CopilotController extends Controller
 
         // ── Intent: Bookings ─────────────────────────────────────────────────
         if ($this->matches($message, ['bookings', 'appointments', 'how many', 'clients', 'customers', 'busy'])) {
-            $todayBookings = $bookings->filter(fn($b) => $b->date === now()->toDateString())->count();
+            $todayBookings = $operationalFacts['today']['new_bookings_today'] ?? 0;
             return [
                 'type' => 'metric',
                 'text' => "You have had **{$totalBookings} bookings** in total from **{$uniqueCustomers} unique customers**. Today, you have **{$todayBookings} appointments** on the schedule.",
@@ -141,20 +142,16 @@ class CopilotController extends Controller
 
         // ── Intent: Churn / At Risk ──────────────────────────────────────────
         if ($this->matches($message, ['churn', 'at risk', 'missing', 'lost', 'havent come back', "haven't come back"])) {
-            $customerGroups = $bookings->groupBy('customer_id');
-            $atRisk = 0;
-            foreach ($customerGroups as $customerId => $group) {
-                if ($customerId && $group->count() > 1) {
-                    $last = collect($group)->max('date');
-                    $days = now()->diffInDays(\Carbon\Carbon::parse($last));
-                    if ($days >= 45 && $days <= 90) $atRisk++;
-                }
-            }
-            if ($atRisk > 0) {
+            // Use Intelligence Engine signals for churn risk
+            $churnSignals = collect($intelligenceDto['signals'] ?? [])
+                ->filter(fn($s) => str_contains(strtolower($s['title'] ?? ''), 'churn'));
+            
+            if ($churnSignals->count() > 0) {
+                $signal = $churnSignals->first();
                 return [
                     'type' => 'warning',
-                    'text' => "⚠️ **Churn Risk Detected:** **{$atRisk} regular customers** haven't visited in over 45 days. I recommend sending them a personalised 'We miss you — here's 10% off' campaign via SMS.",
-                    'data' => [['label' => 'At-Risk Customers', 'value' => $atRisk]]
+                    'text' => "⚠️ **Churn Risk Detected:** " . ($signal['description'] ?? 'Some customers are at risk.'),
+                    'data' => [['label' => 'Risk Level', 'value' => 'Detected']]
                 ];
             } else {
                 return ['type' => 'success', 'text' => "✅ No significant churn risk detected. Your regular customers are coming back consistently!"];
@@ -163,53 +160,56 @@ class CopilotController extends Controller
 
         // ── Intent: Top Service ──────────────────────────────────────────────
         if ($this->matches($message, ['service', 'popular', 'best', 'top', 'performing'])) {
-            $topServiceGroup = $bookings->groupBy('service_id')->sortByDesc(fn($g) => $g->count())->first();
-            if ($topServiceGroup) {
-                $topService = $topServiceGroup->first()->service;
-                $count = $topServiceGroup->count();
-                return [
-                    'type' => 'metric',
-                    'text' => "Your **top performing service** is **{$topService?->name}** with **{$count} bookings**.",
-                    'data' => [
-                        ['label' => 'Service',  'value' => $topService?->name],
-                        ['label' => 'Bookings', 'value' => $count],
-                    ]
-                ];
+            $byService = $operationalFacts['by_service'] ?? [];
+            if (!empty($byService)) {
+                $topService = collect($byService)->sortByDesc('booking_count')->first();
+                if ($topService) {
+                    return [
+                        'type' => 'metric',
+                        'text' => "Your **top performing service** is **{$topService['service_name']}** with **{$topService['booking_count']} bookings**.",
+                        'data' => [
+                            ['label' => 'Service',  'value' => $topService['service_name']],
+                            ['label' => 'Bookings', 'value' => $topService['booking_count']],
+                        ]
+                    ];
+                }
             }
         }
 
         // ── Intent: Staff ────────────────────────────────────────────────────
         if ($this->matches($message, ['staff', 'employee', 'who is', 'best stylist', 'team'])) {
-            $staffGroups = $bookings->whereNotNull('staff_id')->groupBy('staff_id')->sortByDesc(fn($g) => $g->count());
-            if ($staffGroups->count() > 0) {
-                $topGroup = $staffGroups->first();
-                $topStaff = $topGroup->first()->staff;
-                $count = $topGroup->count();
-                return [
-                    'type' => 'success',
-                    'text' => "Your **top performing team member** is **{$topStaff?->name}** who has handled **{$count} bookings**.",
-                    'data' => [
-                        ['label' => 'Staff Member', 'value' => $topStaff?->name],
-                        ['label' => 'Bookings',     'value' => $count],
-                    ]
-                ];
+            $bySpecialist = $operationalFacts['by_specialist'] ?? [];
+            if (!empty($bySpecialist)) {
+                $topSpecialist = collect($bySpecialist)->sortByDesc('booking_count')->first();
+                if ($topSpecialist) {
+                    return [
+                        'type' => 'success',
+                        'text' => "Your **top performing team member** is **{$topSpecialist['specialist_name']}** who has handled **{$topSpecialist['booking_count']} bookings**.",
+                        'data' => [
+                            ['label' => 'Staff Member', 'value' => $topSpecialist['specialist_name']],
+                            ['label' => 'Bookings',     'value' => $topSpecialist['booking_count']],
+                        ]
+                    ];
+                }
             }
         }
 
         // ── Intent: Health / Overview ────────────────────────────────────────
         if ($this->matches($message, ['how', 'doing', 'health', 'overview', 'summary', 'status', 'performance'])) {
-            $summary = $this->engine->generateExecutiveSummary($transactions, $bookings);
+            $summary = $intelligenceDto['briefing']['narrative'] ?? 'No summary available.';
             return ['type' => 'text', 'text' => $summary];
         }
 
         // ── Intent: Slow Days ────────────────────────────────────────────────
         if ($this->matches($message, ['slow', 'quiet', 'dead', 'day', 'week'])) {
-            $byDay = $bookings->groupBy(fn($b) => date('l', strtotime($b->date)));
-            $slowest = $byDay->sortBy(fn($g) => $g->count())->keys()->first();
-            return [
-                'type' => 'text',
-                'text' => "Based on your booking history, **{$slowest}** is your slowest day. Consider a **\"{$slowest} Special\"** promotion to drive volume on that day.",
-            ];
+            $weeklyBookings = $operationalFacts['temporal']['weekly_bookings'] ?? [];
+            if (!empty($weeklyBookings)) {
+                $slowest = collect($weeklyBookings)->sortBy('bookings')->keys()->first();
+                return [
+                    'type' => 'text',
+                    'text' => "Based on your booking history, **{$slowest}** is your slowest day. Consider a **\"{$slowest} Special\"** promotion to drive volume on that day.",
+                ];
+            }
         }
 
         // ── Fallback ─────────────────────────────────────────────────────────

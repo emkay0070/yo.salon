@@ -14,6 +14,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Load sidebar state from localStorage on mount
+    // Check if we're on the server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     const savedSidebarState = localStorage.getItem('sidebarOpen');
     if (savedSidebarState !== null) {
       setSidebarOpen(JSON.parse(savedSidebarState));
@@ -22,6 +27,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Save sidebar state to localStorage whenever it changes
+    // Check if we're on the server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
   }, [sidebarOpen]);
 

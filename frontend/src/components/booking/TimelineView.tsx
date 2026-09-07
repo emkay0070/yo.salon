@@ -173,7 +173,7 @@ function SingleColumnTimeline({
                         <span className="text-text-primary font-semibold text-sm truncate">{booking.customerName}</span>
                       </div>
                       <p className="text-xs truncate pl-3.5 opacity-80">{booking.service}</p>
-                      <p className="text-xs pl-3.5 opacity-60 mt-0.5">{booking.time} · UGX {booking.price.toLocaleString()}</p>
+                      <p className="text-xs pl-3.5 opacity-60 mt-0.5">{booking.time} · UGX {booking.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                     </motion.button>
                   ) : (
                     <div className={`relative z-10 w-full h-[48px] rounded-xl border border-dashed ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/15'} transition-colors`} />

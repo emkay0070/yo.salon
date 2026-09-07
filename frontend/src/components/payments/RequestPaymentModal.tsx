@@ -115,7 +115,7 @@ export default function RequestPaymentModal({
 
   // Manual Transaction Mutation (Cash/Card)
   const manualMutation = useMutation({
-    mutationFn: (data: any) => apiClient.recordManualPayment(data),
+    mutationFn: (data: any) => apiClient.recordManualTransaction(data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['transaction-summary'] });
@@ -129,8 +129,8 @@ export default function RequestPaymentModal({
 
   // Digital Payment Request Mutation (MTN/Airtel/Flutterwave)
   const requestMutation = useMutation({
-    mutationFn: (data: any) => apiClient.initializeSalonPayment(data),
-    onSuccess: (data) => {
+    mutationFn: (data: any) => apiClient.requestPayment(data),
+    onSuccess: (data: any) => {
       // Store payment reference for verification
       setPaymentReference(data.reference);
       setStep('waiting');

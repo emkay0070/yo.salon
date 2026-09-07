@@ -134,13 +134,38 @@ class PortalAuthService
         $context = [];
         if ($salonId) {
             $context = $this->getContext($portalAccount, $salonId);
+        } else {
+            // No salon relationship yet — return minimal context so the customer
+            // isn't shown as "Guest". They can complete setup from the portal.
+            $context = [
+                'portal_account' => [
+                    'id'                  => $portalAccount->id,
+                    'email'               => $portalAccount->email,
+                    'email_verified_at'   => $portalAccount->email_verified_at,
+                    'phone_verified_at'   => $portalAccount->phone_verified_at,
+                ],
+                'customer' => [
+                    'id'     => $customer->id,
+                    'name'   => $customer->name,
+                    'phone'  => $customer->phone,
+                    'email'  => $customer->email,
+                    'visits' => 0,
+                ],
+                'active_salon'    => null,
+                'salons'          => [],
+                'capabilities'    => [],
+                'wallet_summary'  => ['balance' => 0, 'packages' => 0, 'gift_cards' => 0],
+                'loyalty_summary' => ['balance' => 0, 'tier' => 'bronze', 'tier_progress' => 0, 'points_to_next' => 100, 'next_tier' => 'silver'],
+                'notification_count' => 0,
+            ];
         }
 
         return [
-            'token' => $token,
+            'token'   => $token,
             'context' => $context,
         ];
     }
+
 
     /**
      * Logout from portal account
@@ -180,6 +205,10 @@ class PortalAuthService
         $activeSalon = \App\Models\Salon::select('id', 'name', 'slug', 'logo', 'phone', 'email', 'address', 'opening_hours')
             ->where('id', $salonId)
             ->first();
+
+        if (!$activeSalon) {
+            throw new \Exception('Salon not found');
+        }
 
         // All salons for the salon switcher - load from DB directly
         $allSalons = \DB::table('customer_salon')
@@ -264,54 +293,120 @@ class PortalAuthService
      */
     public function getHomeData(PortalAccount $portalAccount, string $salonId): array
     {
-        $customer = $portalAccount->customer;
+        try {
+            $customer = $portalAccount->customer;
 
-        // Get upcoming booking for this salon
-        $upcomingBooking = Booking::where('customer_id', $customer->id)
-            ->where('salon_id', $salonId)
-            ->where('date', '>=', now()->toDateString())
-            ->where('status', '!=', 'cancelled')
-            ->with(['staff', 'service'])
-            ->orderBy('date')
-            ->orderBy('time')
-            ->first();
+            if (!$customer) {
+                throw new \Exception('Customer not found for portal account');
+            }
 
-        // Get recommended services for this salon
-        $recommendedServices = $this->recommendationService->getRecommendedServices($customer, $salonId, 4);
+            // Get salon to find its provider_id
+            $salon = \App\Models\Salon::find($salonId);
+            $providerId = $salon ? $salon->provider_id : null;
 
-        // Get recent visits
-        $recentVisits = $this->customerPortalService->getRecentVisits($customer, $salonId, 5);
-        
-        // Get last booking
-        $lastBooking = $this->customerPortalService->getLastBooking($customer, $salonId);
+            // Get upcoming booking for this salon (via provider_id)
+            $upcomingBooking = Booking::where('customer_id', $customer->id)
+                ->where('provider_id', $providerId)
+                ->where('date', '>=', now()->toDateString())
+                ->where('status', '!=', 'cancelled')
+                ->with(['staff', 'service'])
+                ->orderBy('date')
+                ->orderBy('time')
+                ->first();
 
-        return [
-            'next_appointment' => $upcomingBooking ? [
-                'id' => $upcomingBooking->id,
-                'date' => $upcomingBooking->date,
-                'time' => $upcomingBooking->time,
-                'status' => $upcomingBooking->status,
-                'staff' => $upcomingBooking->staff ? [
-                    'id' => $upcomingBooking->staff->id,
-                    'name' => $upcomingBooking->staff->name,
+            // Get recommended services for this salon
+            $recommendedServices = $this->recommendationService->getRecommendedServices($customer, $salonId, 4);
+
+            // Get recent visits
+            $recentVisits = $this->customerPortalService->getRecentVisits($customer, $salonId, 5);
+
+            // Get last booking
+            $lastBooking = $this->customerPortalService->getLastBooking($customer, $salonId);
+
+            // Get favorite stylist
+            $favoriteStylist = $this->customerPortalService->getFavoriteStylist($customer, $salonId);
+
+            // Get wallet summary
+            $walletSummary = [
+                'balance' => 0,
+                'packages' => 0,
+                'gift_cards' => 0,
+            ];
+
+            // Get loyalty summary
+            $loyaltySummary = [
+                'tier' => 'bronze',
+                'points' => 0,
+                'tier_progress' => 0,
+                'points_to_next' => 100,
+                'next_tier' => 'silver',
+            ];
+
+            return [
+                'next_appointment' => $upcomingBooking ? [
+                    'id' => $upcomingBooking->id,
+                    'date' => $upcomingBooking->date,
+                    'time' => $upcomingBooking->time,
+                    'status' => $upcomingBooking->status,
+                    'staff' => $upcomingBooking->staff ? [
+                        'id' => $upcomingBooking->staff->id,
+                        'name' => $upcomingBooking->staff->name,
+                    ] : null,
+                    'service' => $upcomingBooking->service ? [
+                        'id' => $upcomingBooking->service->id,
+                        'name' => $upcomingBooking->service->name,
+                        'price' => $upcomingBooking->service->price,
+                        'duration' => $upcomingBooking->service->duration,
+                    ] : null,
                 ] : null,
-                'service' => $upcomingBooking->service ? [
-                    'id' => $upcomingBooking->service->id,
-                    'name' => $upcomingBooking->service->name,
-                    'price' => $upcomingBooking->service->price,
-                    'duration' => $upcomingBooking->service->duration,
-                ] : null,
-            ] : null,
-            'recommended_services' => $recommendedServices,
-            'recent_visits' => $recentVisits,
-            'last_booking' => $lastBooking,
-            'offers' => [], // Integration later
-            'announcements' => [], // Integration later
-            'quick_actions' => [
-                ['id' => 'book', 'label' => 'Book Again', 'icon' => 'Repeat', 'action' => 'rebook'],
-                ['id' => 'gift', 'label' => 'Buy Gift Card', 'icon' => 'Gift', 'action' => 'gift_card'],
-            ],
-        ];
+                'recommended_services' => $recommendedServices ?? [],
+                'recent_visits' => $recentVisits ?? [],
+                'last_booking' => $lastBooking,
+                'favorite_stylist' => $favoriteStylist,
+                'wallet_summary' => $walletSummary,
+                'loyalty_summary' => $loyaltySummary,
+                'offers' => [], // Integration later
+                'announcements' => [], // Integration later
+                'quick_actions' => [
+                    ['id' => 'book', 'label' => 'Book Again', 'icon' => 'Repeat', 'action' => 'rebook'],
+                    ['id' => 'gift', 'label' => 'Buy Gift Card', 'icon' => 'Gift', 'action' => 'gift_card'],
+                ],
+            ];
+        } catch (\Exception $e) {
+            \Log::error('getHomeData error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'portal_account_id' => $portalAccount->id,
+                'salon_id' => $salonId,
+            ]);
+
+            // Return safe default data instead of throwing
+            return [
+                'next_appointment' => null,
+                'recommended_services' => [],
+                'recent_visits' => [],
+                'last_booking' => null,
+                'favorite_stylist' => null,
+                'wallet_summary' => [
+                    'balance' => 0,
+                    'packages' => 0,
+                    'gift_cards' => 0,
+                ],
+                'loyalty_summary' => [
+                    'tier' => 'bronze',
+                    'points' => 0,
+                    'tier_progress' => 0,
+                    'points_to_next' => 100,
+                    'next_tier' => 'silver',
+                ],
+                'offers' => [],
+                'announcements' => [],
+                'quick_actions' => [
+                    ['id' => 'book', 'label' => 'Book Again', 'icon' => 'Repeat', 'action' => 'rebook'],
+                    ['id' => 'gift', 'label' => 'Buy Gift Card', 'icon' => 'Gift', 'action' => 'gift_card'],
+                ],
+            ];
+        }
     }
 
     /**

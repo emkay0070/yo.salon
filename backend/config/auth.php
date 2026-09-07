@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Profile;
+use App\Models\User;
 use App\Models\PortalAccount;
 
 return [
@@ -43,13 +43,22 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'api' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+        ],
         'portal' => [
             'driver' => 'sanctum',
             'provider' => 'portal_accounts',
         ],
+        'specialist' => [
+            'driver' => 'sanctum',
+            'provider' => 'specialist_accounts',
+        ],
+        // Default sanctum guard uses users (dashboard owners)
         'sanctum' => [
             'driver' => 'sanctum',
-            'provider' => 'portal_accounts',
+            'provider' => 'users',
         ],
     ],
 
@@ -73,11 +82,15 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', Profile::class),
+            'model' => env('AUTH_MODEL', User::class),
         ],
         'portal_accounts' => [
             'driver' => 'eloquent',
             'model' => PortalAccount::class,
+        ],
+        'specialist_accounts' => [
+            'driver' => 'eloquent',
+            'model' => \App\Models\SpecialistAccount::class,
         ],
     ],
 

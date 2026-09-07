@@ -61,7 +61,7 @@ interface Staff {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { role, userName } = useRole();
+  const { role, userName, salonId, salonSlug, activeSalon, isLoading } = useRole();
   const [salons, setSalons] = useState<Salon[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -78,6 +78,28 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Redirect to slug-based URL if user has salon assignment
+  useEffect(() => {
+    if (isLoading) {
+      // Wait for RoleContext to load
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (activeSalon?.slug) {
+      console.log('[DashboardPage] Redirecting to slug-based URL:', activeSalon.slug);
+      router.push(`/${activeSalon.slug}/dashboard`);
+    } else if (salonSlug) {
+      console.log('[DashboardPage] Redirecting to slug-based URL (fallback):', salonSlug);
+      router.push(`/${salonSlug}/dashboard`);
+    } else {
+      console.warn('[DashboardPage] No active salon found, showing dashboard');
+    }
+  }, [activeSalon, salonSlug, isLoading, mounted, router]);
 
   useEffect(() => {
     async function loadData() {
@@ -106,8 +128,11 @@ export default function DashboardPage() {
       return;
     }
 
-    loadData();
-  }, []);
+    // Only load data when salonId is available
+    if (salonId) {
+      loadData();
+    }
+  }, [salonId]);
 
   // Get today's date
   const today = new Date();
@@ -193,7 +218,6 @@ export default function DashboardPage() {
 
   return (
     <DashboardLayout>
-      <OnboardingChecklist />
       {renderDashboard()}
     </DashboardLayout>
   );

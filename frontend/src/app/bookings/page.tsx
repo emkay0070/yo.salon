@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Calendar, LayoutList, Plus, ChevronLeft, ChevronRight, User, Search } from 'lucide-react';
@@ -8,13 +8,15 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useRole } from '@/contexts/RoleContext';
 import TimelineView from '@/components/booking/TimelineView';
 import ListView from '@/components/booking/ListView';
-
 import QuickActions from '@/components/booking/QuickActions';
 import BookingDetailsDrawer from '@/components/booking/BookingDetailsDrawer';
 import RequestPaymentModal from '@/components/payments/RequestPaymentModal';
 import WalkInModal from '@/components/booking/WalkInModal';
 import RescheduleModal from '@/components/booking/RescheduleModal';
 import AssignStaffModal from '@/components/booking/AssignStaffModal';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import FloatingQuickActions from '@/components/booking/FloatingQuickActions';
 
 interface Booking {
   id: string;
@@ -32,19 +34,15 @@ interface Booking {
   notes?: string;
 }
 
-interface Staff {
+interface Specialist {
   id: string;
   name: string;
 }
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
-import FloatingQuickActions from '@/components/booking/FloatingQuickActions';
-
 export default function BookingsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { role, userName, salonId } = useRole();
+  const { role, userName, salonId, salonSlug, activeSalon, isLoading, user } = useRole();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
@@ -57,28 +55,77 @@ export default function BookingsPage() {
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [isAssignStaffModalOpen, setIsAssignStaffModalOpen] = useState(false);
 
-  const { data: apiBookings = [], isLoading } = useQuery({
+  // Redirect based on user role and salon assignment
+  useEffect(() => {
+    if (isLoading) {
+      // Wait for RoleContext to load
+      return;
+    }
+
+    if (!user) {
+      // Not authenticated - this is salon admin page, not guest booking
+      // Guest booking happens at /booking (singular), not /bookings (plural)
+      // Don't auto-redirect - let the UI show appropriate state
+      console.warn('[BookingsPage] User not authenticated for salon bookings');
+      return;
+    }
+
+    if (activeSalon?.slug) {
+      // User has salon assignment - redirect to slug-based URL
+      console.log('[BookingsPage] Redirecting to slug-based URL:', activeSalon.slug);
+      router.push(`/${activeSalon.slug}/bookings`);
+    } else if (salonSlug) {
+      // Fallback to salonSlug
+      console.log('[BookingsPage] Redirecting to slug-based URL (fallback):', salonSlug);
+      router.push(`/${salonSlug}/bookings`);
+    } else {
+      // Authenticated but no salon assignment
+      // This could be: customer, specialist, or salon user with broken assignment
+      // Show appropriate state or redirect based on role
+      console.warn('[BookingsPage] User has no salon assignment');
+      // Don't auto-redirect - let the UI show the appropriate state
+    }
+  }, [activeSalon, salonSlug, user, isLoading, router]);
+
+  const { data: apiBookings = [], isLoading: bookingsLoading } = useQuery({
     queryKey: ['bookings', salonId],
-    queryFn: () => apiClient.getBookings({ salon_id: salonId }),
+    queryFn: () => apiClient.getBookings({ salon_id: salonId! }),
     enabled: !!salonId,
   });
 
-  const { data: apiStaff = [] } = useQuery({
-    queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId }),
+  console.log('[BookingsPage] Salon ID:', salonId);
+  console.log('[BookingsPage] API Bookings:', apiBookings);
+  console.log('[BookingsPage] Is loading:', bookingsLoading);
+
+  const { data: apiSpecialists = [] } = useQuery({
+    queryKey: ['specialists', salonId],
+    queryFn: () => apiClient.getSalonSpecialists(salonId!),
     enabled: !!salonId,
   });
 
   const bookings: Booking[] = apiBookings.map((b: any) => {
     const bookingDate = b.date ? new Date(b.date) : new Date();
+    
+    const formatDate = (dateStr: string): string => {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    };
+    
+    const formatTime = (timeStr: string): string => {
+      if (!timeStr) return '';
+      const time = new Date(timeStr);
+      return time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    };
+    
     return {
       id: b.id,
       customerName: b.customer?.name || 'Walk-in',
       service: b.service?.name || 'Service',
-      staffName: b.staff?.name || 'Unassigned',
-      time: b.time || (b.date ? bookingDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '09:00'),
-      date: bookingDate.toISOString(),
-      endTime: b.date ? new Date(new Date(b.date).getTime() + (b.service?.duration || 30)*60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '09:30',
+      staffName: b.specialist?.name || b.staff?.name || 'Unassigned',
+      time: formatTime(b.time || (b.date ? bookingDate.toISOString() : '09:00')),
+      date: formatDate(b.date || bookingDate.toISOString()),
+      endTime: formatTime(b.date ? new Date(new Date(b.date).getTime() + (b.service?.duration || 30)*60000).toISOString() : '09:30'),
       duration: b.service?.duration || 30,
       status: b.status || 'confirmed',
       price: b.service?.price || 0,
@@ -87,7 +134,7 @@ export default function BookingsPage() {
     };
   });
 
-  const staff: Staff[] = apiStaff.map((s: any) => ({
+  const specialists: Specialist[] = apiSpecialists.map((s: any) => ({
     id: s.id,
     name: s.name
   }));
@@ -284,8 +331,38 @@ export default function BookingsPage() {
     <DashboardLayout>
       <div className="max-w-7xl mx-auto p-6 font-sans space-y-6">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* No salon assignment state */}
+        {!salonId && user && (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center mb-4">
+              <Calendar className="w-8 h-8 text-gold" />
+            </div>
+            <h2 className="text-xl font-semibold text-text-primary mb-2">No Salon Access</h2>
+            <p className="text-text-secondary mb-6 max-w-md">
+              You don't have access to any salon's booking system. If you're a customer, 
+              visit the customer portal to view your bookings.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => router.push('/portal/bookings')}
+                className="px-6 py-2.5 bg-gold text-black rounded-xl font-medium hover:bg-gold/90 transition-colors"
+              >
+                Go to Customer Portal
+              </button>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="px-6 py-2.5 bg-card border border-border-light rounded-xl font-medium hover:bg-white/10 transition-colors"
+              >
+                Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Booking management UI - only shown when salonId exists */}
+        {salonId && (
+          <>
+            <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
@@ -366,7 +443,7 @@ export default function BookingsPage() {
           {calendarView === 'day' && (
             <TimelineView
               bookings={bookings}
-              staff={staff}
+              staff={specialists}
               onBookingClick={handleBookingClick}
               currentUserRole={role}
               currentUserName={userName}
@@ -549,6 +626,8 @@ export default function BookingsPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Booking Details Drawer */}
@@ -562,6 +641,7 @@ export default function BookingsPage() {
           onCompleteService={handleCompleteService}
           onReschedule={handleReschedule}
           onCancel={handleCancel}
+          onAssignStaff={handleAssignStaff}
           currentUserRole={role}
         />
       )}

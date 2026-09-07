@@ -13,9 +13,12 @@ class PaymentManager
 
     public function __construct()
     {
-        // Register payment providers
-        $this->registerProvider('mtn_momo', new MTNMomoService());
-        // Add other providers later: airtel_money, flutterwave, etc.
+        // Register all available payment providers.
+        // The billing engine selects the right provider based on the salon's
+        // configured PaymentMethod — it never hardcodes a provider name.
+        $this->registerProvider('mtn_momo',    new MTNMomoService());
+        $this->registerProvider('flutterwave', new FlutterwaveProvider());
+        $this->registerProvider('airtel',      new AirtelProvider());
     }
 
     /**
@@ -89,31 +92,31 @@ class PaymentManager
     /**
      * Handle webhook from a specific provider
      */
-    public function handleWebhook(string $providerName, array $payload, string $signature = null): bool
+    public function handleWebhook(string $providerName, array $payload, string $signature = null, ?string $webhookSecret = null): array
     {
         $provider = $this->getProvider($providerName);
 
         if (!$provider) {
             Log::error("Payment provider not found for webhook: {$providerName}");
-            return false;
+            return ['status' => 'failed', 'message' => 'Provider not found'];
         }
 
         try {
             // Verify signature if provided
-            if ($signature && !$provider->verifyWebhookSignature($payload, $signature)) {
+            if ($signature && !$provider->validateWebhookSignature($payload, $signature)) {
                 Log::error("Webhook signature verification failed", [
                     'provider' => $providerName,
                 ]);
-                return false;
+                return ['status' => 'failed', 'message' => 'Invalid signature'];
             }
 
-            return $provider->handleWebhook($payload);
+            return $provider->handleWebhook($payload, $signature ?? '');
         } catch (\Exception $e) {
             Log::error("Webhook handling failed", [
                 'provider' => $providerName,
                 'error' => $e->getMessage(),
             ]);
-            return false;
+            return ['status' => 'failed', 'message' => $e->getMessage()];
         }
     }
 

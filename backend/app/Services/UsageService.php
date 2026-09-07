@@ -10,14 +10,22 @@ use Carbon\Carbon;
 
 class UsageService
 {
+    public function __construct(
+        private readonly CapabilityResolver $capabilityResolver
+    ) {}
+
     public function recordUsage(string $subscriptionId, string $metric, int $value): Usage
     {
         return DB::transaction(function () use ($subscriptionId, $metric, $value) {
             $subscription = Subscription::findOrFail($subscriptionId);
-            $plan = $subscription->plan;
+            $salon = $subscription->salon;
 
-            // Get the limit for this metric based on the plan
-            $limit = $this->getMetricLimit($plan, $metric);
+            if (!$salon) {
+                throw new \Exception('Salon not found for subscription');
+            }
+
+            // Get the effective limit from CapabilityResolver (plan + add-ons)
+            $limit = $this->capabilityResolver->limit($salon->id, $metric);
 
             // Get or create usage record for current period
             $periodStart = Carbon::now()->startOfMonth();
@@ -93,22 +101,22 @@ class UsageService
         $subscription = Subscription::findOrFail($subscriptionId);
         $salon = $subscription->salon;
 
-        // Sync staff count
+        if (!$salon) {
+            // If no salon exists, return empty usage
+            return $this->getUsageBySubscription($subscriptionId);
+        }
+
+        // Sync staff count using CapabilityResolver resource codes
         $staffCount = $salon->staff()->count();
-        $this->recordUsage($subscriptionId, 'staff', $staffCount);
+        $this->recordUsage($subscriptionId, 'STAFF_SEAT', $staffCount);
 
-        // Sync bookings count for current month
-        $bookingsCount = $salon->bookings()
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->whereYear('created_at', Carbon::now()->year)
-            ->count();
-        $this->recordUsage($subscriptionId, 'bookings', $bookingsCount);
+        // Sync branches using CapabilityResolver resource codes
+        $branchCount = $this->capabilityResolver->usage($salon->id, 'BRANCH');
+        $this->recordUsage($subscriptionId, 'BRANCH', $branchCount);
 
-        // Sync branches (for now, always 1 unless multi-branch is implemented)
-        $this->recordUsage($subscriptionId, 'branches', 1);
-
-        // Storage would need actual implementation
-        $this->recordUsage($subscriptionId, 'storage', 0);
+        // Sync storage using CapabilityResolver resource codes
+        $storageUsage = $this->capabilityResolver->usage($salon->id, 'STORAGE_GB');
+        $this->recordUsage($subscriptionId, 'STORAGE_GB', $storageUsage);
 
         return $this->getUsageBySubscription($subscriptionId);
     }
@@ -134,18 +142,6 @@ class UsageService
             'violations' => $violations,
             'usage' => $usageData,
         ];
-    }
-
-    private function getMetricLimit(Plan $plan, string $metric): int
-    {
-        return match($metric) {
-            'staff' => $plan->staff_limit,
-            'branches' => $plan->branches_limit,
-            'storage' => $plan->storage_limit_gb * 1024, // Convert GB to MB
-            'sms_credits' => 1000, // Default SMS credits
-            'bookings' => PHP_INT_MAX, // Unlimited bookings
-            default => PHP_INT_MAX,
-        };
     }
 
     public function getUsageSummary(string $subscriptionId): array

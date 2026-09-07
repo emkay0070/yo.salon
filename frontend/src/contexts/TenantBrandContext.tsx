@@ -79,7 +79,7 @@ interface TenantBrandProviderProps {
 export function TenantBrandProvider({ children, slug }: TenantBrandProviderProps) {
   const { data: brand, isLoading, error, refetch } = useQuery({
     queryKey: ['tenant-brand-experience', slug],
-    queryFn: () => apiClient.get(`/v1/salons/${slug}/brand-experience`),
+    queryFn: () => apiClient.get(`/salons/${slug}/brand-experience`),
     enabled: !!slug,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false,

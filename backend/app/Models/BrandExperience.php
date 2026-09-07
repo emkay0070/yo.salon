@@ -28,8 +28,45 @@ class BrandExperience extends Model
         'white_label_enabled' => 'boolean',
     ];
 
+    protected $appends = [
+        'logo_url',
+        'background_image_url',
+    ];
+
     public function salon(): BelongsTo
     {
         return $this->belongsTo(Salon::class);
+    }
+
+    public function logoMedia(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'logo');
+    }
+
+    public function backgroundImageMedia(): BelongsTo
+    {
+        return $this->belongsTo(Media::class, 'background_image');
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        if ($this->logo && \Illuminate\Support\Str::isUuid($this->logo)) {
+            return $this->logoMedia?->url;
+        }
+        if ($this->logo) {
+            return asset('storage/' . $this->logo);
+        }
+        return null;
+    }
+
+    public function getBackgroundImageUrlAttribute(): ?string
+    {
+        if ($this->background_image && \Illuminate\Support\Str::isUuid($this->background_image)) {
+            return $this->backgroundImageMedia?->url;
+        }
+        if ($this->background_image) {
+            return asset('storage/' . $this->background_image);
+        }
+        return null;
     }
 }

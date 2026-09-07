@@ -87,4 +87,40 @@ class NotificationController extends Controller
 
         return response()->json(['message' => 'All notifications marked as read']);
     }
+
+    public function getPreferences(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $preferences = $user->notification_preferences ?? [
+            'emailBookings' => true,
+            'smsReminders' => true,
+            'pushUpdates' => false,
+            'weeklyReports' => true,
+        ];
+
+        return response()->json(['preferences' => $preferences]);
+    }
+
+    public function updatePreferences(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'emailBookings' => 'boolean',
+            'smsReminders' => 'boolean',
+            'pushUpdates' => 'boolean',
+            'weeklyReports' => 'boolean',
+        ]);
+
+        $user->update(['notification_preferences' => $validated]);
+
+        return response()->json(['message' => 'Preferences updated', 'preferences' => $validated]);
+    }
 }

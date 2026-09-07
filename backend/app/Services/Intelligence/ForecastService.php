@@ -7,7 +7,7 @@ use Carbon\Carbon;
 
 class ForecastService implements AnalyzerInterface
 {
-    public function analyze(Collection $transactions, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
     {
         // 1. Demand Heatmap
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -33,14 +33,18 @@ class ForecastService implements AnalyzerInterface
         }
 
         // 2. Projected Monthly Net (Simple run-rate projection)
+        // Use canonical financial facts for current month revenue
         $now = now();
         $daysInMonth = $now->daysInMonth;
         $currentDay = $now->day;
         
-        // Sum net revenue for current month
-        $currentMonthNet = $transactions->filter(function($tx) use ($now) {
-            return Carbon::parse($tx->paid_at)->isSameMonth($now);
-        })->sum('net_amount');
+        // Calculate current month net from trend data
+        $trend = $financialFacts['trend'];
+        $currentMonthNet = collect($trend)
+            ->filter(function ($day) use ($now) {
+                return Carbon::parse($day['date'])->isSameMonth($now);
+            })
+            ->sum('net_revenue');
         
         $dailyRunRate = $currentDay > 0 ? $currentMonthNet / $currentDay : 0;
         $projectedMonthlyNet = round($currentMonthNet + ($dailyRunRate * ($daysInMonth - $currentDay)));

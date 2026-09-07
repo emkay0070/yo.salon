@@ -10,7 +10,31 @@ class PaymentMethod extends Model
 {
     use HasFactory, BelongsToSalon;
 
-    protected $guarded = ['id'];
+    protected static function newFactory()
+    {
+        return \Database\Factories\PaymentMethodFactory::new();
+    }
+
+    protected $fillable = [
+        'salon_id',
+        'payment_account_id',
+        'provider',
+        'type',
+        'display_name',
+        'account_name',
+        'account_identifier',
+        'merchant_id',
+        'api_key',
+        'api_secret',
+        'api_subscription_key',
+        'webhook_secret',
+        'environment',
+        'currency',
+        'is_primary',
+        'is_active',
+        'metadata',
+        'credentials_verified_at',
+    ];
 
     protected $casts = [
         'is_primary' => 'boolean',
@@ -20,12 +44,14 @@ class PaymentMethod extends Model
         'api_key' => 'encrypted',
         'api_secret' => 'encrypted',
         'api_subscription_key' => 'encrypted',
+        'webhook_secret' => 'encrypted',
     ];
 
     protected $hidden = [
         'api_key',
         'api_secret',
         'api_subscription_key',
+        'webhook_secret',
     ];
 
     public function transactions()
@@ -33,16 +59,16 @@ class PaymentMethod extends Model
         return $this->hasMany(Transaction::class);
     }
 
-    public function settlements()
+    public function paymentAccount()
     {
-        return $this->hasMany(Settlement::class);
+        return $this->belongsTo(PaymentAccount::class);
     }
 
     public function hasValidCredentials(): bool
     {
-        return !empty($this->merchant_id) && 
-               !empty($this->api_key) && 
-               !empty($this->api_secret) &&
+        return !empty($this->merchant_id) &&
+               !empty($this->api_key) &&
+               !empty($this->api_subscription_key) &&
                $this->credentials_verified_at !== null;
     }
 

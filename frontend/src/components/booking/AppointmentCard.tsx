@@ -75,7 +75,7 @@ export default function AppointmentCard({
         <div className="sm:text-right flex items-center justify-between sm:flex-col sm:items-end flex-shrink-0 mt-3 sm:mt-0 pt-3 sm:pt-0 border-t border-border-light sm:border-t-0">
           <div className="flex items-center gap-1">
             <DollarSign className="w-4 h-4 text-gold" />
-            <span className="text-text-primary font-semibold">UGX {booking.price.toLocaleString()}</span>
+            <span className="text-text-primary font-semibold">UGX {booking.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
           </div>
           <span className={`text-[10px] font-medium px-2 py-1 rounded-md mt-0 sm:mt-2 ${getStatusColor(booking.status)}`}>
             {booking.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}

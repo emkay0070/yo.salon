@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -13,9 +14,17 @@ return new class extends Migration
     {
         Schema::table('salons', function (Blueprint $table) {
             $table->boolean('booking_deposit_enabled')->default(false);
-            $table->enum('deposit_type', ['percentage', 'fixed'])->nullable();
+            if (DB::getDriverName() === 'sqlite') {
+                $table->string('deposit_type')->nullable();
+            } else {
+                $table->enum('deposit_type', ['percentage', 'fixed'])->nullable();
+            }
             $table->decimal('deposit_value', 10, 2)->nullable();
-            $table->enum('deposit_required_for', ['never', 'all', 'first_time', 'high_value'])->default('all');
+            if (DB::getDriverName() === 'sqlite') {
+                $table->string('deposit_required_for')->default('all');
+            } else {
+                $table->enum('deposit_required_for', ['never', 'all', 'first_time', 'high_value'])->default('all');
+            }
             $table->integer('deposit_min_service_amount')->nullable();
         });
     }

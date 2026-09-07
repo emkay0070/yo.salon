@@ -10,7 +10,21 @@ class PaymentRequest extends Model
 {
     use HasFactory, BelongsToSalon;
 
-    protected $guarded = ['id'];
+    protected $fillable = [
+        'salon_id',
+        'booking_id',
+        'customer_id',
+        'payment_method_id',
+        'provider',
+        'amount',
+        'phone_number',
+        'status',
+        'provider_reference',
+        'requested_at',
+        'expires_at',
+        'completed_at',
+        'idempotency_key',
+    ];
 
     protected $casts = [
         'expires_at' => 'datetime',

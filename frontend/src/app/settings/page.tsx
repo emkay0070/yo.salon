@@ -1,17 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { Settings, User, Bell, Lock, Globe, Palette, Save, CheckCircle, Crown, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import { Settings, User, Bell, Lock, Globe, Palette, Save, CheckCircle, Crown, ChevronRight, Sparkles, Clock, ShieldAlert, CreditCard, Users, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DashboardLayout from '@/components/DashboardLayout';
+import AddOnsTab from '@/components/settings/AddOnsTab';
+import OperatingHoursTab from '@/components/settings/OperatingHoursTab';
+import BookingRulesTab from '@/components/settings/BookingRulesTab';
+import PaymentMethodsTab from '@/components/settings/PaymentMethodsTab';
+import StaffRosterTab from '@/components/settings/StaffRosterTab';
+import ScheduleExceptionsTab from '@/components/settings/ScheduleExceptionsTab';
 import { useTheme as useNextTheme } from 'next-themes';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useRole } from '@/contexts/RoleContext';
 import { Avatar } from '@/components/ui/Avatar';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
 
 export default function SettingsPage() {
-  const { user } = useRole();
+  const { user, salonId, salonSlug, activeSalon, isLoading } = useRole();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('profile');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [accentColor, setAccentColor] = useState('#FFD700');
@@ -21,6 +31,47 @@ export default function SettingsPage() {
     pushUpdates: false,
     weeklyReports: true,
   });
+
+  // Redirect to slug-based URL if user has salon assignment
+  useEffect(() => {
+    if (isLoading) {
+      // Wait for RoleContext to load
+      return;
+    }
+
+    if (activeSalon?.slug) {
+      console.log('[SettingsPage] Redirecting to slug-based URL:', activeSalon.slug);
+      router.push(`/${activeSalon.slug}/settings`);
+    } else if (salonSlug) {
+      console.log('[SettingsPage] Redirecting to slug-based URL (fallback):', salonSlug);
+      router.push(`/${salonSlug}/settings`);
+    } else {
+      console.warn('[SettingsPage] No active salon found, showing settings');
+    }
+  }, [activeSalon, salonSlug, isLoading, router]);
+
+  const { data: prefData } = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => apiClient.getNotificationPreferences(),
+    enabled: !!salonId,
+  });
+
+  useEffect(() => {
+    if (prefData?.preferences) {
+      setNotificationSettings(prefData.preferences);
+    }
+  }, [prefData]);
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: (newPrefs: any) => apiClient.updateNotificationPreferences(newPrefs),
+  });
+
+  const handlePrefChange = (key: string, value: boolean) => {
+    const newPrefs = { ...notificationSettings, [key]: value };
+    setNotificationSettings(newPrefs);
+    updatePrefsMutation.mutate(newPrefs);
+  };
+  
   const { theme: nextTheme, setTheme: setNextTheme } = useNextTheme();
 
   const tabs = [
@@ -28,8 +79,14 @@ export default function SettingsPage() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Security', icon: Lock },
     { id: 'appearance', label: 'Appearance', icon: Palette },
+    { id: 'operating-hours', label: 'Operating Hours', icon: Clock },
+    { id: 'holidays-closures', label: 'Holidays & Closures', icon: CalendarDays },
+    { id: 'booking-rules', label: 'Booking Rules', icon: ShieldAlert },
+    { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard },
+    { id: 'staff-roster', label: 'Staff Roster', icon: Users },
     { id: 'branding', label: 'Branding', icon: Globe },
     { id: 'membership', label: 'Membership', icon: Crown },
+    { id: 'add-ons', label: 'Add-ons & Credits', icon: Sparkles },
   ];
 
   const SettingRow = ({ label, value, onClick }: { label: string, value?: string, onClick?: () => void }) => (
@@ -130,7 +187,7 @@ export default function SettingsPage() {
                   <div key={item.key} className="flex items-center justify-between py-3 border-b border-border-light">
                     <span className="text-text-primary">{item.label}</span>
                     <button
-                      onClick={() => setNotificationSettings({ ...notificationSettings, [item.key]: !notificationSettings[item.key as keyof typeof notificationSettings] })}
+                      onClick={() => handlePrefChange(item.key, !notificationSettings[item.key as keyof typeof notificationSettings])}
                       className={`w-12 h-6 rounded-full transition-colors flex items-center p-0.5 ${
                         notificationSettings[item.key as keyof typeof notificationSettings] ? 'bg-[#FFD700]' : 'bg-[#1a1a1a] border border-white/10'
                       }`}
@@ -383,62 +440,53 @@ export default function SettingsPage() {
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="space-y-6"
                 >
-                  <h2 className="text-xl font-semibold text-text-primary mb-6">Payment Methods</h2>
+                  <PaymentMethodsTab />
+                </motion.div>
+              )}
 
-                  <div className="bg-gradient-to-br from-[#FFD700]/10 via-[#FFD700]/5 to-transparent border border-[#FFD700]/25 rounded-xl p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FFD700] to-[#C9A227] flex items-center justify-center flex-shrink-0">
-                        <Settings className="w-6 h-6 text-black" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-text-primary font-semibold mb-1">Configure Payment Providers</h3>
-                        <p className="text-text-secondary text-sm mb-4">Set up MTN MoMo, Airtel, and other payment providers for your salon.</p>
-                        <Link
-                          href="/settings/payment-methods"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-black rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
-                        >
-                          Manage Payment Methods
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
+              {activeTab === 'add-ons' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <AddOnsTab />
+                </motion.div>
+              )}
 
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between py-3 border-b border-border-light">
-                      <div>
-                        <p className="text-text-primary font-medium">MTN MoMo</p>
-                        <p className="text-text-secondary text-xs">Configure MTN Mobile Money credentials</p>
-                      </div>
-                      <button className="text-[#FFD700] text-sm font-medium hover:underline">
-                        Configure →
-                      </button>
-                    </div>
+              {activeTab === 'operating-hours' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <OperatingHoursTab />
+                </motion.div>
+              )}
 
-                    <div className="flex items-center justify-between py-3 border-b border-border-light">
-                      <div>
-                        <p className="text-text-primary font-medium">Airtel Money</p>
-                        <p className="text-text-secondary text-xs">Configure Airtel Money credentials</p>
-                      </div>
-                      <button className="text-[#FFD700] text-sm font-medium hover:underline">
-                        Configure →
-                      </button>
-                    </div>
+              {activeTab === 'holidays-closures' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <ScheduleExceptionsTab />
+                </motion.div>
+              )}
 
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="text-text-primary font-medium">Manual Payment</p>
-                        <p className="text-text-secondary text-xs">Configure phone numbers for manual payments</p>
-                      </div>
-                      <button className="text-[#FFD700] text-sm font-medium hover:underline">
-                        Configure →
-                      </button>
-                    </div>
-                  </div>
+              {activeTab === 'booking-rules' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <BookingRulesTab />
+                </motion.div>
+              )}
+
+              {activeTab === 'staff-roster' && (
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <StaffRosterTab />
                 </motion.div>
               )}
           </div>

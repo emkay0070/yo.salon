@@ -8,6 +8,19 @@ import { portalApiClient } from '@/lib/portal-api-client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FeatureGuard } from '@/components/ui/FeatureGuard';
 import { useRouter } from 'next/navigation';
+import { QuickActionSkeleton, StatCardSkeleton, ServiceCardSkeleton, CardSkeleton } from '@/components/ui/LoadingSkeleton';
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function formatTime(timeStr: string): string {
+  if (!timeStr) return '';
+  const time = new Date(timeStr);
+  return time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
 
 export default function PortalHomePage() {
   const { customer, salon, isLoading: authLoading } = usePortalAuth();
@@ -15,10 +28,11 @@ export default function PortalHomePage() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const { data: homeData, isLoading: homeLoading } = useQuery({
+  const { data: homeData, isLoading: homeLoading, error, refetch } = useQuery({
     queryKey: ['portal-home'],
     queryFn: () => portalApiClient.get('/portal/home'),
     enabled: !!customer,
+    retry: 1,
   });
 
   const cancelMutation = useMutation({
@@ -30,8 +44,83 @@ export default function PortalHomePage() {
 
   if (authLoading || homeLoading) {
     return (
+      <div className="space-y-8">
+        {/* Greeting Skeleton */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="space-y-2"
+        >
+          <div className="h-10 w-64 bg-gray-200 rounded animate-pulse" />
+          <div className="h-5 w-48 bg-gray-200 rounded animate-pulse" />
+        </motion.div>
+
+        {/* Quick Actions Skeleton */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="grid grid-cols-2 sm:grid-cols-4 gap-4"
+        >
+          <QuickActionSkeleton />
+          <QuickActionSkeleton />
+          <QuickActionSkeleton />
+          <QuickActionSkeleton />
+        </motion.div>
+
+        {/* Next Appointment Skeleton */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <CardSkeleton />
+        </motion.div>
+
+        {/* Stats Cards Skeleton */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="grid grid-cols-2 sm:grid-cols-3 gap-4"
+        >
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-text-primary">Loading...</div>
+        <div className="text-center p-8">
+          <div className="text-red-500 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-text-primary mb-2">Unable to load home data</h2>
+          <p className="text-text-secondary mb-6">Something went wrong. Please try again.</p>
+          <button
+            onClick={() => refetch()}
+            className="px-6 py-2 text-white rounded-full font-medium transition-colors"
+            style={{ 
+              backgroundColor: 'var(--brand-primary, #FFD700)',
+              borderRadius: 'var(--brand-border-radius, 16px)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '0.9';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '1';
+            }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -43,7 +132,7 @@ export default function PortalHomePage() {
     return 'Good evening';
   };
 
-  const upcomingBooking = homeData?.upcoming_booking;
+  const upcomingBooking = homeData?.next_appointment;
   const walletSummary = homeData?.wallet_summary;
   const loyaltySummary = homeData?.loyalty_summary;
   const recommendedServices = homeData?.recommended_services || [];
@@ -61,10 +150,10 @@ export default function PortalHomePage() {
           transition={{ duration: 0.5 }}
         >
           <h1 className="text-3xl sm:text-4xl font-bold text-text-primary mb-2">
-            {getGreeting()}, {customer?.name?.split(' ')[0] || 'Welcome'}
+            {getGreeting()}, {customer?.name || 'there'}
           </h1>
           <p className="text-text-secondary">
-            {salon?.name || 'Your Salon'}
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </motion.div>
 
@@ -101,30 +190,30 @@ export default function PortalHomePage() {
           />
         </motion.div>
 
-        {/* Next Appointment Card */}
+        {/* Today's Appointment Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className="bg-surface border border-border-light p-6"
-          style={{ 
+          style={{
             borderRadius: 'var(--brand-border-radius, 16px)',
-            boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+            boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
           }}
         >
           <div className="flex items-center gap-3 mb-4">
-            <div 
+            <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ 
+              style={{
                 backgroundColor: 'var(--brand-primary, #FFD700)20',
                 borderRadius: 'var(--brand-border-radius, 16px)'
               }}
             >
               <Clock className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
             </div>
-            <h2 className="text-lg font-semibold text-text-primary">Next Appointment</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Today's Appointment</h2>
           </div>
-          {upcomingBooking ? (
+          {upcomingBooking && upcomingBooking.date === new Date().toISOString().split('T')[0] ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-surface border border-border-light rounded-xl">
                 <div>
@@ -132,15 +221,31 @@ export default function PortalHomePage() {
                   <p className="text-sm text-text-secondary">{upcomingBooking.staff?.name}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-text-primary">{upcomingBooking.date}</p>
-                  <p className="text-sm text-text-secondary">{upcomingBooking.time}</p>
+                  <p className="font-semibold text-text-primary">{formatTime(upcomingBooking.time)}</p>
+                  <p className="text-sm text-text-secondary">Today</p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button 
+                <button
+                  onClick={() => router.push(`/portal/bookings/${upcomingBooking.id}/check-in`)}
+                  className="flex-1 px-4 py-2 text-sm font-medium transition-colors rounded-lg"
+                  style={{
+                    backgroundColor: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
+                  Check In
+                </button>
+                <button
                   onClick={() => router.push(`/portal/bookings/new?reschedule=${upcomingBooking.id}`)}
                   className="flex-1 px-4 py-2 text-sm font-medium transition-colors rounded-lg"
-                  style={{ 
+                  style={{
                     backgroundColor: 'var(--brand-primary, #FFD700)20',
                     color: 'var(--brand-primary, #FFD700)',
                     borderRadius: 'var(--brand-border-radius, 16px)'
@@ -154,26 +259,65 @@ export default function PortalHomePage() {
                 >
                   Reschedule
                 </button>
-                <button 
-                  onClick={() => {
-                    if (window.confirm('Are you sure you want to cancel this booking?')) {
-                      cancelMutation.mutate(upcomingBooking.id);
-                    }
+              </div>
+            </div>
+          ) : upcomingBooking ? (
+            <div className="space-y-4">
+              <p className="text-text-secondary text-sm">Your next appointment is:</p>
+              <div className="flex items-center justify-between p-4 bg-surface border border-border-light rounded-xl">
+                <div>
+                  <p className="font-semibold text-text-primary">{upcomingBooking.service?.name}</p>
+                  <p className="text-sm text-text-secondary">{upcomingBooking.staff?.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold text-text-primary">{formatDate(upcomingBooking.date)}</p>
+                  <p className="text-sm text-text-secondary">{formatTime(upcomingBooking.time)}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => router.push(`/portal/bookings/new?reschedule=${upcomingBooking.id}`)}
+                  className="flex-1 px-4 py-2 text-sm font-medium transition-colors rounded-lg"
+                  style={{
+                    backgroundColor: 'var(--brand-primary, #FFD700)20',
+                    color: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
                   }}
-                  disabled={cancelMutation.isPending}
-                  className="flex-1 px-4 py-2 bg-red-500/10 text-red-500 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                  style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)30';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--brand-primary, #FFD700)20';
+                  }}
                 >
-                  {cancelMutation.isPending ? 'Canceling...' : 'Cancel'}
+                  Reschedule
+                </button>
+                <button
+                  onClick={() => router.push('/portal/bookings/new')}
+                  className="flex-1 px-4 py-2 text-sm font-medium transition-colors rounded-lg"
+                  style={{
+                    backgroundColor: 'var(--brand-primary, #FFD700)',
+                    borderRadius: 'var(--brand-border-radius, 16px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
+                  Book Today
                 </button>
               </div>
             </div>
           ) : (
             <div className="text-center py-8">
-              <p className="text-text-secondary">No upcoming appointments</p>
-              <button 
-                className="mt-4 px-6 py-2 text-white text-sm font-medium transition-colors rounded-full"
-                style={{ 
+              <p className="text-text-secondary mb-2">No appointments today</p>
+              <p className="text-text-secondary text-sm mb-4">Book something for today?</p>
+              <button
+                onClick={() => router.push('/portal/bookings/new')}
+                className="px-6 py-2 text-white text-sm font-medium transition-colors rounded-full"
+                style={{
                   backgroundColor: 'var(--brand-primary, #FFD700)',
                   borderRadius: 'var(--brand-border-radius, 16px)'
                 }}
@@ -198,35 +342,39 @@ export default function PortalHomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.25 }}
               className="p-6"
-              style={{ 
+              style={{
                 background: `linear-gradient(to right, var(--brand-primary, #FFD700)20, var(--brand-secondary, #C9A227)20)`,
                 border: `1px solid var(--brand-primary, #FFD700)30`,
                 borderRadius: 'var(--brand-border-radius, 16px)',
-                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+                boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
               }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <div 
+                <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ 
+                  style={{
                     backgroundColor: 'var(--brand-primary, #FFD700)20',
                     borderRadius: 'var(--brand-border-radius, 16px)'
                   }}
                 >
                   <Repeat className="w-5 h-5" style={{ color: 'var(--brand-primary, #FFD700)' }} />
                 </div>
-                <h2 className="text-lg font-semibold text-text-primary">Continue Last Service</h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-text-primary">Continue where you left off</h2>
+                  <p className="text-sm text-text-secondary">{lastBooking.provider?.display_name}</p>
+                </div>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-text-primary">{lastBooking.service?.name}</p>
                   <p className="text-sm text-text-secondary">
-                    {lastBooking.staff?.name} • ${lastBooking.service?.price}
+                    {lastBooking.staff?.name} • UGX {lastBooking.service?.price?.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </p>
                 </div>
-                <button 
+                <button
+                  onClick={() => router.push(`/portal/bookings/new?service=${lastBooking.service?.id}&staff=${lastBooking.staff?.id}`)}
                   className="px-4 py-2 text-white text-sm font-medium transition-colors rounded-lg flex items-center gap-2"
-                  style={{ 
+                  style={{
                     backgroundColor: 'var(--brand-primary, #FFD700)',
                     borderRadius: 'var(--brand-border-radius, 16px)'
                   }}
@@ -254,7 +402,7 @@ export default function PortalHomePage() {
               className="bg-surface border border-border-light p-6"
               style={{ 
                 borderRadius: 'var(--brand-border-radius, 16px)',
-                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+                boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
               }}
             >
               <div className="flex items-center gap-3 mb-4">
@@ -286,16 +434,16 @@ export default function PortalHomePage() {
           )}
         </FeatureGuard>
 
-        {/* Recommended Services */}
+        {/* Recommended for You */}
         {recommendedServices.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.35 }}
             className="bg-surface border border-border-light p-6"
-            style={{ 
+            style={{
               borderRadius: 'var(--brand-border-radius, 16px)',
-              boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
             }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -303,10 +451,13 @@ export default function PortalHomePage() {
                 <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
                   <Sparkles className="w-5 h-5 text-purple-500" />
                 </div>
-                <h2 className="text-lg font-semibold text-text-primary">Recommended for You</h2>
+                <div>
+                  <h2 className="text-lg font-semibold text-text-primary">Because you liked {lastBooking?.service?.name}</h2>
+                  <p className="text-xs text-text-secondary">Recommended for you</p>
+                </div>
               </div>
-              <a 
-                href="/portal/discover" 
+              <a
+                href="/portal/discover"
                 className="text-sm hover:underline flex items-center gap-1"
                 style={{ color: 'var(--brand-primary, #FFD700)' }}
               >
@@ -315,7 +466,7 @@ export default function PortalHomePage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {recommendedServices.slice(0, 4).map((service: any) => (
-                <ServiceCard key={service.id} service={service} />
+                <QuickServiceCard key={service.id} service={service} />
               ))}
             </div>
           </motion.div>
@@ -330,7 +481,7 @@ export default function PortalHomePage() {
             className="bg-surface border border-border-light p-6"
             style={{ 
               borderRadius: 'var(--brand-border-radius, 16px)',
-              boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+              boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
             }}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -376,7 +527,7 @@ export default function PortalHomePage() {
               className="bg-surface border border-border-light p-6"
               style={{ 
                 borderRadius: 'var(--brand-border-radius, 16px)',
-                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+                boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
               }}
             >
               <div className="flex items-center gap-3 mb-4">
@@ -387,18 +538,25 @@ export default function PortalHomePage() {
               </div>
               <div className="space-y-3">
                 {recentVisits.slice(0, 3).map((visit: any) => (
-                  <div 
-                    key={visit.id} 
-                    className="flex items-center justify-between p-3 bg-surface border border-border-light"
+                  <div
+                    key={visit.id}
+                    className="flex items-center justify-between p-3 bg-surface border border-border-light cursor-pointer transition-all"
                     style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
+                    onClick={() => router.push(`/portal/bookings/new?service=${visit.service?.id}&staff=${visit.staff?.id}`)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--brand-primary, #FFD700)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '';
+                    }}
                   >
                     <div>
                       <p className="font-medium text-text-primary text-sm">{visit.service?.name}</p>
                       <p className="text-xs text-text-secondary">{visit.staff?.name}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-text-primary">{visit.date}</p>
-                      <p className="text-xs text-text-secondary">{visit.time}</p>
+                      <p className="text-sm text-text-primary">{formatDate(visit.date)}</p>
+                      <p className="text-xs text-text-secondary">{formatTime(visit.time)}</p>
                     </div>
                   </div>
                 ))}
@@ -419,7 +577,7 @@ export default function PortalHomePage() {
                 background: `linear-gradient(to right, var(--brand-primary, #FFD700)10, var(--brand-secondary, #C9A227)10)`,
                 border: `1px solid var(--brand-primary, #FFD700)20`,
                 borderRadius: 'var(--brand-border-radius, 16px)',
-                boxShadow: 'var(--brand-shadow-md, 0 6px 18px rgba(0,0,0,0.5))'
+                boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
               }}
             >
               <div className="flex items-center gap-3 mb-4">
@@ -451,6 +609,7 @@ export default function PortalHomePage() {
                   </div>
                 </div>
                 <button 
+                  onClick={() => router.push(`/portal/bookings/new?staff=${favoriteStylist.id}`)}
                   className="px-4 py-2 text-white text-sm font-medium transition-colors rounded-lg"
                   style={{ 
                     backgroundColor: 'var(--brand-primary, #FFD700)',
@@ -470,7 +629,38 @@ export default function PortalHomePage() {
           )}
         </FeatureGuard>
 
-        {/* Stats Cards */}
+        {/* Trending Nearby */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          className="bg-surface border border-border-light p-6"
+          style={{
+            borderRadius: 'var(--brand-border-radius, 16px)',
+            boxShadow: 'var(--brand-shadow-md, 0 4px 12px rgba(0,0,0,0.08))'
+          }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-orange-500" />
+              </div>
+              <h2 className="text-lg font-semibold text-text-primary">Trending Nearby</h2>
+            </div>
+            <a
+              href="/portal/discover"
+              className="text-sm hover:underline flex items-center gap-1"
+              style={{ color: 'var(--brand-primary, #FFD700)' }}
+            >
+              See all <ChevronRight className="w-4 h-4" />
+            </a>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {recommendedServices.slice(0, 4).map((service: any) => (
+              <QuickServiceCard key={service.id} service={service} />
+            ))}
+          </div>
+        </motion.div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -485,7 +675,7 @@ export default function PortalHomePage() {
           <StatCard
             icon={Wallet}
             label="Wallet Balance"
-            value={`$${walletSummary?.balance || 0}.00`}
+            value={`UGX ${(walletSummary?.balance || 0).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           />
           <StatCard
             icon={Sparkles}
@@ -504,7 +694,7 @@ function QuickActionCard({ icon: Icon, label, href, color }: { icon: any, label:
       className="bg-surface border border-border-light p-4 hover:shadow-lg group transition-all"
       style={{ 
         borderRadius: 'var(--brand-border-radius, 16px)',
-        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.05))'
       }}
     >
       <div 
@@ -524,7 +714,7 @@ function StatCard({ icon: Icon, label, value }: { icon: any, label: string, valu
       className="bg-surface border border-border-light p-4"
       style={{ 
         borderRadius: 'var(--brand-border-radius, 16px)',
-        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.05))'
       }}
     >
       <div className="flex items-center gap-2 mb-2">
@@ -536,14 +726,16 @@ function StatCard({ icon: Icon, label, value }: { icon: any, label: string, valu
   );
 }
 
-function ServiceCard({ service }: { service: any }) {
+function QuickServiceCard({ service }: { service: any }) {
+  const router = useRouter();
   return (
-    <div 
+    <div
       className="bg-surface border border-border-light p-4 transition-all cursor-pointer"
-      style={{ 
+      style={{
         borderRadius: 'var(--brand-border-radius, 16px)',
-        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.4))'
+        boxShadow: 'var(--brand-shadow-sm, 0 2px 8px rgba(0,0,0,0.05))'
       }}
+      onClick={() => router.push(`/services/${service.id}`)}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = 'var(--brand-primary, #FFD700)';
       }}
@@ -551,14 +743,14 @@ function ServiceCard({ service }: { service: any }) {
         e.currentTarget.style.borderColor = '';
       }}
     >
-      <div 
+      <div
         className="w-full h-24 bg-surface border border-border-light mb-3 flex items-center justify-center"
         style={{ borderRadius: 'var(--brand-border-radius, 16px)' }}
       >
         <Scissors className="w-8 h-8 text-text-secondary" />
       </div>
       <p className="font-medium text-text-primary text-sm mb-1">{service.name}</p>
-      <p className="text-xs text-text-secondary">${service.price}</p>
+      <p className="text-xs text-text-secondary">UGX {service.price?.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
     </div>
   );
 }

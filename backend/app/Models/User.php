@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'status'])]
+#[Fillable(['name', 'email', 'password', 'status', 'notification_preferences', 'phone', 'photo_url'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -28,12 +28,20 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notification_preferences' => 'array',
         ];
     }
 
     public function salons()
     {
-        return $this->belongsToMany(Salon::class, 'salon_users')->withPivot('role')->withTimestamps();
+        return $this->belongsToMany(Salon::class, 'salon_users')
+            ->withPivot('role')
+            ->withTimestamps()
+            ->whereExists(function ($query) {
+                $query->select(\DB::raw(1))
+                    ->from('salons')
+                    ->whereColumn('salons.id', 'salon_users.salon_id');
+            });
     }
 
     public function currentSalon()
@@ -42,9 +50,24 @@ class User extends Authenticatable
         return $this->salons()->first();
     }
 
+    public function staff()
+    {
+        return $this->hasMany(Staff::class);
+    }
+
     public function onboardingSession()
     {
         return $this->hasOne(OnboardingSession::class);
+    }
+
+    public function media()
+    {
+        return $this->morphMany(Media::class, 'attachable');
+    }
+
+    public function profilePhoto()
+    {
+        return $this->morphOne(Media::class, 'attachable')->where('alt_text', 'like', '%profile%')->latest();
     }
 
     public function isOnboarding(): bool

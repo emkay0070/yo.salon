@@ -152,4 +152,45 @@ class GiftCardController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Send a gift card to someone
+     */
+    public function send(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'gift_card_id' => 'required|uuid',
+            'recipient_email' => 'required|email',
+            'message' => 'nullable|string',
+        ]);
+
+        $salonId = $request->attributes->get('salon_id');
+        $customerId = $request->attributes->get('customer_id');
+
+        try {
+            $giftCard = \App\Models\GiftCard::where('id', $validated['gift_card_id'])
+                ->where('purchased_by', $customerId)
+                ->where('status', 'active')
+                ->firstOrFail();
+
+            // Update gift card with recipient info
+            $giftCard->update([
+                'recipient_email' => $validated['recipient_email'],
+                'message' => $validated['message'] ?? $giftCard->message,
+                'sent_at' => now(),
+            ]);
+
+            // TODO: Send email notification to recipient
+
+            return response()->json([
+                'message' => 'Gift card sent successfully',
+                'gift_card' => $giftCard,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to send gift card',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

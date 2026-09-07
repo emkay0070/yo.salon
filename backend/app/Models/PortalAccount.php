@@ -73,4 +73,13 @@ class PortalAccount extends Model implements AuthenticatableContract
     {
         return false;
     }
+
+    /**
+     * Check if account is active
+     * Portal accounts are active if they're verified
+     */
+    public function isActive(): bool
+    {
+        return $this->isVerified();
+    }
 }

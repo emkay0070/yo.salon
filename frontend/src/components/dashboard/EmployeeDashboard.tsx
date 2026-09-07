@@ -11,7 +11,7 @@ interface EmployeeDashboardProps {
 }
 
 export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) {
-  const { salonId } = useRole();
+  const { salonId, user } = useRole();
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -34,8 +34,17 @@ export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) 
     enabled: !!salonId,
   });
 
-  // Get current staff member (would need auth context to get current user's staff ID)
-  const currentStaff = staff[0]; // Placeholder - should use current user's staff ID
+  // Get current staff member by matching user_id
+  const currentStaff = staff.find((member: any) => member.user_id === user?.id);
+
+  // If no matching staff found, show empty state
+  if (!currentStaff) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-text-secondary">No staff profile found for your account.</p>
+      </div>
+    );
+  }
 
   // Filter bookings for current staff
   const staffBookings = bookings.filter((b: any) => b.staff_id === currentStaff?.id);
@@ -231,7 +240,7 @@ export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) 
               <DollarSign className="w-4 h-4 text-gold" />
               <p className="text-text-secondary text-sm">Earnings</p>
             </div>
-            <p className="text-2xl font-bold text-text-primary">UGX {performance.earnings.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-text-primary">UGX {performance.earnings.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
           </div>
           
           <div className="p-4 rounded-xl bg-surface border border-border-medium">

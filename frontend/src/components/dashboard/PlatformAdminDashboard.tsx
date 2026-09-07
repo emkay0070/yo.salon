@@ -188,7 +188,7 @@ export default function PlatformAdminDashboard({ userName }: PlatformAdminDashbo
           <div className="space-y-4">
             <div className="p-4 rounded-xl bg-gradient-to-br from-[rgba(255,215,0,0.1)] to-[rgba(255,215,0,0.05)] border border-[rgba(255,215,0,0.2)]">
               <p className="text-text-secondary text-sm">Monthly Revenue</p>
-              <p className="text-2xl font-bold text-text-primary mt-1">UGX {revenue.monthlyRevenue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-text-primary mt-1">UGX {revenue.monthlyRevenue.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
               <p className="text-green-400 text-sm mt-1">{revenue.growth} from last month</p>
             </div>
             

@@ -16,12 +16,14 @@ interface BookingDetailsDrawerProps {
     status: string;
     price: number;
     notes?: string;
+    id?: string;
   };
   onCheckIn?: () => void;
   onStartService?: () => void;
   onCompleteService?: () => void;
   onReschedule?: () => void;
   onCancel?: () => void;
+  onAssignStaff?: () => void;
   currentUserRole?: string;
 }
 
@@ -61,6 +63,7 @@ export default function BookingDetailsDrawer({
   onCompleteService,
   onReschedule,
   onCancel,
+  onAssignStaff,
   currentUserRole,
 }: BookingDetailsDrawerProps) {
   const canCheckIn       = currentUserRole === 'manager' || currentUserRole === 'receptionist';
@@ -68,6 +71,8 @@ export default function BookingDetailsDrawer({
   const canCompleteService = currentUserRole === 'employee' || currentUserRole === 'manager';
   const canReschedule    = currentUserRole === 'manager' || currentUserRole === 'receptionist' || currentUserRole === 'owner';
   const canCancel        = currentUserRole === 'manager' || currentUserRole === 'receptionist' || currentUserRole === 'owner';
+  const canAssignStaff   = currentUserRole === 'manager' || currentUserRole === 'owner';
+  const isUnassigned     = booking.staffName === 'Unassigned' || !booking.staffName;
 
   const statusStyle = STATUS_STYLE[booking.status] ?? STATUS_STYLE['confirmed'];
   const headerPhoto = getHeaderPhoto(booking.customerName);
@@ -160,7 +165,7 @@ export default function BookingDetailsDrawer({
                       <Scissors className="w-4 h-4 text-gold" />
                       <p className="text-text-primary font-semibold">{booking.service}</p>
                     </div>
-                    <p className="text-gold font-bold text-sm">UGX {booking.price.toLocaleString()}</p>
+                    <p className="text-gold font-bold text-sm">UGX {booking.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                   </div>
                 </div>
 
@@ -188,6 +193,15 @@ export default function BookingDetailsDrawer({
                 {/* ── Actions ─────────────────────────────── */}
                 <div className="space-y-2.5 pt-1">
                   <p className="text-text-secondary text-xs uppercase tracking-wider font-semibold">Actions</p>
+
+                  {canAssignStaff && isUnassigned && (
+                    <button
+                      onClick={onAssignStaff}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-obsidian font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-[#FFD700]/20"
+                    >
+                      <User className="w-4 h-4" /> Assign Staff
+                    </button>
+                  )}
 
                   {canCheckIn && booking.status === 'confirmed' && (
                     <button

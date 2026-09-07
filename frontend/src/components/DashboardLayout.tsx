@@ -16,7 +16,8 @@ import {
   UserCheck,
   MoreHorizontal,
   Activity,
-  Brain
+  Brain,
+  DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -24,29 +25,40 @@ import RoleSwitcher from './RoleSwitcher';
 import { NotificationCenter } from './Notifications/NotificationCenter';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useSalonBranding } from '@/hooks/useSalonBranding';
+import OnboardingChecklist from '@/components/dashboard/OnboardingChecklist';
+import { useRole } from '@/contexts/RoleContext';
+import { salonRoutes, type SalonRoutes } from '@/lib/routes';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-  { icon: Calendar, label: 'Bookings', href: '/bookings' },
-  { icon: Users, label: 'Customers', href: '/customers' },
-  { icon: Scissors, label: 'Services', href: '/services' },
-  { icon: UserCheck, label: 'Staff', href: '/staff' },
-  { icon: TrendingUp, label: 'Analytics', href: '/analytics' },
+interface NavItem {
+  icon: any;
+  label: string;
+  routeKey?: keyof SalonRoutes;
+  href: string;
+}
+
+const navItems: NavItem[] = [
+  { icon: LayoutDashboard, label: 'Dashboard', routeKey: 'dashboard', href: '/dashboard' },
+  { icon: Calendar, label: 'Bookings', routeKey: 'bookings', href: '/bookings' },
+  { icon: Users, label: 'Customers', routeKey: 'customers', href: '/customers' },
+  { icon: Scissors, label: 'Services', routeKey: 'services', href: '/services' },
+  { icon: UserCheck, label: 'Staff', routeKey: 'staff', href: '/staff' },
+  { icon: TrendingUp, label: 'Analytics', routeKey: 'analytics', href: '/analytics' },
   { icon: Brain, label: 'Intelligence', href: '/analytics/intelligence' },
-  { icon: CreditCard, label: 'Payments', href: '/payments' },
-  { icon: Activity, label: 'Pulse', href: '/pulse' },
-  { icon: Settings, label: 'Settings', href: '/settings' },
+  { icon: CreditCard, label: 'Payments', routeKey: 'payments', href: '/payments' },
+  { icon: DollarSign, label: 'Team Finance', routeKey: 'financeTeam', href: '/finance/team' },
+  { icon: Activity, label: 'Pulse', routeKey: 'pulse', href: '/pulse' },
+  { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
 ];
 
-const mobileNavItems = [
-  { icon: LayoutDashboard, label: 'Home', href: '/dashboard' },
-  { icon: Calendar, label: 'Bookings', href: '/bookings' },
-  { icon: Users, label: 'Clients', href: '/customers' },
-  { icon: TrendingUp, label: 'Stats', href: '/analytics' },
+const mobileNavItems: NavItem[] = [
+  { icon: LayoutDashboard, label: 'Home', routeKey: 'dashboard', href: '/dashboard' },
+  { icon: Calendar, label: 'Bookings', routeKey: 'bookings', href: '/bookings' },
+  { icon: Users, label: 'Clients', routeKey: 'customers', href: '/customers' },
+  { icon: TrendingUp, label: 'Stats', routeKey: 'analytics', href: '/analytics' },
 ];
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -55,6 +67,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { sidebarOpen, setSidebarOpen } = useSidebar();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { salon, colors, isWhiteLabel } = useSalonBranding();
+  const { salonSlug } = useRole();
+
+  // Get tenant-aware routes
+  const routes = salonRoutes(salonSlug);
+
+  // Convert navItems to use salonRoutes helper
+  const currentNavItems = navItems.map(item => ({
+    ...item,
+    href: item.routeKey ? routes[item.routeKey] : (item.href || '#')
+  }));
+    
+  const currentMobileNavItems = mobileNavItems.map(item => ({
+    ...item,
+    href: item.routeKey ? routes[item.routeKey] : (item.href || '#')
+  }));
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
@@ -114,7 +141,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {sidebarOpen && <RoleSwitcher />}
 
         <nav className="flex-1 space-y-1 overflow-y-auto mt-4 scrollbar-hide">
-          {navItems.map((item) => {
+          {currentNavItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
@@ -183,7 +210,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/80 backdrop-blur-xl border-t border-border-light px-2 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-between h-16">
-          {mobileNavItems.map((item) => {
+          {currentMobileNavItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link
@@ -247,7 +274,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
 
               <div className="grid grid-cols-4 gap-y-6 gap-x-2">
-                {navItems.map((item) => {
+                {currentNavItems.map((item) => {
                   const isActive = pathname.startsWith(item.href);
                   return (
                     <Link
@@ -292,6 +319,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </>
         )}
       </AnimatePresence>
+      {/* Onboarding Checklist – rendered at root level so CSS `fixed` works
+          correctly and is NOT affected by framer-motion transform ancestors */}
+      <OnboardingChecklist />
 
     </div>
   );
