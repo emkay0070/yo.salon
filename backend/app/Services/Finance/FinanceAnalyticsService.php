@@ -299,9 +299,7 @@ class FinanceAnalyticsService
     {
         // Query payable accounts owned by specialists for this salon
         // This requires knowing which specialists belong to this salon
-        $specialistIds = \App\Models\Specialist::where('salon_id', $salon->id)
-            ->pluck('id')
-            ->toArray();
+        $specialistIds = $salon->specialists()->pluck('specialists.id')->toArray();
 
         if (empty($specialistIds)) {
             return [];
@@ -316,12 +314,12 @@ class FinanceAnalyticsService
             ->with('ledgerAccount.owner')
             ->get()
             ->groupBy('ledger_account.owner_id')
-            ->map(function ($entries, $specialistId) {
+            ->map(function ($entries, $specialistId) use ($salon) {
                 $specialist = $entries->first()->ledgerAccount->owner;
                 
-                // Count bookings for this specialist
+                // Count bookings for this specialist in this salon
                 $bookingCount = \App\Models\Booking::where('specialist_id', $specialistId)
-                    ->where('salon_id', $entries->first()->ledgerAccount->owner_id)
+                    ->where('salon_id', $salon->id)
                     ->count();
                 
                 return [
