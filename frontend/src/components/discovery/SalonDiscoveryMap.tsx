@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Map, { Marker, Popup, NavigationControl, ViewStateChangeEvent } from 'react-map-gl';
+import Map, { Marker, Popup, NavigationControl, ViewStateChangeEvent } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Search, MapPin, Star, ArrowRight, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';

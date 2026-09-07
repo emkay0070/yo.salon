@@ -4,7 +4,7 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import { Phone, Mail, MapPin, Clock, DollarSign } from 'lucide-react';
 import SceneLayout from './SceneLayout';
 import { useState, useCallback } from 'react';
-import Map, { Marker, NavigationControl } from 'react-map-gl';
+import Map, { Marker, NavigationControl } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
