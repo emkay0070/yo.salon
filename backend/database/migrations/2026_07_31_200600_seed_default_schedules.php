@@ -49,6 +49,8 @@ return new class extends Migration
         }
 
         // Seed default specialist schedules (9 AM - 6 PM, Mon-Sat)
+        // Replaced by assignment_schedules
+        /*
         $specialists = Specialist::all();
         foreach ($specialists as $specialist) {
             // Create schedules for Monday-Saturday (0-5)
@@ -83,6 +85,7 @@ return new class extends Migration
                 'updated_at' => now(),
             ]);
         }
+        */
 
         // Set default service availability columns
         Service::query()->update([
@@ -103,7 +106,7 @@ return new class extends Migration
     {
         // Remove seeded schedules
         DB::table('provider_schedules')->where('effective_date', now()->toDateString())->delete();
-        DB::table('specialist_schedules')->where('effective_date', now()->toDateString())->delete();
+        // DB::table('specialist_schedules')->where('effective_date', now()->toDateString())->delete();
 
         // Reset service columns to null
         Service::query()->update([

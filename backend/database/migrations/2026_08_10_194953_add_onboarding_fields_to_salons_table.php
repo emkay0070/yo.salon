@@ -12,14 +12,30 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('salons', function (Blueprint $table) {
-            $table->string('category')->nullable()->after('city');
-            $table->string('vibe')->nullable()->after('category');
-            $table->string('business_type')->nullable()->after('vibe');
-            $table->string('team_size')->nullable()->after('business_type');
-            $table->string('branches')->nullable()->after('team_size');
-            $table->string('timezone')->nullable()->default('Africa/Kampala')->after('branches');
-            $table->string('currency')->nullable()->default('UGX')->after('timezone');
-            $table->json('opening_hours')->nullable()->after('currency');
+            if (!Schema::hasColumn('salons', 'category')) {
+                $table->string('category')->nullable()->after('city');
+            }
+            if (!Schema::hasColumn('salons', 'vibe')) {
+                $table->string('vibe')->nullable()->after('category');
+            }
+            if (!Schema::hasColumn('salons', 'business_type')) {
+                $table->string('business_type')->nullable()->after('vibe');
+            }
+            if (!Schema::hasColumn('salons', 'team_size')) {
+                $table->string('team_size')->nullable()->after('business_type');
+            }
+            if (!Schema::hasColumn('salons', 'branches')) {
+                $table->string('branches')->nullable()->after('team_size');
+            }
+            if (!Schema::hasColumn('salons', 'timezone')) {
+                $table->string('timezone')->nullable()->default('Africa/Kampala')->after('branches');
+            }
+            if (!Schema::hasColumn('salons', 'currency')) {
+                $table->string('currency')->nullable()->default('UGX')->after('timezone');
+            }
+            if (!Schema::hasColumn('salons', 'opening_hours')) {
+                $table->json('opening_hours')->nullable()->after('currency');
+            }
         });
     }
 

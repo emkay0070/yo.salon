@@ -135,7 +135,7 @@ export default function SalonServicesPage({ params }: { params: Promise<{ slug: 
       category: service.category,
       active: service.active,
       image: null,
-      image_preview: service.image_path ? `http://localhost:8000/storage/${service.image_path}` : '',
+      image_preview: service.image_path ? `/backend/storage/${service.image_path}` : '',
     });
     setEditingServiceId(service.id);
     setIsModalOpen(true);
@@ -338,7 +338,7 @@ export default function SalonServicesPage({ params }: { params: Promise<{ slug: 
                           <div className="flex items-center gap-4">
                             <div className="w-20 h-14 rounded-lg bg-card border border-border-light flex items-center justify-center shrink-0 overflow-hidden">
                               {service.image_path ? (
-                                <img src={`http://localhost:8000/storage/${service.image_path}`} alt={service.name} className="w-full h-full object-cover" />
+                                <img src={`/backend/storage/${service.image_path}`} alt={service.name} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FFD700]/5 flex items-center justify-center">
                                   <Scissors className="w-5 h-5 text-gold" />
@@ -427,7 +427,7 @@ export default function SalonServicesPage({ params }: { params: Promise<{ slug: 
                             <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
                               {service.image_path ? (
                                 <img
-                                  src={`http://localhost:8000/storage/${service.image_path}`}
+                                  src={`/backend/storage/${service.image_path}`}
                                   alt={service.name}
                                   className="w-full h-full object-cover rounded-xl"
                                 />
@@ -720,7 +720,7 @@ export default function SalonServicesPage({ params }: { params: Promise<{ slug: 
                 {/* Header Image */}
                 <div className="w-full h-48 sm:h-56 bg-card relative overflow-hidden">
                    {selectedService.image_path ? (
-                      <img src={`http://localhost:8000/storage/${selectedService.image_path}`} alt={selectedService.name} className="w-full h-full object-cover" />
+                      <img src={`/backend/storage/${selectedService.image_path}`} alt={selectedService.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-[#FFD700]/20 to-[#FFD700]/5 flex items-center justify-center">
                         <Scissors className="w-12 h-12 text-gold" />

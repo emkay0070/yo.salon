@@ -978,7 +978,7 @@ export default function SalonStaffPage({ params }: { params: Promise<{ slug: str
                           <div className="w-16 h-16 rounded-xl bg-card border border-border-light flex items-center justify-center overflow-hidden">
                             {staffForm.photo_media_id ? (
                               <img
-                                src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/v1/media/${staffForm.photo_media_id}`}
+                                src={`${process.env.NEXT_PUBLIC_API_URL || '/backend/api'}/v1/media/${staffForm.photo_media_id}`}
                                 alt="Preview"
                                 className="w-full h-full object-cover"
                               />
