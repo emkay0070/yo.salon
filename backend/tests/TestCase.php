@@ -2,27 +2,64 @@
 
 namespace Tests;
 
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
     /**
-     * Refresh the test database without dropping tables.
+     * Create the application and migrate the test database without dropping tables.
      *
-     * Laravel's RefreshDatabase trait calls `migrate:fresh`, which runs
-     * `DROP TABLE ... CASCADE` without IF EXISTS on all tables. On PostgreSQL,
-     * pg_tables returns rows in non-deterministic order, so dropping a parent
-     * table cascades to child tables, and the subsequent attempt to drop the
-     * already-cascaded child table fails. This leaves the database in an
-     * inconsistent state and breaks every subsequent test.
+     * Test classes use Laravel's RefreshDatabase trait directly. In PHP, a trait
+     * method used by the child class takes precedence over an inherited parent
+     * method, so overriding refreshTestDatabase() or migrateDatabases() on this
+     * class would be bypassed. Instead, migrate once before the trait runs and
+     * mark the state as migrated; the trait then performs its normal per-test
+     * transaction start and rollback lifecycle.
      *
-     * Using `migrate` instead of `migrate:fresh` avoids all DROP TABLE
-     * operations. The test database is created empty, so migrate creates all
-     * 253 tables cleanly. Each test method is still wrapped in a transaction
-     * by RefreshDatabase's setUp/tearDown, providing isolation between tests.
+     * `migrate` is used instead of Laravel's default `migrate:fresh` because
+     * PostgreSQL can fail when DROP TABLE ... CASCADE drops a child table before
+     * the loop reaches it. The test database is created empty, so `migrate`
+     * creates the full schema on the first test and is a no-op thereafter.
      */
-    protected function refreshTestDatabase()
+    public function createApplication()
     {
-        $this->artisan('migrate');
+        $app = parent::createApplication();
+
+        if (isset($this->traitsUsedByTest[RefreshDatabase::class])) {
+            $this->migrateTestDatabaseOnce($app);
+        }
+
+        return $app;
+    }
+
+    /**
+     * Run pending migrations once per test process.
+     */
+    private function migrateTestDatabaseOnce(Application $app): void
+    {
+        if (RefreshDatabaseState::$migrated) {
+            return;
+        }
+
+        $seeder = $this->seeder();
+        $parameters = [];
+
+        if ($seeder || $this->shouldSeed()) {
+            $parameters['--seed'] = true;
+        }
+
+        if ($seeder) {
+            $parameters['--seeder'] = $seeder;
+        }
+
+        $kernel = $app->make(Kernel::class);
+        $kernel->call('migrate', $parameters);
+        $kernel->setArtisan(null);
+
+        RefreshDatabaseState::$migrated = true;
     }
 }
