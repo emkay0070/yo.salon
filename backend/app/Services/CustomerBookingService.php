@@ -65,21 +65,52 @@ class CustomerBookingService
         $locationId = $data['location_id'] ?? $data['salon_id'] ?? null;
         $location = \App\Models\Location::query()->whereKey($locationId)->firstOrFail();
 
-        $booking = DB::transaction(function () use ($data, $location) {
+        $providerId = $location->provider_id;
+
+        // Validate service belongs to the same provider as the location.
+        $service = Service::withoutGlobalScope('salon')
+            ->where('id', $data['service_id'])
+            ->where('provider_id', $providerId)
+            ->first();
+        if (!$service) {
+            throw new \Exception('Service does not belong to this provider.');
+        }
+
+        // Validate specialist (if provided) belongs to the same provider.
+        $specialistId = $data['specialist_id'] ?? null;
+        if ($specialistId) {
+            $specialistExists = \App\Models\Specialist::where('id', $specialistId)
+                ->where('provider_id', $providerId)
+                ->exists();
+            if (!$specialistExists) {
+                throw new \Exception('Specialist does not belong to this provider.');
+            }
+        }
+
+        // Validate staff (if provided) belongs to the same provider and location.
+        $staffId = $data['staff_id'] ?? null;
+        if ($staffId) {
+            $staffExists = \App\Models\Staff::where('id', $staffId)
+                ->where('provider_id', $providerId)
+                ->where('location_id', $locationId)
+                ->exists();
+            if (!$staffExists) {
+                throw new \Exception('Invalid staff_id for this provider/location');
+            }
+        }
+
+        $booking = DB::transaction(function () use ($data, $location, $providerId, $service, $specialistId, $staffId) {
             $customer = Customer::find($data['customer_id']);
-            $service = Service::withoutGlobalScope('salon')->find($data['service_id']);
-            $staff = isset($data['staff_id']) ? Staff::withoutGlobalScope('salon')->find($data['staff_id']) : null;
 
             if (!$customer || !$service) {
                 throw new \Exception('Invalid booking data');
             }
 
             // Acquire advisory lock for conflict protection
-            $specialistId = $data['specialist_id'] ?? null;
             if ($specialistId) {
-                $this->conflictService->acquireSpecialistLock($specialistId, $location->provider_id);
+                $this->conflictService->acquireSpecialistLock($specialistId, $providerId);
             } else {
-                $this->conflictService->acquireProviderLock($location->provider_id);
+                $this->conflictService->acquireProviderLock($providerId);
             }
 
             // Calculate occupied interval for conflict detection
@@ -118,30 +149,19 @@ class CustomerBookingService
             $price = $this->calculatePrice($service, $data);
 
             // Resolve staff_id from SpecialistAssignment when specialist_id is provided
-            $staffId = $data['staff_id'] ?? null;
-            if (!$staffId && isset($data['specialist_id'])) {
+            $resolvedStaffId = $staffId;
+            if (!$resolvedStaffId && isset($data['specialist_id'])) {
                 $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $data['specialist_id'])
-                    ->where('provider_id', $location->provider_id)
-                    ->where('location_id', $location->id)
+                    ->where('provider_id', $providerId)
+                    ->where('location_id', $locationId)
                     ->whereNotNull('staff_id')
                     ->first();
-                $staffId = $assignment?->staff_id;
-            }
-
-            // Validate staff_id if provided
-            if ($staffId) {
-                $staffExists = \App\Models\Staff::where('id', $staffId)
-                    ->where('provider_id', $location->provider_id)
-                    ->where('location_id', $location->id)
-                    ->exists();
-                if (!$staffExists) {
-                    throw new \Exception('Invalid staff_id for this provider/location');
-                }
+                $resolvedStaffId = $assignment?->staff_id;
             }
 
             // Determine initial status based on approval policy
             $initialStatus = $this->determineInitialBookingStatus(
-                $location->provider_id,
+                $providerId,
                 $location->id,
                 $data['service_id']
             );
@@ -150,10 +170,10 @@ class CustomerBookingService
             $booking = Booking::create([
                 'customer_id' => $data['customer_id'],
                 'location_id' => $location->id,
-                'provider_id' => $location->provider_id,
+                'provider_id' => $providerId,
                 'service_id' => $data['service_id'],
-                'staff_id' => $staffId,
-                'specialist_id' => $data['specialist_id'] ?? null,
+                'staff_id' => $resolvedStaffId,
+                'specialist_id' => $specialistId,
                 'date' => $data['date'],
                 'time' => $data['time'],
                 'status' => $initialStatus,
@@ -161,7 +181,6 @@ class CustomerBookingService
             ]);
 
             // Ensure customer has provider relationship (domain integrity)
-            $providerId = $location->provider_id;
             if (!$customer->providers()->where('provider_id', $providerId)->exists()) {
                 $customerService = app(\App\Services\CustomerService::class);
                 $customerService->addProviderRelationship($customer, $providerId);
@@ -172,8 +191,8 @@ class CustomerBookingService
                 'customer_id' => $data['customer_id'],
                 'location_id' => $location->id,
                 'service_id' => $data['service_id'],
-                'staff_id' => $staffId,
-                'specialist_id' => $data['specialist_id'] ?? null,
+                'staff_id' => $resolvedStaffId,
+                'specialist_id' => $specialistId,
             ]);
 
             // Update customer visit count
@@ -195,7 +214,7 @@ class CustomerBookingService
 
         // Invalidate availability cache after successful transaction commit
         $this->invalidateAvailabilityCache(
-            $location->provider_id,
+            $providerId,
             $location->id,
             $data['date'],
             $data['service_id'],

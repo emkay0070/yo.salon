@@ -41,8 +41,9 @@ class User extends Authenticatable
 
     public function currentProvider()
     {
-        // Simplest implementation for now: return the first provider associated with the user
-        return $this->providers()->first();
+        // Deterministic provider selection: return the most recently established
+        // provider relationship. Avoids non-deterministic first() without orderBy.
+        return $this->providers()->orderBy('provider_users.created_at', 'desc')->first();
     }
 
     public function staff()

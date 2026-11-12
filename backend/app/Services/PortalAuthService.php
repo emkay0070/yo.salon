@@ -139,7 +139,12 @@ class PortalAuthService
         
         $providerId = null;
         if ($providers->isNotEmpty()) {
-            $providerId = $providers->first()->id;
+            // Deterministic provider selection: most recently established
+            // customer-provider relationship first.
+            $provider = $providers->sortByDesc(function ($p) {
+                return $p->pivot->created_at ?? '1970-01-01';
+            })->first();
+            $providerId = $provider->id;
         }
 
         $context = [];

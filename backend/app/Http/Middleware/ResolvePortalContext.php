@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Response;
 
 class ResolvePortalContext
 {
@@ -39,21 +40,26 @@ class ResolvePortalContext
         $providerId = null;
 
         if ($locationId) {
-            // 4. A supplied location ID may resolve to any valid location;
-            // it must NOT require that the customer has previously visited that location.
-            $location = \App\Models\Location::find($locationId);
-            if ($location) {
-                $providerId = $location->provider_id;
-            } else {
-                // If an invalid location ID is passed, treat it as no context
-                $locationId = null;
+            // Resolve the location and verify it belongs to a provider
+            // the customer is authorized to access through the customer_providers pivot.
+            $location = \App\Models\Location::where('id', $locationId)
+                ->whereHas('provider', function ($query) use ($customer) {
+                    $query->whereIn('id', $customer->providers()->pluck('providers.id'));
+                })
+                ->first();
+
+            if (!$location) {
+                // Invalid location ID, or customer is not authorized to access
+                // this location's provider. Do not inject any provider context.
+                return response()->json([
+                    'message' => 'Location not found or not accessible to this customer.',
+                ], Response::HTTP_FORBIDDEN);
             }
+
+            $providerId = $location->provider_id;
         }
 
-        // 5. Do NOT fall back to $locations->first().
-        // 6. Set location_id and provider_id to null when no location context exists.
-
-        // Inject context into request for controllers to use
+        // Inject validated context into request for controllers to use
         $request->attributes->set('provider_id', $providerId);
         $request->attributes->set('location_id', $locationId);
         $request->attributes->set('customer_id', $customer->id);

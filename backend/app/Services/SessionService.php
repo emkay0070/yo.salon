@@ -301,6 +301,13 @@ class SessionService
             return;
         }
 
+        // Portal accounts cannot perform specialist/floor session operations.
+        if ($actor instanceof \App\Models\PortalAccount) {
+            throw ValidationException::withMessages([
+                'authorization' => 'Portal accounts cannot perform session operations.'
+            ]);
+        }
+
         throw ValidationException::withMessages([
             'authorization' => 'Unknown actor type.'
         ]);

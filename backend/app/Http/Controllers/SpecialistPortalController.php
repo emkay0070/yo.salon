@@ -630,10 +630,12 @@ class SpecialistPortalController extends Controller
             return response()->json(['message' => 'Specialist not found'], 404);
         }
 
-        $customer = Customer::with('groomingProfile')->find($customerId);
+        // Authorize: specialist must have an established relationship with the customer
+        // through the customer_specialist pivot (existing bookings, invitations, or direct links).
+        $customer = $specialist->customers()->with('groomingProfile')->find($customerId);
 
         if (!$customer) {
-            return response()->json(['message' => 'Customer not found'], 404);
+            return response()->json(['message' => 'Customer not found or not associated with specialist'], 404);
         }
 
         return response()->json([
