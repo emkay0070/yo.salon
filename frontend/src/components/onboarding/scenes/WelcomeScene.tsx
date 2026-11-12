@@ -1,11 +1,13 @@
 'use client';
 
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { motion } from 'framer-motion';
 import { ArrowRight, Scissors } from 'lucide-react';
 
 export default function WelcomeScene() {
   const { goNext } = useOnboarding();
+  const { terminology } = useCategory();
 
   return (
     <div className="fixed inset-0 flex items-center justify-center relative overflow-hidden z-50">
@@ -34,9 +36,9 @@ export default function WelcomeScene() {
 
           {/* Headline */}
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-[1.05]">
-            Let's build<br />
+            Let's create<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-[#C9A227]">
-              your salon.
+              your space.
             </span>
           </h1>
 

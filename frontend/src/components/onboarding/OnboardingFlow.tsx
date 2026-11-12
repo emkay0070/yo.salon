@@ -1,6 +1,7 @@
 'use client';
 
 import { useOnboarding, SCENES, SCENE_META } from '@/contexts/OnboardingContext';
+import { CategoryProvider } from '@/contexts/CategoryContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Crown, Cloud, Smartphone, Palette } from 'lucide-react';
 import { useState } from 'react';
@@ -8,41 +9,43 @@ import { useTheme } from 'next-themes';
 
 // Scene components
 import WelcomeScene from './scenes/WelcomeScene';
-import SalonIdentityScene from './scenes/SalonIdentityScene';
-import SalonStoryScene from './scenes/SalonStoryScene';
-import SalonContactScene from './scenes/SalonContactScene';
+import ProviderIdentityScene from './scenes/ProviderIdentityScene';
+import CategoryScene from './scenes/CategoryScene';
+import ProviderStoryScene from './scenes/ProviderStoryScene';
+import ProviderContactScene from './scenes/ProviderContactScene';
 import TeamScene from './scenes/TeamScene';
 import ServicesScene from './scenes/ServicesScene';
 import WorkspaceScene from './scenes/WorkspaceScene';
 import LaunchPreviewScene from './scenes/LaunchPreviewScene';
 import MembershipScene from './scenes/MembershipScene';
 import CelebrationScene from './scenes/CelebrationScene';
-import SalonProfileRenderer from '../salon/SalonProfileRenderer';
+import ProviderProfileRenderer from '../provider/ProviderProfileRenderer';
 
 const sceneComponents: Record<string, any> = {
-  'welcome':        WelcomeScene,
-  'salon-identity': SalonIdentityScene,
-  'salon-story':    SalonStoryScene,
-  'salon-contact':  SalonContactScene,
-  'team':           TeamScene,
-  'services':       ServicesScene,
-  'workspace':      WorkspaceScene,
-  'launch-preview': LaunchPreviewScene,
-  'membership':     MembershipScene,
-  'celebration':    CelebrationScene,
+  'welcome':           WelcomeScene,
+  'provider-identity': ProviderIdentityScene,
+  'category':          CategoryScene,
+  'provider-story':    ProviderStoryScene,
+  'provider-contact':  ProviderContactScene,
+  'team':              TeamScene,
+  'services':          ServicesScene,
+  'workspace':         WorkspaceScene,
+  'launch-preview':    LaunchPreviewScene,
+  'membership':        MembershipScene,
+  'celebration':       CelebrationScene,
 };
 
 export default function OnboardingFlow() {
-  const { scene, progress, isSaving, salonData, services, staff, showMobilePreview, setShowMobilePreview } = useOnboarding();
+  const { scene, progress, isSaving, providerData, services, staff, showMobilePreview, setShowMobilePreview } = useOnboarding();
   const { theme, setTheme } = useTheme();
 
   const CurrentScene = sceneComponents[scene];
   const meta = SCENE_META[scene];
-  
-  // Header shows on form steps (not welcome, launch, celebration)
-  const showHeader = !['welcome', 'celebration', 'launch-preview'].includes(scene);
-  const showPreviewPane = !['welcome', 'celebration', 'launch-preview'].includes(scene);
-  const isFullScreenScene = ['welcome', 'celebration', 'launch-preview'].includes(scene);
+
+  // Header shows on form steps (not welcome, category, launch, celebration)
+  const showHeader = !['welcome', 'category', 'celebration', 'launch-preview'].includes(scene);
+  const showPreviewPane = !['welcome', 'category', 'celebration', 'launch-preview'].includes(scene);
+  const isFullScreenScene = ['welcome', 'category', 'celebration', 'launch-preview'].includes(scene);
 
   // Estimate minutes left (about 45s per remaining scene)
   const remainingScenes = SCENES.filter(s => !['welcome', 'celebration', 'launch-preview'].includes(s));
@@ -50,7 +53,8 @@ export default function OnboardingFlow() {
   const minutesLeft = Math.max(1, Math.ceil(((remainingScenes.length - currentIndex - 1) * 45) / 60));
 
   return (
-    <div className="h-screen w-full bg-[#060608] flex flex-col relative overflow-hidden">
+    <CategoryProvider>
+      <div className="h-screen w-full bg-[#060608] flex flex-col relative overflow-hidden">
 
       {/* === Ambient background === */}
       <div className="pointer-events-none absolute inset-0 z-0">
@@ -139,7 +143,7 @@ export default function OnboardingFlow() {
 
       {/* === Scene area === */}
       <div className="relative z-10 flex-1 flex flex-col lg:flex-row w-full h-full overflow-hidden">
-        
+
         {/* Full-screen scene (welcome, celebration, launch-preview) */}
         {isFullScreenScene ? (
           <AnimatePresence mode="wait" initial={false}>
@@ -176,7 +180,7 @@ export default function OnboardingFlow() {
             {/* Right pane: Desktop Preview */}
             <AnimatePresence>
               {showPreviewPane && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
@@ -190,10 +194,10 @@ export default function OnboardingFlow() {
                       <div className="absolute top-0 inset-x-0 h-7 flex justify-center z-50">
                         <div className="w-32 h-6 bg-[#1C1C22] rounded-b-3xl"></div>
                       </div>
-                      
-                      <SalonProfileRenderer 
+
+                      <ProviderProfileRenderer
                         mode="preview"
-                        salonData={salonData}
+                        providerData={providerData}
                         services={services}
                         team={staff}
                       />
@@ -240,9 +244,9 @@ export default function OnboardingFlow() {
                 <div className="w-12 h-1.5 rounded-full bg-white/20" />
               </div>
               <div className="flex-1 overflow-hidden relative">
-                <SalonProfileRenderer 
+                <ProviderProfileRenderer 
                   mode="preview"
-                  salonData={salonData}
+                  providerData={providerData}
                   services={services}
                   team={staff}
                 />
@@ -252,5 +256,6 @@ export default function OnboardingFlow() {
         )}
       </AnimatePresence>
     </div>
+    </CategoryProvider>
   );
 }

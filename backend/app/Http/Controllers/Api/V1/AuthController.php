@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Profile;
+use App\Services\ProviderUserAuthorityService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -11,6 +12,13 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    protected ProviderUserAuthorityService $authorityService;
+
+    public function __construct(ProviderUserAuthorityService $authorityService)
+    {
+        $this->authorityService = $authorityService;
+    }
+
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -154,7 +162,7 @@ class AuthController extends Controller
             $token = $user->createToken('auth-token')->plainTextToken;
             return response()->json([
                 'account_type' => 'user',
-                'user' => $user->load('salons'),
+                'user' => $user->load(['providers.businessCategory']),
                 'token' => $token,
                 'status' => $user->status,
                 'current_step' => $user->onboardingSession?->current_step,
@@ -178,23 +186,41 @@ class AuthController extends Controller
     public function user(Request $request): JsonResponse
     {
         $user = $request->user();
+        // Load providers relationship with logo media, cover image media, and primary location
+        $user->load(['providers.logoMedia', 'providers.coverImageMedia', 'providers.primaryLocation']);
+        // Get profile photo manually since profilePhoto() returns a query builder, not a relationship
+        $user->profile_photo = $user->profilePhoto()->first();
+
+        // Load provider user authority information
+        $providerAuthorities = [];
+        foreach ($user->providers as $provider) {
+            $providerUser = \App\Models\ProviderUser::where('user_id', $user->id)
+                ->where('provider_id', $provider->id)
+                ->first();
+
+            if ($providerUser) {
+                $providerAuthorities[] = $this->authorityService->resolveAuthority($providerUser);
+            }
+        }
+
         return response()->json([
-            'user' => $user->load('salons'),
+            'user' => $user,
             'status' => $user->status,
             'current_step' => $user->onboardingSession?->current_step,
             'next_route' => $this->resolveNextRoute($user),
+            'provider_authorities' => $providerAuthorities,
         ]);
     }
 
     protected function resolveNextRoute(\App\Models\User $user, string $journey = 'salon'): string
     {
         if ($user->isActive()) {
-            // Get the user's first salon and use slug-based routing
-            $salon = $user->salons()->first();
-            if ($salon && $salon->slug) {
-                return "/{$salon->slug}/dashboard";
+            // Get the user's first provider and use slug-based routing
+            $provider = $user->currentProvider();
+            if ($provider && $provider->slug) {
+                return "/{$provider->slug}/dashboard";
             }
-            // Active user without salon - send to onboarding to create one
+            // Active user without provider - send to onboarding to create one
             return '/onboarding';
         }
 

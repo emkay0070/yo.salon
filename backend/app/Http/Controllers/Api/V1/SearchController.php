@@ -43,7 +43,6 @@ class SearchController extends Controller
                 ->orWhere('description', 'ILIKE', "%{$query}%")
                 ->orWhere('location', 'ILIKE', "%{$query}%")
                 ->where('status', 'active')
-                ->with(['salons'])
                 ->limit($limit)
                 ->get();
 
@@ -68,10 +67,10 @@ class SearchController extends Controller
         if ($type === 'all' || $type === 'specialists') {
             $specialists = Specialist::query()
                 ->where('name', 'ILIKE', "%{$query}%")
-                ->orWhere('role', 'ILIKE', "%{$query}%")
+                ->orWhere('headline', 'ILIKE', "%{$query}%")
                 ->orWhere('bio', 'ILIKE', "%{$query}%")
                 ->orWhereJsonContains('skills', $query)
-                ->where('is_active', true)
+                ->where('active', true)
                 ->with(['provider'])
                 ->limit($limit)
                 ->get();
@@ -82,7 +81,7 @@ class SearchController extends Controller
                     'type' => 'specialist',
                     'name' => $specialist->name,
                     'handle' => $specialist->handle,
-                    'role' => $specialist->role,
+                    'role' => $specialist->headline,
                     'bio' => $specialist->bio,
                     'skills' => $specialist->skills,
                     'years_experience' => $specialist->years_experience,
@@ -105,25 +104,27 @@ class SearchController extends Controller
                 ->where('name', 'ILIKE', "%{$query}%")
                 ->orWhere('description', 'ILIKE', "%{$query}%")
                 ->orWhere('category', 'ILIKE', "%{$query}%")
-                ->where('is_active', true)
-                ->with(['salon'])
+                ->where('active', true)
+                ->with(['provider'])
                 ->limit($limit)
                 ->get();
 
             $results['services'] = $services->map(function ($service) {
+                $provider = $service->provider;
                 return [
-                    'id' => $service->id,
-                    'type' => 'service',
-                    'name' => $service->name,
+                    'id'          => $service->id,
+                    'type'        => 'service',
+                    'name'        => $service->name,
                     'description' => $service->description,
-                    'category' => $service->category,
-                    'duration' => $service->duration,
-                    'price' => $service->price,
-                    'currency' => $service->currency ?? 'UGX',
-                    'salon' => $service->salon ? [
-                        'id' => $service->salon->id,
-                        'name' => $service->salon->name,
-                        'slug' => $service->salon->slug,
+                    'category'    => $service->category,
+                    'duration'    => $service->duration,
+                    'price'       => $service->price,
+                    'currency'    => $service->currency ?? 'UGX',
+                    'provider_id' => $provider?->id,
+                    'provider'    => $provider ? [
+                        'id'           => $provider->id,
+                        'display_name' => $provider->display_name,
+                        'slug'         => $provider->slug,
                     ] : null,
                 ];
             })->toArray();
@@ -167,7 +168,7 @@ class SearchController extends Controller
         // Get top matching specialists
         $specialists = Specialist::query()
             ->where('name', 'ILIKE', "{$query}%")
-            ->where('is_active', true)
+            ->where('active', true)
             ->limit(2)
             ->get();
 
@@ -183,7 +184,7 @@ class SearchController extends Controller
         // Get top matching services
         $services = Service::query()
             ->where('name', 'ILIKE', "{$query}%")
-            ->where('is_active', true)
+            ->where('active', true)
             ->limit(2)
             ->get();
 

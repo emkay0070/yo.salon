@@ -3,14 +3,14 @@ import { X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 
 interface PolicyEditorModalProps {
-  salonId: string;
+  providerId: string;
   staff: any;
   currentPolicy: any;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export default function PolicyEditorModal({ salonId, staff, currentPolicy, onClose, onSaved }: PolicyEditorModalProps) {
+export default function PolicyEditorModal({ providerId, staff, currentPolicy, onClose, onSaved }: PolicyEditorModalProps) {
   const [type, setType] = useState(currentPolicy?.type || 'commission');
   const [rate, setRate] = useState(currentPolicy?.rules?.rate || 50);
   const [amount, setAmount] = useState(currentPolicy?.rules?.amount || 0);
@@ -36,7 +36,7 @@ export default function PolicyEditorModal({ salonId, staff, currentPolicy, onClo
 
     try {
       const isStaff = staff.type === 'staff';
-      await apiClient.createCompensationPolicy(salonId, {
+      await apiClient.createCompensationPolicy(providerId, {
         compensatable_type: isStaff ? 'App\\Models\\Staff' : 'App\\Models\\Specialist',
         compensatable_id: staff.id,
         type,

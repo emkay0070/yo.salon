@@ -71,6 +71,7 @@ class PeriodClosingService
 
             // 3. Create the Settlement obligation
             $settlement = Settlement::create([
+                'provider_id'     => $period->provider_id,
                 'payable_type'    => $period->provider_type,
                 'payable_id'      => $period->provider_id,
                 'recipient_type'  => $period->compensatable_type,

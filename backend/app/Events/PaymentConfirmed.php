@@ -14,7 +14,7 @@ class PaymentConfirmed
     public $booking;
     public $transaction;
     public $customerId;
-    public $salonId;
+    public $providerId;
     public $amount;
 
     public function __construct(Booking $booking, Transaction $transaction, $customerId)
@@ -22,7 +22,7 @@ class PaymentConfirmed
         $this->booking = $booking;
         $this->transaction = $transaction;
         $this->customerId = $customerId;
-        $this->salonId = $booking->salon_id;
+        $this->providerId = $transaction->provider_id;
         $this->amount = $transaction->gross_amount;
     }
 }

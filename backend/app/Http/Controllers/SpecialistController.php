@@ -49,19 +49,32 @@ class SpecialistController extends Controller
             $query->whereJsonContains('languages', $request->query('language'));
         }
 
-        // Filter by salon (for salon-specific view)
-        if ($request->has('salon_id')) {
-            $query->whereHas('salons', function ($q) use ($request) {
-                $q->where('salon_id', $request->query('salon_id'))
-                  ->where('salon_specialist.active', true);
+        // Filter by provider/location (canonical via SpecialistAssignment)
+        if ($request->has('provider_id')) {
+            $query->whereHas('assignments', function ($q) use ($request) {
+                $q->where('provider_id', $request->query('provider_id'))
+                  ->where('status', 'ACTIVE');
             });
         }
 
-        // Filter by role at salon
-        if ($request->has('role') && $request->has('salon_id')) {
-            $query->whereHas('salons', function ($q) use ($request) {
-                $q->where('salon_id', $request->query('salon_id'))
-                  ->where('salon_specialist.role', $request->query('role'));
+        if ($request->has('location_id')) {
+            $query->whereHas('assignments', function ($q) use ($request) {
+                $q->where('location_id', $request->query('location_id'))
+                  ->where('status', 'ACTIVE');
+            });
+        }
+
+        // Filter by role at provider/location
+        if ($request->has('role') && ($request->has('provider_id') || $request->has('location_id'))) {
+            $query->whereHas('assignments', function ($q) use ($request) {
+                $q->where('role', $request->query('role'))
+                  ->where('status', 'ACTIVE');
+                if ($request->has('provider_id')) {
+                    $q->where('provider_id', $request->query('provider_id'));
+                }
+                if ($request->has('location_id')) {
+                    $q->where('location_id', $request->query('location_id'));
+                }
             });
         }
 
@@ -84,8 +97,8 @@ class SpecialistController extends Controller
         $perPage = $request->query('per_page', 20);
         $perPage = min($perPage, 100); // Max 100 per page
 
-        $specialists = $query->with(['salons' => function ($q) {
-            $q->where('salon_specialist.active', true);
+        $specialists = $query->with(['assignments' => function ($q) {
+            $q->where('status', 'ACTIVE')->with('provider', 'location');
         }, 'provider'])->paginate($perPage);
 
         return response()->json($specialists);
@@ -97,8 +110,8 @@ class SpecialistController extends Controller
             ->where(function ($q) use ($idOrHandle) {
                 $q->where('id', $idOrHandle)->orWhere('handle', $idOrHandle);
             })
-            ->with(['provider', 'salons' => function ($q) {
-                $q->where('salon_specialist.active', true);
+            ->with(['provider', 'assignments' => function ($q) {
+                $q->where('status', 'ACTIVE')->with('provider', 'location');
             }])
             ->first();
 
@@ -204,13 +217,13 @@ class SpecialistController extends Controller
                     }
                 }
             })
-            ->orWhereHas('salons', function ($q) use ($specialist) {
-                // Match by same salons
-                $salonIds = $specialist->salons->pluck('id');
-                $q->whereIn('salon_id', $salonIds);
+            ->orWhereHas('assignments', function ($q) use ($specialist) {
+                // Match by same providers
+                $providerIds = $specialist->assignments()->pluck('provider_id');
+                $q->whereIn('provider_id', $providerIds);
             })
-            ->with(['provider', 'salons' => function ($q) {
-                $q->where('salon_specialist.active', true);
+            ->with(['provider', 'assignments' => function ($q) {
+                $q->where('specialist_assignments.status', 'active')->with('provider');
             }])
             ->limit(4)
             ->get()
@@ -261,14 +274,14 @@ class SpecialistController extends Controller
                 'slug' => $specialist->provider->slug,
                 'logo' => $specialist->provider->logo,
             ] : null,
-            'salons' => $specialist->salons->map(function ($salon) {
+            'salons' => $specialist->assignments->map(function ($assignment) {
                 return [
-                    'id' => $salon->id,
-                    'name' => $salon->name,
-                    'slug' => $salon->slug,
-                    'logo' => $salon->logo,
-                    'address' => $salon->address,
-                    'phone' => $salon->phone,
+                    'id' => $assignment->provider->id,
+                    'name' => $assignment->provider->display_name,
+                    'slug' => $assignment->provider->slug,
+                    'logo' => $assignment->provider->logo_url,
+                    'address' => $assignment->location?->address,
+                    'phone' => $assignment->location?->phone ?? $assignment->provider->phone,
                 ];
             }),
             'services' => $services,

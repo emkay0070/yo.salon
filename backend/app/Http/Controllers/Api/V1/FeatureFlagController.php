@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\CapabilityService;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\FeatureFlag;
 use App\Models\FeaturePolicy;
 use Illuminate\Http\Request;
@@ -20,22 +20,22 @@ class FeatureFlagController extends Controller
     }
 
     /**
-     * Get all features and their status for a salon
+     * Get all features and their status for a provider
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->query('salon_id');
+        $providerId = $request->query('provider_id');
         
-        if (!$salonId) {
+        if (!$providerId) {
             return response()->json([
-                'message' => 'salon_id parameter is required',
+                'message' => 'provider_id parameter is required',
             ], 400);
         }
 
-        $salon = Salon::find($salonId);
-        if (!$salon) {
+        $provider = Provider::find($providerId);
+        if (!$provider) {
             return response()->json([
-                'message' => 'Salon not found',
+                'message' => 'Provider not found',
             ], 404);
         }
 
@@ -60,7 +60,7 @@ class FeatureFlagController extends Controller
 
         $featureStatus = [];
         foreach ($allFeatures as $feature) {
-            $flag = FeatureFlag::where('salon_id', $salonId)
+            $flag = FeatureFlag::where('provider_id', $providerId)
                 ->where('feature_key', $feature)
                 ->first();
 
@@ -70,40 +70,40 @@ class FeatureFlagController extends Controller
                 'enabled_at' => $flag?->enabled_at,
                 'enabled_by' => $flag?->enabledBy?->name,
                 'reason' => $flag?->reason,
-                'available' => $this->capabilityService->allows($salon, $feature),
+                'available' => $this->capabilityService->allows($provider, $feature),
             ];
         }
 
         return response()->json([
-            'salon_id' => $salonId,
-            'salon_name' => $salon->name,
+            'provider_id' => $providerId,
+            'provider_name' => $provider->display_name,
             'features' => $featureStatus,
-            'available_features' => $this->capabilityService->getAvailableFeatures($salon),
-            'suggested_features' => $this->capabilityService->suggestFeatures($salon),
+            'available_features' => $this->capabilityService->getAvailableFeatures($provider),
+            'suggested_features' => $this->capabilityService->suggestFeatures($provider),
         ]);
     }
 
     /**
-     * Enable a feature for a salon
+     * Enable a feature for a provider
      */
     public function enable(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|uuid',
+            'provider_id' => 'required|uuid',
             'feature_key' => 'required|string',
             'reason' => 'nullable|string',
         ]);
 
-        $salon = Salon::find($validated['salon_id']);
-        if (!$salon) {
+        $provider = Provider::find($validated['provider_id']);
+        if (!$provider) {
             return response()->json([
-                'message' => 'Salon not found',
+                'message' => 'Provider not found',
             ], 404);
         }
 
         try {
             $this->capabilityService->enableFeature(
-                $salon,
+                $provider,
                 $validated['feature_key'],
                 $validated['reason'] ?? 'Manually enabled via admin'
             );
@@ -111,7 +111,7 @@ class FeatureFlagController extends Controller
             return response()->json([
                 'message' => 'Feature enabled successfully',
                 'feature_key' => $validated['feature_key'],
-                'salon_id' => $validated['salon_id'],
+                'provider_id' => $validated['provider_id'],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -122,29 +122,29 @@ class FeatureFlagController extends Controller
     }
 
     /**
-     * Disable a feature for a salon
+     * Disable a feature for a provider
      */
     public function disable(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|uuid',
+            'provider_id' => 'required|uuid',
             'feature_key' => 'required|string',
         ]);
 
-        $salon = Salon::find($validated['salon_id']);
-        if (!$salon) {
+        $provider = Provider::find($validated['provider_id']);
+        if (!$provider) {
             return response()->json([
-                'message' => 'Salon not found',
+                'message' => 'Provider not found',
             ], 404);
         }
 
         try {
-            $this->capabilityService->disableFeature($salon, $validated['feature_key']);
+            $this->capabilityService->disableFeature($provider, $validated['feature_key']);
 
             return response()->json([
                 'message' => 'Feature disabled successfully',
                 'feature_key' => $validated['feature_key'],
-                'salon_id' => $validated['salon_id'],
+                'provider_id' => $validated['provider_id'],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -186,29 +186,29 @@ class FeatureFlagController extends Controller
     }
 
     /**
-     * Get suggested features for a salon
+     * Get suggested features for a provider
      */
     public function suggestions(Request $request): JsonResponse
     {
-        $salonId = $request->query('salon_id');
+        $providerId = $request->query('provider_id');
         
-        if (!$salonId) {
+        if (!$providerId) {
             return response()->json([
-                'message' => 'salon_id parameter is required',
+                'message' => 'provider_id parameter is required',
             ], 400);
         }
 
-        $salon = Salon::find($salonId);
-        if (!$salon) {
+        $provider = Provider::find($providerId);
+        if (!$provider) {
             return response()->json([
-                'message' => 'Salon not found',
+                'message' => 'Provider not found',
             ], 404);
         }
 
-        $suggestions = $this->capabilityService->suggestFeatures($salon);
+        $suggestions = $this->capabilityService->suggestFeatures($provider);
 
         return response()->json([
-            'salon_id' => $salonId,
+            'provider_id' => $providerId,
             'suggestions' => $suggestions,
         ]);
     }

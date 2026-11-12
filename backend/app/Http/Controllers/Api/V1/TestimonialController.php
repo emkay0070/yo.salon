@@ -10,18 +10,18 @@ use Illuminate\Http\JsonResponse;
 class TestimonialController extends Controller
 {
     /**
-     * Get testimonials for a salon
+     * Get testimonials for a provider
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
-        $testimonials = Testimonial::where('salon_id', $salonId)
-            ->where('visible', true)
+        $testimonials = Testimonial::forProvider($providerId)
+            ->publiclyVisible()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -29,18 +29,18 @@ class TestimonialController extends Controller
     }
 
     /**
-     * Get public testimonials for a salon (no auth required)
+     * Get public testimonials for a provider (no auth required)
      */
     public function publicIndex(Request $request, string $slug): JsonResponse
     {
-        $salon = \App\Models\Salon::where('slug', $slug)->first();
+        $provider = \App\Models\Provider::where('slug', $slug)->first();
         
-        if (!$salon) {
-            return response()->json(['error' => 'Salon not found'], 404);
+        if (!$provider) {
+            return response()->json(['error' => 'Provider not found'], 404);
         }
 
-        $testimonials = Testimonial::where('salon_id', $salon->id)
-            ->where('visible', true)
+        $testimonials = Testimonial::forProvider($provider->id)
+            ->publiclyVisible()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -58,21 +58,27 @@ class TestimonialController extends Controller
             'rating' => 'required|integer|min:1|max:5',
             'content' => 'required|string',
             'visible' => 'sometimes|boolean',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'customer_id' => 'nullable|uuid|exists:customers,id',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $testimonial = Testimonial::create([
-            'salon_id' => $salonId,
+            'provider_id' => $providerId,
+            'location_id' => $validated['location_id'] ?? null,
+            'customer_id' => $validated['customer_id'] ?? null,
             'customer_name' => $validated['customer_name'],
             'customer_email' => $validated['customer_email'] ?? null,
             'rating' => $validated['rating'],
             'content' => $validated['content'],
             'visible' => $validated['visible'] ?? false,
+            'consent_given' => false,
+            'status' => 'pending',
         ]);
 
         return response()->json($testimonial, 201);
@@ -83,14 +89,14 @@ class TestimonialController extends Controller
      */
     public function show(Request $request, string $id): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $testimonial = Testimonial::where('id', $id)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->firstOrFail();
 
         return response()->json($testimonial);
@@ -107,17 +113,31 @@ class TestimonialController extends Controller
             'rating' => 'sometimes|integer|min:1|max:5',
             'content' => 'sometimes|string',
             'visible' => 'sometimes|boolean',
+            'consent_given' => 'sometimes|boolean',
+            'status' => 'sometimes|in:pending,approved,rejected,flagged',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $testimonial = Testimonial::where('id', $id)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->firstOrFail();
+
+        // Enforce consent: cannot set visible=true without consent_given=true
+        if (isset($validated['visible']) && $validated['visible'] === true) {
+            if (!$testimonial->consent_given && !(isset($validated['consent_given']) && $validated['consent_given'] === true)) {
+                return response()->json(['error' => 'Cannot publish testimonial without consent'], 422);
+            }
+        }
+
+        // If consent is being given, record the date
+        if (isset($validated['consent_given']) && $validated['consent_given'] === true && !$testimonial->consent_given) {
+            $validated['consent_date'] = now();
+        }
 
         $testimonial->update($validated);
 
@@ -129,14 +149,14 @@ class TestimonialController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $testimonial = Testimonial::where('id', $id)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->firstOrFail();
 
         $testimonial->delete();

@@ -3,14 +3,43 @@
 import { useState } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Lock, Eye, EyeOff, Scissors, Building2, UserCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { User, Mail, Lock, Eye, EyeOff, Building2, UserCircle, Briefcase, ArrowRight, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-type Journey = 'customer' | 'specialist' | 'salon';
+type Journey = 'customer' | 'professional' | 'business';
+type BackendJourney = 'customer' | 'specialist' | 'salon';
+
+const journeyConfig = {
+  customer: {
+    icon: UserCircle,
+    label: 'Customer',
+    subtitle: 'Discover & book',
+    selectedTitle: 'Create your account.',
+    selectedSubtitle: 'Let\'s get started.',
+    backendValue: 'customer' as BackendJourney,
+  },
+  professional: {
+    icon: Briefcase,
+    label: 'Professional',
+    subtitle: 'Offer my expertise',
+    selectedTitle: 'Create your account.',
+    selectedSubtitle: 'Let\'s get started.',
+    backendValue: 'specialist' as BackendJourney,
+  },
+  business: {
+    icon: Building2,
+    label: 'Business',
+    subtitle: 'Build my space',
+    selectedTitle: 'Create your account.',
+    selectedSubtitle: 'Let\'s get started.',
+    backendValue: 'salon' as BackendJourney,
+  },
+};
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [journey, setJourney] = useState<Journey>('salon');
+  const [journey, setJourney] = useState<Journey | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +66,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await apiClient.register({ email, password, name, journey });
+      const backendJourney = journey ? journeyConfig[journey].backendValue : undefined;
+      const response = await apiClient.register({ email, password, name, journey: backendJourney });
       const nextRoute = response.next_route || '/onboarding';
       router.push(nextRoute);
     } catch (err: any) {
@@ -49,323 +79,347 @@ export default function RegisterPage() {
     }
   };
 
+  const handleJourneySelect = (selectedJourney: Journey) => {
+    setJourney(selectedJourney);
+    setTimeout(() => setShowForm(true), 400);
+  };
+
   return (
-    <div className="h-screen flex relative overflow-hidden">
-      {/* Left side - Editorial brand experience */}
-      <div className="hidden lg:flex lg:w-1/2 relative h-full">
-        {/* Cinematic image treatment */}
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url('/images/salon-dark.jpg')` }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#060608]/98 via-[#060608]/70 to-[#060608]/40" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.3)_100%)]" />
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
+    <div className="min-h-screen flex flex-col bg-[#0A0A0A] relative overflow-hidden">
+      {/* Subtle background */}
+      <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
 
+      {/* Header */}
+      <div className="relative z-10 flex items-center justify-between p-8 md:p-12">
         <motion.div
-          className="relative z-10 flex flex-col justify-between p-16 h-full"
-          initial={{ opacity: 0, scale: 1.04 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.2, ease: [0.25, 0.1, 0.25, 1] }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          {/* Logo treatment */}
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-[0.3em] mb-2">
-              YO.<span className="text-[#FFD700]">SALON</span>
-            </h1>
-            <p className="text-xs tracking-[0.4em] text-white/40 uppercase">
-              The peak of grooming
-            </p>
-          </div>
-
-          {/* Editorial content */}
-          <div className="space-y-12">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-            >
-              <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-6">
-                BUILD THE<br />
-                <span className="text-[#FFD700]">EXPERIENCE.</span>
-              </h2>
-              <p className="text-lg text-white/60 leading-relaxed max-w-md font-light">
-                Your clients aren't looking for another salon.
-                They're looking for somewhere they feel exceptional.
-              </p>
-            </motion.div>
-          </div>
-
-          {/* Subtle testimonial */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.7 }}
-            className="pt-8"
-          >
-            <div className="flex items-center gap-1 mb-3">
-              {[...Array(5)].map((_, i) => (
-                <span key={i} className="text-[#FFD700] text-sm">★</span>
-              ))}
-            </div>
-            <p className="text-white/50 text-sm italic font-light leading-relaxed max-w-sm">
-              "Exceptional experiences begin long before the appointment."
-            </p>
-            <p className="text-white/30 text-xs mt-2 tracking-wide">
-              — Yo.Salon
-            </p>
-          </motion.div>
+          <h1 className="text-xl md:text-2xl font-bold text-white tracking-[0.3em]">
+            YO.<span className="text-[#FFD700]">SALON</span>
+          </h1>
         </motion.div>
+        <motion.a
+          href="/login"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="text-white/40 text-sm font-light hover:text-[#FFD700] transition-colors duration-300"
+        >
+          Sign in →
+        </motion.a>
       </div>
 
-      {/* Right side - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#0A0A0A] h-full">
-        <motion.div
-          className="w-full max-w-[400px]"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-        >
-          <div className="mb-8">
-            <h1 className="text-2xl font-semibold text-white mb-3 tracking-tight">
-              Create your space.
-            </h1>
-            <p className="text-white/50 text-sm font-light">
-              Start building a better salon experience.
-            </p>
-          </div>
-
-          {/* Journey Selector */}
-          <div className="mb-8">
-            <p className="text-white/40 text-xs font-light mb-4 tracking-wide uppercase">
-              What brings you to Yo.Salon?
-            </p>
-            <div className="grid grid-cols-3 gap-3">
-              <motion.button
-                type="button"
-                onClick={() => setJourney('customer')}
-                className={`p-4 rounded-xl border transition-all duration-300 ${
-                  journey === 'customer'
-                    ? 'bg-[rgba(255,215,0,0.1)] border-[rgba(255,215,0,0.3)]'
-                    : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)]'
-                }`}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <UserCircle className={`w-6 h-6 mb-2 mx-auto ${journey === 'customer' ? 'text-[#FFD700]' : 'text-white/40'}`} />
-                <p className={`text-xs font-medium text-center ${journey === 'customer' ? 'text-white' : 'text-white/50'}`}>
-                  Customer
-                </p>
-              </motion.button>
-
-              <motion.button
-                type="button"
-                onClick={() => setJourney('specialist')}
-                className={`p-4 rounded-xl border transition-all duration-300 ${
-                  journey === 'specialist'
-                    ? 'bg-[rgba(255,215,0,0.1)] border-[rgba(255,215,0,0.3)]'
-                    : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)]'
-                }`}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Scissors className={`w-6 h-6 mb-2 mx-auto ${journey === 'specialist' ? 'text-[#FFD700]' : 'text-white/40'}`} />
-                <p className={`text-xs font-medium text-center ${journey === 'specialist' ? 'text-white' : 'text-white/50'}`}>
-                  Specialist
-                </p>
-              </motion.button>
-
-              <motion.button
-                type="button"
-                onClick={() => setJourney('salon')}
-                className={`p-4 rounded-xl border transition-all duration-300 ${
-                  journey === 'salon'
-                    ? 'bg-[rgba(255,215,0,0.1)] border-[rgba(255,215,0,0.3)]'
-                    : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)]'
-                }`}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Building2 className={`w-6 h-6 mb-2 mx-auto ${journey === 'salon' ? 'text-[#FFD700]' : 'text-white/40'}`} />
-                <p className={`text-xs font-medium text-center ${journey === 'salon' ? 'text-white' : 'text-white/50'}`}>
-                  Salon
-                </p>
-              </motion.button>
-            </div>
-          </div>
-
-          {error && (
+      {/* Main content */}
+      <div className="relative z-10 flex-1 flex items-center justify-center px-8 md:px-12 pb-12">
+        <AnimatePresence mode="wait">
+          {!showForm ? (
+            // Journey Selection Screen
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              key="journey-selection"
+              className="w-full max-w-4xl"
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-[rgba(255,215,0,0.08)] border border-[rgba(255,215,0,0.15)] rounded-lg p-3 mb-8"
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
             >
-              <p className="text-[#FFD700] text-xs font-light">{error}</p>
+              <div className="text-center mb-12">
+                <motion.h1
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.1 }}
+                  className="text-3xl md:text-4xl font-semibold text-white mb-4 tracking-tight"
+                >
+                  What brings you to Yo.Salon?
+                </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.2 }}
+                  className="text-white/50 text-sm font-light"
+                >
+                  I want to...
+                </motion.p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {(Object.keys(journeyConfig) as Journey[]).map((key, index) => {
+                  const config = journeyConfig[key];
+                  const Icon = config.icon;
+                  return (
+                    <motion.button
+                      key={key}
+                      type="button"
+                      onClick={() => handleJourneySelect(key)}
+                      className="p-6 rounded-xl border transition-all duration-300 text-left group"
+                      style={{
+                        backgroundColor: 'rgba(255,255,255,0.03)',
+                        borderColor: 'rgba(255,255,255,0.08)',
+                      }}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
+                      whileHover={{
+                        scale: 1.02,
+                        backgroundColor: 'rgba(255,215,0,0.08)',
+                        borderColor: 'rgba(255,215,0,0.2)',
+                      }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <div className="flex flex-col items-center text-center gap-4">
+                        <div className="flex-shrink-0">
+                          <Icon className="w-8 h-8 text-white/40 group-hover:text-[#FFD700] transition-colors duration-300" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-white font-medium mb-1">{config.label}</p>
+                          <p className="text-white/50 text-sm font-light">{config.subtitle}</p>
+                        </div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          ) : (
+            // Form Screen
+            <motion.div
+              key="form"
+              className="w-full max-w-[400px]"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+            >
+              {journey && (
+                <>
+                  <div className="mb-8">
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-3 mb-6"
+                    >
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[rgba(255,215,0,0.1)] border border-[rgba(255,215,0,0.2)]">
+                        <Check className="w-4 h-4 text-[#FFD700]" />
+                        <span className="text-[#FFD700] text-sm font-medium">{journeyConfig[journey].label}</span>
+                      </div>
+                      <div className="flex-1 h-px bg-white/10" />
+                    </motion.div>
+
+                    <motion.h1
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 }}
+                      className="text-2xl font-semibold text-white mb-3 tracking-tight"
+                    >
+                      {journeyConfig[journey].selectedTitle}
+                    </motion.h1>
+                    <motion.p
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="text-white/50 text-sm font-light"
+                    >
+                      {journeyConfig[journey].selectedSubtitle}
+                    </motion.p>
+                  </div>
+
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-[rgba(255,215,0,0.08)] border border-[rgba(255,215,0,0.15)] rounded-lg p-3 mb-8"
+                    >
+                      <p className="text-[#FFD700] text-xs font-light">{error}</p>
+                    </motion.div>
+                  )}
+
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
+                        Full name
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
+                          placeholder="John Doe"
+                          required
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = 'rgba(255,215,0,0.3)';
+                            e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = 'rgba(255,255,255,0.08)';
+                            e.target.style.boxShadow = 'none';
+                          }}
+                        />
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.35 }}
+                    >
+                      <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
+                        Email
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
+                          placeholder="you@example.com"
+                          required
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = 'rgba(255,215,0,0.3)';
+                            e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = 'rgba(255,255,255,0.08)';
+                            e.target.style.boxShadow = 'none';
+                          }}
+                        />
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
+                          placeholder="••••••••"
+                          required
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = 'rgba(255,215,0,0.3)';
+                            e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = 'rgba(255,255,255,0.08)';
+                            e.target.style.boxShadow = 'none';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-[#FFD700] transition-colors duration-300"
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.45 }}
+                    >
+                      <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
+                        Confirm password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
+                          placeholder="••••••••"
+                          required
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = 'rgba(255,215,0,0.3)';
+                            e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = 'rgba(255,255,255,0.08)';
+                            e.target.style.boxShadow = 'none';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-[#FFD700] transition-colors duration-300"
+                        >
+                          {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.5 }}
+                      className="pt-2"
+                    >
+                      <motion.button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full py-3 rounded-lg font-medium text-[#0A0A0A] transition-all duration-300"
+                        style={{
+                          background: 'linear-gradient(135deg, #FFD700 0%, #C9A227 100%)'
+                        }}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {loading ? 'Creating...' : 'Begin →'}
+                      </motion.button>
+                    </motion.div>
+                  </form>
+
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                    className="mt-8 pt-8 border-t border-white/5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForm(false);
+                        setJourney(null);
+                      }}
+                      className="text-white/40 text-sm font-light hover:text-white transition-colors duration-300"
+                    >
+                      ← Back to journey selection
+                    </button>
+                  </motion.div>
+                </>
+              )}
             </motion.div>
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
-                Full name
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
-                  placeholder="John Doe"
-                  required
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(255,215,0,0.3)';
-                    e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.08)';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
-                Email
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
-                  placeholder="you@example.com"
-                  required
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(255,215,0,0.3)';
-                    e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.08)';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
-                  placeholder="••••••••"
-                  required
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(255,215,0,0.3)';
-                    e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.08)';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-[#FFD700] transition-colors duration-300"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block mb-2 text-xs tracking-widest uppercase text-white/40 font-light">
-                Confirm password
-              </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg text-white placeholder-white/20 focus:outline-none transition-all duration-300"
-                  placeholder="••••••••"
-                  required
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(255,215,0,0.3)';
-                    e.target.style.boxShadow = '0 0 30px rgba(255,215,0,0.08)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.08)';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-[#FFD700] transition-colors duration-300"
-                >
-                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <motion.button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-lg font-medium text-[#0A0A0A] transition-all duration-300"
-                style={{
-                  background: 'linear-gradient(135deg, #FFD700 0%, #C9A227 100%)'
-                }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {loading ? 'Creating...' : 'Begin →'}
-              </motion.button>
-            </div>
-          </form>
-
-          <div className="mt-8 pt-8 border-t border-white/5">
-            <p className="text-white/40 text-sm font-light text-center">
-              Already have an account?{' '}
-              <a
-                href="/login"
-                className="text-[#FFD700] hover:text-[#FFE55C] font-medium transition-colors duration-300"
-              >
-                Sign in →
-              </a>
-            </p>
-          </div>
-
-          {/* Memorable brand detail */}
-          <div className="mt-12 text-center">
-            <p className="text-white/20 text-xs tracking-[0.3em] uppercase">
-              Peak of grooming
-            </p>
-          </div>
-        </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

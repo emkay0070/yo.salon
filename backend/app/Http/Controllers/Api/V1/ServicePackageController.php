@@ -21,10 +21,10 @@ class ServicePackageController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
 
         try {
-            $packages = $this->packageService->getActivePackages($salonId);
+            $packages = $this->packageService->getActivePackages($locationId);
 
             return response()->json([
                 'packages' => $packages,
@@ -43,7 +43,7 @@ class ServicePackageController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|uuid',
+            'location_id' => 'required|uuid|exists:locations,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
@@ -127,11 +127,11 @@ class ServicePackageController extends Controller
             'package_id' => 'required|uuid',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            $result = $this->packageService->purchasePackage($customerId, $salonId, $validated['package_id']);
+            $result = $this->packageService->purchasePackage($customerId, $locationId, $validated['package_id']);
 
             return response()->json([
                 'message' => 'Package purchased successfully',
@@ -150,11 +150,11 @@ class ServicePackageController extends Controller
      */
     public function customerPackages(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            $packages = $this->packageService->getCustomerPackages($customerId, $salonId);
+            $packages = $this->packageService->getCustomerPackages($customerId, $locationId);
 
             return response()->json([
                 'packages' => $packages,

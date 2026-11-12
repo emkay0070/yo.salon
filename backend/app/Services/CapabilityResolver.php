@@ -4,11 +4,12 @@ namespace App\Services;
 
 use App\Models\Subscription;
 use App\Models\PlanEntitlement;
-use App\Models\SalonCapacity;
+use App\Models\ProviderCapacity;
 use App\Models\BillingResource;
 use App\Models\Usage;
-use App\Models\Salon;
 use App\Models\Provider;
+use App\Models\Location;
+use App\Models\SpecialistAssignment;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Cache;
  * This service is the ONLY place that should answer capability questions.
  * It combines:
  * - Plan entitlements (from subscription)
- * - Purchased add-on capacity (from SalonCapacity)
+ * - Purchased add-on capacity (from ProviderCapacity)
  * - Actual usage (from Usage/UsageService)
  * 
  * Effective capability = Plan entitlement + Purchased capacity - Consumed usage
@@ -27,18 +28,18 @@ class CapabilityResolver
     private const CACHE_TTL = 300; // 5 minutes
 
     /**
-     * Check if a salon has access to a specific feature.
+     * Check if a provider has access to a specific feature.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $featureCode e.g., 'CALENDAR_WEEK', 'CUSTOMER_PORTAL'
      * @return bool
      */
-    public function allows(string $salonId, string $featureCode): bool
+    public function allows(string $providerId, string $featureCode): bool
     {
-        $cacheKey = "capability:allows:{$salonId}:{$featureCode}";
+        $cacheKey = "capability:allows:{$providerId}:{$featureCode}";
         
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($salonId, $featureCode) {
-            $subscription = $this->getSubscriptionBySalon($salonId);
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($providerId, $featureCode) {
+            $subscription = $this->getSubscriptionByProvider($providerId);
             
             if (!$subscription) {
                 return false;
@@ -58,16 +59,16 @@ class CapabilityResolver
     /**
      * Get the effective limit for a quota resource (staff, branches, storage).
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $resourceCode e.g., 'STAFF_SEAT', 'BRANCH', 'STORAGE_GB'
      * @return int -1 for unlimited
      */
-    public function limit(string $salonId, string $resourceCode): int
+    public function limit(string $providerId, string $resourceCode): int
     {
-        $cacheKey = "capability:limit:{$salonId}:{$resourceCode}";
+        $cacheKey = "capability:limit:{$providerId}:{$resourceCode}";
         
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($salonId, $resourceCode) {
-            $subscription = $this->getSubscriptionBySalon($salonId);
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($providerId, $resourceCode) {
+            $subscription = $this->getSubscriptionByProvider($providerId);
             
             if (!$subscription) {
                 return 0;
@@ -87,8 +88,7 @@ class CapabilityResolver
             }
 
             // Add purchased capacity from add-ons
-            $providerId = $subscription->provider_id;
-            $additionalCapacity = SalonCapacity::active()
+            $additionalCapacity = ProviderCapacity::active()
                 ->forProvider($providerId)
                 ->forResource($resourceCode)
                 ->sum('additional_capacity');
@@ -100,38 +100,38 @@ class CapabilityResolver
     /**
      * Get current usage for a resource from the source of truth.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $resourceCode
      * @return int
      */
-    public function usage(string $salonId, string $resourceCode): int
+    public function usage(string $providerId, string $resourceCode): int
     {
         return match($resourceCode) {
-            'STAFF_SEAT' => $this->getStaffCount($salonId),
-            'BRANCH' => $this->getBranchCount($salonId),
-            'STORAGE_GB' => $this->getStorageUsage($salonId),
-            'SMS', 'AI_REQUEST', 'EMAIL', 'WHATSAPP' => $this->getCreditUsage($salonId, $resourceCode),
+            'STAFF_SEAT' => $this->getStaffCount($providerId),
+            'BRANCH' => $this->getBranchCount($providerId),
+            'STORAGE_GB' => $this->getStorageUsage($providerId),
+            'SMS', 'AI_REQUEST', 'EMAIL', 'WHATSAPP' => $this->getCreditUsage($providerId, $resourceCode),
             default => 0,
         };
     }
 
     /**
-     * Check if a salon can add more of a quota resource.
+     * Check if a provider can add more of a quota resource.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $resourceCode
      * @return bool
      */
-    public function canAdd(string $salonId, string $resourceCode): bool
+    public function canAdd(string $providerId, string $resourceCode): bool
     {
-        $limit = $this->limit($salonId, $resourceCode);
+        $limit = $this->limit($providerId, $resourceCode);
         
         // Unlimited resources can always be added
         if ($limit === -1) {
             return true;
         }
 
-        $currentUsage = $this->usage($salonId, $resourceCode);
+        $currentUsage = $this->usage($providerId, $resourceCode);
         
         return $currentUsage < $limit;
     }
@@ -139,19 +139,19 @@ class CapabilityResolver
     /**
      * Get remaining capacity for a quota resource.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $resourceCode
      * @return int -1 for unlimited
      */
-    public function remaining(string $salonId, string $resourceCode): int
+    public function remaining(string $providerId, string $resourceCode): int
     {
-        $limit = $this->limit($salonId, $resourceCode);
+        $limit = $this->limit($providerId, $resourceCode);
         
         if ($limit === -1) {
             return -1;
         }
 
-        $currentUsage = $this->usage($salonId, $resourceCode);
+        $currentUsage = $this->usage($providerId, $resourceCode);
         
         return max(0, $limit - $currentUsage);
     }
@@ -159,16 +159,16 @@ class CapabilityResolver
     /**
      * Get available credit balance.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $creditCode e.g., 'SMS', 'AI_REQUEST'
      * @return int
      */
-    public function credits(string $salonId, string $creditCode): int
+    public function credits(string $providerId, string $creditCode): int
     {
-        $cacheKey = "capability:credits:{$salonId}:{$creditCode}";
+        $cacheKey = "capability:credits:{$providerId}:{$creditCode}";
         
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($salonId, $creditCode) {
-            $subscription = $this->getSubscriptionBySalon($salonId);
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($providerId, $creditCode) {
+            $subscription = $this->getSubscriptionByProvider($providerId);
             
             if (!$subscription) {
                 return 0;
@@ -188,49 +188,47 @@ class CapabilityResolver
             }
 
             // Add purchased credits from add-ons
-            $providerId = $subscription->provider_id;
-            $purchasedCredits = SalonCapacity::active()
+            $purchasedCredits = ProviderCapacity::active()
                 ->forProvider($providerId)
                 ->forResource($creditCode)
                 ->sum('additional_capacity');
 
             // Subtract consumed credits
-            $consumedCredits = $this->getCreditUsage($salonId, $creditCode);
+            $consumedCredits = $this->getCreditUsage($providerId, $creditCode);
 
             return max(0, $includedCredits + $purchasedCredits - $consumedCredits);
         });
     }
 
     /**
-     * Check if a salon is over limit for a resource (grandfathering state).
+     * Check if a provider is over limit for a resource (grandfathering state).
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @param string $resourceCode
      * @return bool
      */
-    public function isOverLimit(string $salonId, string $resourceCode): bool
+    public function isOverLimit(string $providerId, string $resourceCode): bool
     {
-        $limit = $this->limit($salonId, $resourceCode);
+        $limit = $this->limit($providerId, $resourceCode);
         
         if ($limit === -1) {
             return false;
         }
 
-        $currentUsage = $this->usage($salonId, $resourceCode);
+        $currentUsage = $this->usage($providerId, $resourceCode);
         
         return $currentUsage > $limit;
     }
 
     /**
-     * Get comprehensive capability summary for a salon.
-     * Used by the /salons/{id}/capabilities API endpoint.
+     * Get comprehensive capability summary for a provider.
      * 
-     * @param string $salonId
+     * @param string $providerId
      * @return array
      */
-    public function getCapabilitiesSummary(string $salonId): array
+    public function getCapabilitiesSummary(string $providerId): array
     {
-        $subscription = $this->getSubscriptionBySalon($salonId);
+        $subscription = $this->getSubscriptionByProvider($providerId);
         
         if (!$subscription) {
             return [
@@ -260,12 +258,12 @@ class CapabilityResolver
         $resources = [];
         foreach ($quotaResources as $resourceCode) {
             $resources[$resourceCode] = [
-                'used' => $this->usage($salonId, $resourceCode),
+                'used' => $this->usage($providerId, $resourceCode),
                 'base_limit' => $this->getBaseLimit($subscription->plan_id, $resourceCode),
-                'addon_limit' => $this->getAddonLimit($subscription->provider_id, $resourceCode),
-                'effective_limit' => $this->limit($salonId, $resourceCode),
-                'available' => $this->remaining($salonId, $resourceCode),
-                'is_over_limit' => $this->isOverLimit($salonId, $resourceCode),
+                'addon_limit' => $this->getAddonLimit($providerId, $resourceCode),
+                'effective_limit' => $this->limit($providerId, $resourceCode),
+                'available' => $this->remaining($providerId, $resourceCode),
+                'is_over_limit' => $this->isOverLimit($providerId, $resourceCode),
             ];
         }
 
@@ -275,9 +273,9 @@ class CapabilityResolver
         foreach ($creditResources as $creditCode) {
             $credits[$creditCode] = [
                 'included' => $this->getBaseLimit($subscription->plan_id, $creditCode),
-                'purchased' => $this->getAddonLimit($subscription->provider_id, $creditCode),
-                'consumed' => $this->getCreditUsage($salonId, $creditCode),
-                'available' => $this->credits($salonId, $creditCode),
+                'purchased' => $this->getAddonLimit($providerId, $creditCode),
+                'consumed' => $this->getCreditUsage($providerId, $creditCode),
+                'available' => $this->credits($providerId, $creditCode),
             ];
         }
 
@@ -301,11 +299,11 @@ class CapabilityResolver
     }
 
     /**
-     * Clear capability cache for a salon (call after plan changes, add-on purchases, etc.)
+     * Clear capability cache for a provider (call after plan changes, add-on purchases, etc.)
      */
-    public function clearCache(string $salonId): void
+    public function clearCache(string $providerId): void
     {
-        $pattern = "capability:*:{$salonId}:*";
+        $pattern = "capability:*:{$providerId}:*";
         Cache::forgetMatchingPattern($pattern);
     }
 
@@ -313,41 +311,32 @@ class CapabilityResolver
     // Private helper methods
     // ─────────────────────────────────────────────
 
-    private function getSubscriptionBySalon(string $salonId): ?Subscription
+    private function getSubscriptionByProvider(string $providerId): ?Subscription
     {
-        $salon = Salon::find($salonId);
-        if (!$salon) {
-            return null;
-        }
-
-        return Subscription::where('provider_id', $salon->provider_id)->first();
+        return Subscription::where('provider_id', $providerId)->first();
     }
 
-    private function getStaffCount(string $salonId): int
+    private function getStaffCount(string $providerId): int
     {
-        $salon = Salon::find($salonId);
-        if (!$salon) {
-            return 0;
-        }
-
-        return $salon->staff()->count();
+        return SpecialistAssignment::where('provider_id', $providerId)
+            ->where('status', 'ACTIVE')
+            ->count();
     }
 
-    private function getBranchCount(string $salonId): int
+    private function getBranchCount(string $providerId): int
     {
-        // For now, always 1 until multi-branch is implemented
-        return 1;
+        return Location::where('provider_id', $providerId)->count();
     }
 
-    private function getStorageUsage(string $salonId): int
+    private function getStorageUsage(string $providerId): int
     {
         // TODO: Implement actual storage measurement
         return 0;
     }
 
-    private function getCreditUsage(string $salonId, string $creditCode): int
+    private function getCreditUsage(string $providerId, string $creditCode): int
     {
-        $subscription = $this->getSubscriptionBySalon($salonId);
+        $subscription = $this->getSubscriptionByProvider($providerId);
         if (!$subscription) {
             return 0;
         }
@@ -372,7 +361,7 @@ class CapabilityResolver
 
     private function getAddonLimit(string $providerId, string $resourceCode): int
     {
-        return SalonCapacity::active()
+        return ProviderCapacity::active()
             ->forProvider($providerId)
             ->forResource($resourceCode)
             ->sum('additional_capacity');

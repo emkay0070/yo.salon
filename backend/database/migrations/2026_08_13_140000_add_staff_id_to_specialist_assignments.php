@@ -23,11 +23,11 @@ return new class extends Migration
     {
         Schema::table('specialist_assignments', function (Blueprint $table) {
             // Add nullable staff_id — NOT NULL will be enforced after backfill verification
-            $table->uuid('staff_id')->nullable()->after('salon_id');
+            $table->uuid('staff_id')->nullable()->after('location_id');
             $table->foreign('staff_id')->references('id')->on('staff')->onDelete('set null');
 
-            // Unique constraint: one specialist per salon (multi-salon allowed across salons)
-            $table->unique(['specialist_id', 'salon_id'], 'uq_specialist_salon_assignment');
+            // Unique constraint: one specialist per location (multi-location allowed across locations)
+            $table->unique(['specialist_id', 'location_id'], 'uq_specialist_location_assignment');
         });
     }
 
@@ -35,7 +35,7 @@ return new class extends Migration
     {
         Schema::table('specialist_assignments', function (Blueprint $table) {
             $table->dropForeign(['staff_id']);
-            $table->dropUnique('uq_specialist_salon_assignment');
+            $table->dropUnique('uq_specialist_location_assignment');
             $table->dropColumn('staff_id');
         });
     }

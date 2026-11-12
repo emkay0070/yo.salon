@@ -14,10 +14,10 @@ class SettlementClosed
 
     public function __construct(
         public readonly string $settlementId,
-        public readonly string $payableType,
-        public readonly string $payableId,
-        public readonly string $recipientType,
-        public readonly string $recipientId,
+        public readonly ?string $payableType,
+        public readonly ?string $payableId,
+        public readonly ?string $recipientType,
+        public readonly ?string $recipientId,
         public readonly float $amount,
         public readonly string $currency,
         public readonly array $metadata = []

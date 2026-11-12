@@ -55,7 +55,7 @@ class PaymentManager
                 $provider->setCredentials($credentials);
             }
 
-            return $provider->requestPayment($data);
+            return $provider->initializePayment($data);
         } catch (\Exception $e) {
             Log::error("Payment request failed", [
                 'provider' => $providerName,
@@ -78,7 +78,7 @@ class PaymentManager
         }
 
         try {
-            return $provider->checkPaymentStatus($transactionId);
+            return $provider->verifyPayment($transactionId);
         } catch (\Exception $e) {
             Log::error("Payment status check failed", [
                 'provider' => $providerName,

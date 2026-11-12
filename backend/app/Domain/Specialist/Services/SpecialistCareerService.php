@@ -59,9 +59,14 @@ class SpecialistCareerService
             ->orderBy('date', 'desc')
             ->get()
             ->map(function ($event) {
-                $salonName = $event->salon ? $event->salon->name : 'Unknown Salon';
+                $workplaceName = 'Unknown Workplace';
+                if ($event->assignment && $event->assignment->location) {
+                    $workplaceName = $event->assignment->location->name;
+                } elseif ($event->assignment && $event->assignment->provider) {
+                    $workplaceName = $event->assignment->provider->name;
+                }
                 return [
-                    'salon' => $salonName,
+                    'workplace' => $workplaceName,
                     'period' => $event->date->format('Y') . ' - Present',
                     'role' => $event->data['role'] ?? 'Specialist',
                 ];

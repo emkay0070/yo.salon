@@ -9,9 +9,10 @@ use App\Domain\Finance\RevenueDistribution\RevenueDistributionEngine;
 use App\Domain\Finance\RevenueDistribution\RevenueDistributionPolicy;
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\Location;
 use App\Models\PaymentAccount;
 use App\Models\PaymentMethod;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Service;
 use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,7 +22,8 @@ class RevenueDistributionReversalTest extends TestCase
 {
     use RefreshDatabase;
 
-    private Salon $salon;
+    private Provider $provider;
+    private Location $location;
     private Customer $customer;
     private Service $service;
     private Booking $booking;
@@ -31,13 +33,14 @@ class RevenueDistributionReversalTest extends TestCase
     {
         parent::setUp();
 
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
+        $this->location = Location::factory()->create(['provider_id' => $this->provider->id]);
         $this->customer = Customer::factory()->create();
-        $this->service = Service::factory()->create(['provider_id' => $this->salon->provider_id, 'price' => 50000]);
+        $this->service = Service::factory()->create(['provider_id' => $this->provider->id, 'price' => 50000]);
         
         $this->booking = Booking::create([
-            'salon_id' => $this->salon->id,
-            'provider_id' => $this->salon->provider_id,
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
             'customer_id' => $this->customer->id,
             'service_id' => $this->service->id,
             'date' => now()->toDateString(),
@@ -46,6 +49,36 @@ class RevenueDistributionReversalTest extends TestCase
             'payment_status' => 'paid',
             'amount_due' => 50000,
             'amount_paid' => 50000,
+        ]);
+
+        // Create payment transaction for the booking (required for revenue distribution)
+        $paymentMethod = PaymentMethod::factory()->create([
+            'provider_id' => $this->provider->id,
+            'type' => 'cash',
+            'provider' => 'manual',
+        ]);
+        $paymentAccount = PaymentAccount::factory()->create([
+            'provider_id' => $this->provider->id,
+            'account_type' => PaymentAccount::TYPE_MERCHANT,
+        ]);
+
+        Transaction::create([
+            'provider_id' => $this->provider->id,
+            'booking_id' => $this->booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $paymentMethod->id,
+            'payment_account_id' => $paymentAccount->id,
+            'type' => 'payment',
+            'status' => 'paid',
+            'gross_amount' => 50000,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'tax_amount' => 0,
+            'net_amount' => 50000,
+            'currency' => 'UGX',
+            'internal_reference' => 'PAY-TEST',
+            'provider_reference' => 'MANUAL-PAY-TEST',
+            'paid_at' => now(),
         ]);
 
         $this->distributionEngine = app(RevenueDistributionEngine::class);
@@ -88,17 +121,17 @@ class RevenueDistributionReversalTest extends TestCase
 
         // Create refund transaction
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'type' => 'cash',
             'provider' => 'manual',
         ]);
         $paymentAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
 
         $refundTransaction = Transaction::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -139,8 +172,8 @@ class RevenueDistributionReversalTest extends TestCase
         $compensationPolicy = CompensationPolicy::create([
             'compensatable_type' => \App\Models\Specialist::class,
             'compensatable_id' => $specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'type' => 'commission',
             'rules' => [['rate' => 60]],
             'settlement_frequency' => 'immediate',
@@ -151,8 +184,8 @@ class RevenueDistributionReversalTest extends TestCase
 
         $policy = RevenueDistributionPolicy::create([
             'name' => 'Test Policy',
-            'owner_type' => Salon::class,
-            'owner_id' => $this->salon->id,
+            'context_type' => Provider::class,
+            'context_id' => $this->provider->id,
             'revenue_type' => 'booking',
             'rules' => [
                 [
@@ -183,17 +216,17 @@ class RevenueDistributionReversalTest extends TestCase
 
         // Create refund and trigger reversal
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'type' => 'cash',
             'provider' => 'manual',
         ]);
         $paymentAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
 
         $refundTransaction = Transaction::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $paymentMethod->id,

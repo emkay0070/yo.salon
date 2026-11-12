@@ -15,6 +15,13 @@ class ReferenceDataSeeder extends Seeder
     public function run(): void
     {
         $categories = [
+            'business_category' => [
+                ['key' => 'hair_salon', 'label' => 'Hair Salon', 'value' => 'Salon', 'description' => 'Hair • Styling • Beauty', 'sort_order' => 1],
+                ['key' => 'barbershop', 'label' => 'Barbershop', 'value' => 'Barber', 'description' => 'Cuts • Grooming • Beard', 'sort_order' => 2],
+                ['key' => 'nail_studio', 'label' => 'Nail Studio', 'value' => 'Nails', 'description' => 'Nails • Art • Care', 'sort_order' => 3],
+                ['key' => 'spa', 'label' => 'Spa', 'value' => 'Spa', 'description' => 'Treatments • Relaxation • Wellness', 'sort_order' => 4],
+                ['key' => 'wellness_center', 'label' => 'Wellness Center', 'value' => 'Wellness', 'description' => 'Care • Movement • Wellbeing', 'sort_order' => 5],
+            ],
             'hair_type' => [
                 ['key' => 'straight', 'label' => 'Straight', 'sort_order' => 1],
                 ['key' => 'wavy', 'label' => 'Wavy', 'sort_order' => 2],

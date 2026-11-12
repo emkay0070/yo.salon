@@ -24,33 +24,129 @@ class StaffController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
-        
-        $query = Staff::with('salon')->where('salon_id', $salonId);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) return response()->json(['message' => 'No provider associated with your account'], 403);
+
+        $providerUser = \App\Models\ProviderUser::where('user_id', auth()->id())
+            ->where('provider_id', $provider->id)
+            ->first();
+
+        if (!$providerUser) {
+            return response()->json(['message' => 'No provider user association found'], 403);
+        }
+
+        $locationId = $request->attributes->get('location_id');
+        $locationScope = $request->attributes->get('location_scope', 'all');
+
+        $query = Staff::with('provider', 'location', 'user')
+            ->where('provider_id', $provider->id);
+
+        // If location_scope is 'specific' and location_id is provided, filter by that location
+        // This applies to both provider_wide and location_scoped users when they explicitly request a specific location
+        if ($locationScope === 'specific' && $locationId) {
+            // Validate user has access to this location
+            if (!$providerUser->canAccessLocation($locationId)) {
+                return response()->json(['message' => 'You do not have access to this location'], 403);
+            }
+            $query->where('location_id', $locationId);
+        }
+        // Provider-wide users with no specific location request see all staff
+        elseif ($providerUser->isProviderWide()) {
+            // No location filtering - provider-wide access
+        }
+        // Location-scoped users only see staff in their permitted locations
+        elseif ($providerUser->isLocationScoped()) {
+            if ($locationId) {
+                // Validate user has access to this location
+                if (!$providerUser->canAccessLocation($locationId)) {
+                    return response()->json(['message' => 'You do not have access to this location'], 403);
+                }
+                $query->where('location_id', $locationId);
+            } else {
+                // No location specified - show staff across all permitted locations
+                $permittedLocationIds = $providerUser->getPermittedLocations()->pluck('id');
+                $query->whereIn('location_id', $permittedLocationIds);
+            }
+        }
+
         $staff = $query->get();
+
+        // Filter to only staff with active specialist assignments (bookable specialists)
+        // This matches the public-facing booking flow behavior
+        // Uses two-pass lookup: direct staff_id match + name fallback for legacy data
+        $staffWithAssignments = $staff->filter(function ($member) use ($provider) {
+            // Pass 1: direct staff_id match (canonical path)
+            $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                ->whereIn('status', ['active', 'ACTIVE'])
+                ->where('staff_id', $member->id)
+                ->first();
+
+            // Pass 2: name-based fallback for legacy assignments where staff_id was never backfilled
+            if (!$assignment) {
+                $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                    ->whereIn('status', ['active', 'ACTIVE'])
+                    ->whereNull('staff_id')
+                    ->whereHas('specialist', fn($q) => $q->where('name', $member->name))
+                    ->first();
+            }
+
+            return $assignment !== null;
+        });
+
+        // Append specialist_id from their active SpecialistAssignment for this provider.
+        // This is needed by the Walk-in Modal to correctly set specialist_id on a booking.
+        // Staff with no active assignment (receptionists, managers) will have specialist_id = null.
+        //
+        // Lookup strategy (two-pass for resilience):
+        //   1. Direct: match SpecialistAssignment.staff_id = staff.id (canonical, post-migration)
+        //   2. Name fallback: join through Specialist.name = staff.name (handles legacy rows with null staff_id)
+        $staff = $staffWithAssignments->map(function ($member) use ($provider) {
+            // Pass 1: direct staff_id match (canonical path)
+            $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                ->whereIn('status', ['active', 'ACTIVE'])
+                ->where('staff_id', $member->id)
+                ->first();
+
+            // Pass 2: name-based fallback for legacy assignments where staff_id was never backfilled
+            if (!$assignment) {
+                $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                    ->whereIn('status', ['active', 'ACTIVE'])
+                    ->whereNull('staff_id')
+                    ->whereHas('specialist', fn($q) => $q->where('name', $member->name))
+                    ->first();
+
+                // Opportunistically backfill so we don't hit this path again
+                if ($assignment) {
+                    $assignment->update(['staff_id' => $member->id]);
+                }
+            }
+
+            $member->specialist_id = $assignment?->specialist_id;
+            return $member;
+        });
+
         return response()->json($staff);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         // Wrap in transaction to prevent race conditions on capacity checks
-        return DB::transaction(function () use ($request, $salonId) {
-            // Check if salon can add more staff members (service-layer enforcement)
+        return DB::transaction(function () use ($request, $provider) {
+            // Check if provider can add more staff members (service-layer enforcement)
             // This check is inside the transaction to prevent race conditions
-            if (!$this->capabilityResolver->canAdd($salonId, 'STAFF_SEAT')) {
-                $limit = $this->capabilityResolver->limit($salonId, 'STAFF_SEAT');
-                $current = $this->capabilityResolver->usage($salonId, 'STAFF_SEAT');
+            if (!$this->capabilityResolver->canAdd($provider->id, 'STAFF_SEAT')) {
+                $limit = $this->capabilityResolver->limit($provider->id, 'STAFF_SEAT');
+                $current = $this->capabilityResolver->usage($provider->id, 'STAFF_SEAT');
                 
                 return response()->json([
                     'message' => 'Staff limit reached',
                     'error' => 'STAFF_LIMIT_EXCEEDED',
                     'limit' => $limit,
                     'current' => $current,
-                    'remaining' => $this->capabilityResolver->remaining($salonId, 'STAFF_SEAT'),
+                    'remaining' => $this->capabilityResolver->remaining($provider->id, 'STAFF_SEAT'),
                 ], 403);
             }
 
@@ -63,10 +159,13 @@ class StaffController extends Controller
                 'photo' => 'nullable|image|max:2048',
                 'active' => 'sometimes|boolean',
                 'role' => 'nullable|string',
+                'location_id' => 'nullable|uuid|exists:locations,id',
             ]);
 
             $data = $validated;
-            $data['salon_id'] = $salonId;
+            // Set canonical Provider ownership
+            $data['provider_id'] = $provider->id;
+            // Do NOT automatically assign location_id - null is valid provider-level context
 
             // Set active to true by default if not provided
             if (!isset($data['active'])) {
@@ -76,8 +175,7 @@ class StaffController extends Controller
             if ($request->hasFile('photo')) {
                 $media = $this->mediaService->upload($request->file('photo'), [
                     'directory' => 'staff/photos',
-                    'provider_id' => auth()->user()->currentSalon()?->provider_id,
-                    'salon_id' => $salonId,
+                    'provider_id' => $provider->id,
                     'alt_text' => $data['name'] . ' photo',
                 ]);
                 $data['photo'] = $media->id;
@@ -94,19 +192,20 @@ class StaffController extends Controller
             }
 
             $staffMember = Staff::create($data);
-            return response()->json($staffMember->load('salon'), 201);
+            return response()->json($staffMember->load(['provider', 'location']), 201);
         });
     }
 
     public function show(Staff $staff): JsonResponse
     {
-        $staff->load(['salon', 'salon.provider']);
+        $staff->load(['provider', 'location']);
 
         // Get services offered by this staff member.
         // Since staff.id ≠ specialist.id in the new architecture,
         // we resolve the Specialist identity via SpecialistAssignment.
         $assignment = \App\Models\SpecialistAssignment::where('staff_id', $staff->id)
-            ->where('salon_id', $staff->salon_id)
+            ->where('provider_id', $staff->provider_id)
+            ->where('location_id', $staff->location_id)
             ->first();
 
         $services = collect();
@@ -158,13 +257,10 @@ class StaffController extends Controller
             'id' => $staff->id,
             'user_id' => $staff->user_id,
             'name' => $staff->name,
-            'role' => $staff->role,
             'phone' => $staff->phone,
             'email' => $staff->email,
             'photo' => $staff->photo,
-            'photo_url' => $staff->photo_url,  // FIXED: previously missing, drawer relied on this
-            'specializations' => $staff->specializations,
-            'availability' => $staff->availability,
+            'photo_url' => $staff->photo_url,
             'active' => $staff->active,
             'rating' => $staff->rating ?? 0,
             'review_count' => $reviews->count(),
@@ -172,20 +268,17 @@ class StaffController extends Controller
             'bio' => $staff->bio,
             'experience_years' => $staff->experience_years ?? null,
             'portfolio' => $staff->portfolio,
-            'salon' => $staff->salon ? [
-                'id' => $staff->salon->id,
-                'name' => $staff->salon->name,
-                'slug' => $staff->salon->slug,
-                'logo' => $staff->salon->logo,
-                'address' => $staff->salon->address,
-                'phone' => $staff->salon->phone,
+            'provider' => $staff->provider ? [
+                'id' => $staff->provider->id,
+                'name' => $staff->provider->name,
+                'display_name' => $staff->provider->display_name,
+                'slug' => $staff->provider->slug,
+                'logo' => $staff->provider->logo,
             ] : null,
-            'provider' => $staff->salon && $staff->salon->provider ? [
-                'id' => $staff->salon->provider->id,
-                'name' => $staff->salon->provider->name,
-                'display_name' => $staff->salon->provider->display_name,
-                'slug' => $staff->salon->provider->slug,
-                'logo' => $staff->salon->provider->logo,
+            'location' => $staff->location ? [
+                'id' => $staff->location->id,
+                'name' => $staff->location->name,
+                'address' => $staff->location->address,
             ] : null,
             'services' => $services,
             'reviews' => $reviews,
@@ -195,7 +288,8 @@ class StaffController extends Controller
     public function update(Request $request, Staff $staff): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'sometimes|uuid|exists:salons,id',
+            'provider_id' => 'sometimes|uuid|exists:providers,id',
+            'location_id' => 'sometimes|uuid|exists:locations,id',
             'name' => 'sometimes|string',
             'phone' => 'nullable|string',
             'email' => 'nullable|email',
@@ -222,8 +316,7 @@ class StaffController extends Controller
             
             $media = $this->mediaService->upload($request->file('photo'), [
                 'directory' => 'staff/photos',
-                'provider_id' => auth()->user()->currentSalon()?->provider_id,
-                'salon_id' => $staff->salon_id,
+                'provider_id' => $staff->provider_id,
                 'alt_text' => $data['name'] ?? $staff->name . ' photo',
             ]);
             $data['photo'] = $media->id;
@@ -240,7 +333,7 @@ class StaffController extends Controller
         }
 
         $staff->update($data);
-        return response()->json($staff->load('salon'));
+        return response()->json($staff->load(['provider', 'location']));
     }
 
     public function destroy(Staff $staff): JsonResponse
@@ -259,9 +352,15 @@ class StaffController extends Controller
         return response()->json(null, 204);
     }
 
-    public function bySalon(string $salon): JsonResponse
+    public function byProvider(string $provider): JsonResponse
     {
-        $staff = Staff::where('salon_id', $salon)
+        // Resolve provider_id and location_id from provider
+        $providerModel = \App\Models\Provider::find($provider);
+        if (!$providerModel) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+        
+        $staff = Staff::where('provider_id', $providerModel->id)
             ->where('active', true)
             ->get();
         return response()->json($staff);

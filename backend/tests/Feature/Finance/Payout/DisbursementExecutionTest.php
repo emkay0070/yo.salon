@@ -5,7 +5,7 @@ namespace Tests\Feature\Finance\Payout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Tests\TestCase;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Specialist;
 use App\Models\PaymentProfile;
 use App\Models\PaymentMethod;
@@ -23,13 +23,13 @@ class DisbursementExecutionTest extends TestCase
     {
         parent::setUp();
 
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
         $this->specialist = Specialist::factory()->create();
 
-        // Setup Salon Disbursement Credentials (MTN).
-        // PaymentMethod is queried by salon_id + provider = 'mtn_disbursement'.
+        // Setup Provider Disbursement Credentials (MTN).
+        // PaymentMethod is queried by provider_id + provider = 'mtn_disbursement'.
         $this->disbursementConfig = PaymentMethod::factory()->create([
-            'salon_id'             => $this->salon->id,
+            'provider_id'          => $this->provider->id,
             'provider'             => 'mtn_disbursement',
             'type'                 => 'mobile_money',
             'display_name'         => 'MTN Disbursement',
@@ -49,10 +49,11 @@ class DisbursementExecutionTest extends TestCase
             'is_default'   => true,
         ]);
 
-        // Settlement: the Salon (payable) owes the Specialist (recipient).
+        // Settlement: the Provider (payable) owes the Specialist (recipient).
         $this->settlement = Settlement::create([
-            'payable_type'   => \App\Models\Salon::class,
-            'payable_id'     => $this->salon->id,
+            'provider_id'   => $this->provider->id,
+            'payable_type'   => \App\Models\Provider::class,
+            'payable_id'     => $this->provider->id,
             'recipient_type' => Specialist::class,
             'recipient_id'   => $this->specialist->id,
             'amount'         => 150000,

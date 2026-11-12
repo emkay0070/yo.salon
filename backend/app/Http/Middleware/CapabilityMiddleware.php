@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use App\Services\CapabilityService;
-use App\Models\Salon;
+use App\Models\Provider;
 
 class CapabilityMiddleware
 {
@@ -27,17 +27,17 @@ class CapabilityMiddleware
      */
     public function handle(Request $request, Closure $next)
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
 
-        if ($salonId) {
-            $salon = Salon::find($salonId);
+        if ($providerId) {
+            $provider = Provider::find($providerId);
             
-            if ($salon) {
-                // Get available features for the salon
-                $availableFeatures = $this->capabilityService->getAvailableFeatures($salon);
+            if ($provider) {
+                // Get available features for the provider
+                $availableFeatures = $this->capabilityService->getAvailableFeatures($provider);
                 
-                // Get suggested features based on salon metrics
-                $suggestedFeatures = $this->capabilityService->suggestFeatures($salon);
+                // Get suggested features based on provider metrics
+                $suggestedFeatures = $this->capabilityService->suggestFeatures($provider);
 
                 // Add to request attributes for controllers to use
                 $request->attributes->set('available_features', $availableFeatures);

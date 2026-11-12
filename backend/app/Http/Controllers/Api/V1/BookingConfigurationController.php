@@ -23,13 +23,13 @@ class BookingConfigurationController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'required|uuid|exists:locations,id',
         ]);
 
         try {
             $config = $this->configService->getConfiguration(
                 $validated['service_id'],
-                $validated['salon_id']
+                $validated['location_id']
             );
 
             return response()->json([
@@ -125,36 +125,32 @@ class BookingConfigurationController extends Controller
     }
 
     /**
-     * Get salon booking configuration
+     * Get location booking configuration (Redirected to provider)
      */
-    public function getSalonConfig(Request $request, string $salonId): JsonResponse
+    public function getLocationConfig(Request $request, string $locationId): JsonResponse
     {
-        $config = \App\Models\SalonBookingConfig::where('salon_id', $salonId)->first();
-
-        if (!$config) {
-            return response()->json([
-                'configuration' => null,
-                'message' => 'No custom overrides set, using provider defaults',
-            ]);
+        // Legacy: locationId is a Location ID — derive Provider context
+        $location = \App\Models\Location::find($locationId);
+        if (!$location) {
+            return response()->json(['message' => 'Location not found'], 404);
         }
 
-        return response()->json([
-            'configuration' => [
-                'availability_policy_override' => $config->availability_policy_override,
-                'assignment_policy_override' => $config->assignment_policy_override,
-                'payment_policy_override' => $config->payment_policy_override,
-                'cancellation_policy_override' => $config->cancellation_policy_override,
-                'approval_policy_override' => $config->approval_policy_override,
-                'booking_policy_override' => $config->booking_policy_override,
-            ],
-        ]);
+        // Redirect to provider config read
+        return $this->getProviderConfig($request, $location->provider_id);
     }
 
     /**
-     * Update salon booking configuration overrides
+     * Update location booking configuration overrides (Redirected to provider)
      */
-    public function updateSalonConfig(Request $request, string $salonId): JsonResponse
+    public function updateLocationConfig(Request $request, string $locationId): JsonResponse
     {
+        // Legacy: locationId is a Location ID — derive Provider context
+        $location = \App\Models\Location::find($locationId);
+        if (!$location) {
+            return response()->json(['message' => 'Location not found'], 404);
+        }
+
+        // Map override keys back to standard keys for provider update
         $validated = $request->validate([
             'availability_policy_override' => 'nullable|array',
             'assignment_policy_override' => 'nullable|array',
@@ -164,45 +160,43 @@ class BookingConfigurationController extends Controller
             'booking_policy_override' => 'nullable|array',
         ]);
 
+        $mappedData = [];
+        foreach ($validated as $key => $value) {
+            $newKey = str_replace('_override', '', $key);
+            $mappedData[$newKey] = $value;
+        }
+
         try {
-            $config = $this->configService->updateSalonConfig($salonId, $validated);
+            $config = $this->configService->updateProviderConfig($location->provider_id, $mappedData);
 
             return response()->json([
-                'message' => 'Salon configuration updated',
+                'message' => 'Configuration updated (redirected to Provider)',
                 'configuration' => [
-                    'availability_policy_override' => $config->availability_policy_override,
-                    'assignment_policy_override' => $config->assignment_policy_override,
-                    'payment_policy_override' => $config->payment_policy_override,
-                    'cancellation_policy_override' => $config->cancellation_policy_override,
-                    'approval_policy_override' => $config->approval_policy_override,
-                    'booking_policy_override' => $config->booking_policy_override,
+                    'availability_policy_override' => $config->availability_policy,
+                    'assignment_policy_override' => $config->assignment_policy,
+                    'payment_policy_override' => $config->payment_policy,
+                    'cancellation_policy_override' => $config->cancellation_policy,
+                    'approval_policy_override' => $config->approval_policy,
+                    'booking_policy_override' => $config->booking_policy,
                 ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Failed to update salon configuration',
+                'message' => 'Failed to update configuration',
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Reset salon configuration to provider defaults
+     * Reset location configuration to provider defaults
      */
-    public function resetSalonConfig(Request $request, string $salonId): JsonResponse
+    public function resetLocationConfig(Request $request, string $locationId): JsonResponse
     {
-        try {
-            $this->configService->resetSalonConfig($salonId);
-
-            return response()->json([
-                'message' => 'Salon configuration reset to provider defaults',
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Failed to reset salon configuration',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
+        // Deprecated - no-op for now to not break UI
+        return response()->json([
+            'message' => 'Location configuration reset is deprecated',
+        ]);
     }
 
     /**

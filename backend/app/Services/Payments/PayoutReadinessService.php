@@ -17,7 +17,7 @@ class PayoutReadinessService
      * Decision chain:
      *   Settlement → recipient → PaymentProfile?
      *      NO  → manual only
-     *      YES → Settlement → payable → Salon → PaymentMethod (disbursement)?
+     *      YES → Settlement → payable → Provider → PaymentMethod (disbursement)?
      *              NO  → manual only
      *              YES → automated_available = true
      */
@@ -44,11 +44,11 @@ class PayoutReadinessService
             );
         }
 
-        // Step 2: Does the salon have a disbursement configuration for this method?
+        // Step 2: Does the provider have a disbursement configuration for this method?
         $payable = $settlement->payable;
-        $salonId = $payable->salon_id ?? $payable->id;
+        $providerId = $payable->provider_id ?? $payable->id;
 
-        $config = PaymentMethod::where('salon_id', $salonId)
+        $config = PaymentMethod::where('provider_id', $providerId)
             ->where('provider', $profile->method . '_disbursement')
             ->where('is_active', true)
             ->first();
@@ -60,7 +60,7 @@ class PayoutReadinessService
                 destination: $this->mask($profile),
                 verificationStatus: $profile->is_verified ? 'verified' : 'pending',
                 manualAvailable: true,
-                reason: 'Salon has not configured automated disbursement for ' . strtoupper($profile->method) . '.',
+                reason: 'Provider has not configured automated disbursement for ' . strtoupper($profile->method) . '.',
             );
         }
 

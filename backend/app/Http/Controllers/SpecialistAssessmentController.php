@@ -27,7 +27,7 @@ class SpecialistAssessmentController extends Controller
 
         $groomingProfile = $customer->groomingProfile;
         $assessments = ProfessionalAssessment::byCustomer($customerId)
-            ->with(['specialist', 'salon'])
+            ->with(['specialist', 'provider', 'location'])
             ->recent()
             ->get();
 
@@ -53,7 +53,7 @@ class SpecialistAssessmentController extends Controller
         $validated = $request->validate([
             'customer_id' => 'required|uuid|exists:customers,id',
             'specialist_id' => 'required|uuid|exists:specialists,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'salon_id' => 'required|uuid|exists:locations,id',
             'booking_id' => 'nullable|uuid|exists:bookings,id',
             
             // Hair Assessment
@@ -101,11 +101,22 @@ class SpecialistAssessmentController extends Controller
             }
         }
 
+        // Validate that the specialist belongs to this provider/location
+        $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $validated['specialist_id'])
+            ->where('provider_id', $validated['provider_id'])
+            ->where('location_id', $validated['location_id'])
+            ->first();
+        
+        if (!$assignment) {
+            return response()->json(['message' => 'Specialist is not assigned to this provider/location'], 403);
+        }
+
         $assessment = ProfessionalAssessment::create([
             'id' => \Illuminate\Support\Str::uuid(),
             'customer_id' => $validated['customer_id'],
             'specialist_id' => $validated['specialist_id'],
-            'salon_id' => $validated['salon_id'],
+            'provider_id' => $validated['provider_id'],
+            'location_id' => $validated['location_id'],
             'booking_id' => $validated['booking_id'] ?? null,
             'observed_hair_type' => $validated['observed_hair_type'] ?? null,
             'hair_density' => $validated['hair_density'] ?? null,
@@ -128,7 +139,7 @@ class SpecialistAssessmentController extends Controller
 
         return response()->json([
             'message' => 'Assessment created successfully',
-            'assessment' => $assessment->load(['specialist', 'salon']),
+            'assessment' => $assessment->load(['specialist', 'provider', 'location']),
             'recommendations' => $recommendations,
         ], 201);
     }
@@ -213,7 +224,6 @@ class SpecialistAssessmentController extends Controller
         $validated = $request->validate([
             'customer_id' => 'required|uuid|exists:customers,id',
             'specialist_id' => 'required|uuid|exists:specialists,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
             'booking_id' => 'nullable|uuid|exists:bookings,id',
             'note' => 'required|string',
             'note_type' => 'nullable|in:general,preference,observation,recommendation',
@@ -224,11 +234,24 @@ class SpecialistAssessmentController extends Controller
             'metadata' => 'nullable|array',
         ]);
 
+        // Verify authenticated specialist matches the specialist_id being used
+        $account = auth('specialist')->user();
+        if (!$account || $account->specialist_id !== $validated['specialist_id']) {
+            return response()->json(['message' => 'Unauthorized: specialist_id does not match authenticated specialist'], 403);
+        }
+
+        // If booking_id is provided, verify it belongs to the same customer and specialist
+        if (isset($validated['booking_id'])) {
+            $booking = Booking::find($validated['booking_id']);
+            if (!$booking || $booking->customer_id !== $validated['customer_id'] || $booking->specialist_id !== $validated['specialist_id']) {
+                return response()->json(['message' => 'Invalid booking: must belong to the same customer and specialist'], 422);
+            }
+        }
+
         $note = SpecialistNote::create([
             'id' => \Illuminate\Support\Str::uuid(),
             'customer_id' => $validated['customer_id'],
             'specialist_id' => $validated['specialist_id'],
-            'salon_id' => $validated['salon_id'],
             'booking_id' => $validated['booking_id'] ?? null,
             'note' => $validated['note'],
             'note_type' => $validated['note_type'] ?? 'general',
@@ -299,7 +322,7 @@ class SpecialistAssessmentController extends Controller
     {
         $assessments = ProfessionalAssessment::byCustomer($customerId)
             ->pendingReview()
-            ->with(['specialist', 'salon'])
+            ->with(['specialist', 'provider', 'location'])
             ->recent()
             ->get();
 
@@ -340,7 +363,7 @@ class SpecialistAssessmentController extends Controller
 
         // Get assessments
         $assessments = ProfessionalAssessment::byCustomer($customer->id)
-            ->with(['specialist', 'salon'])
+            ->with(['specialist', 'provider', 'location'])
             ->recent()
             ->get()
             ->map(function ($assessment) {
@@ -349,7 +372,8 @@ class SpecialistAssessmentController extends Controller
                     'type' => 'assessment',
                     'created_at' => $assessment->created_at,
                     'specialist' => $assessment->specialist,
-                    'salon' => $assessment->salon,
+                    'provider' => $assessment->provider,
+                    'location' => $assessment->location,
                     'data' => [
                         'observed_hair_type' => $assessment->observed_hair_type,
                         'hair_density' => $assessment->hair_density,

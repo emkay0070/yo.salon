@@ -142,7 +142,8 @@ class SpecialistCraftService
         foreach ($rows as $row) {
             $pid = $row->provider_id;
 
-            $isOwner = in_array($row->assignment_role, ['OWNER', 'MANAGER']) || $row->provider_type === 'independent_specialist';
+            $definition = app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($row->provider_type);
+            $isOwner = in_array($row->assignment_role, ['OWNER', 'MANAGER']) || $definition->isOwnerManaged;
 
             if (!isset($grouped[$pid])) {
                 $grouped[$pid] = [

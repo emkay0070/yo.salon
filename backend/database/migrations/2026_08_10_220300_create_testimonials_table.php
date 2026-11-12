@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('testimonials', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->foreignUuid('salon_id')->nullable()->constrained('salons')->onDelete('cascade');
+            $table->uuid('provider_id')->nullable();
+            $table->foreign('provider_id')->references('id')->on('providers')->onDelete('cascade');
             $table->string('customer_name');
             $table->string('customer_email')->nullable();
             $table->integer('rating')->default(5);
@@ -22,7 +23,7 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
-            $table->index(['salon_id', 'visible']);
+            $table->index(['provider_id', 'visible']);
             $table->index('rating');
         });
     }

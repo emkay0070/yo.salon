@@ -23,11 +23,13 @@ return new class extends Migration
             $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
         });
 
-        // Add created_by to salon_schedules (it doesn't exist yet)
-        Schema::table('salon_schedules', function (Blueprint $table) {
-            $table->unsignedBigInteger('created_by')->nullable()->after('published_by');
-            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
-        });
+        // Add created_by to salon_schedules only if table exists (legacy table, may not exist in fresh migrations)
+        if (Schema::hasTable('salon_schedules')) {
+            Schema::table('salon_schedules', function (Blueprint $table) {
+                $table->unsignedBigInteger('created_by')->nullable()->after('published_by');
+                $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
+            });
+        }
     }
 
     /**

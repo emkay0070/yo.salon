@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'status', 'notification_preferences', 'phone', 'photo_url'])]
+#[Fillable(['name', 'email', 'password', 'status', 'notification_preferences', 'photo_url', 'my_view_timezone'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -32,22 +32,17 @@ class User extends Authenticatable
         ];
     }
 
-    public function salons()
+    public function providers()
     {
-        return $this->belongsToMany(Salon::class, 'salon_users')
-            ->withPivot('role')
-            ->withTimestamps()
-            ->whereExists(function ($query) {
-                $query->select(\DB::raw(1))
-                    ->from('salons')
-                    ->whereColumn('salons.id', 'salon_users.salon_id');
-            });
+        return $this->belongsToMany(Provider::class, 'provider_users')
+            ->withPivot('role', 'authority_scope')
+            ->withTimestamps();
     }
 
-    public function currentSalon()
+    public function currentProvider()
     {
-        // Simplest implementation for now: return the first salon associated with the user
-        return $this->salons()->first();
+        // Simplest implementation for now: return the first provider associated with the user
+        return $this->providers()->first();
     }
 
     public function staff()
@@ -67,7 +62,10 @@ class User extends Authenticatable
 
     public function profilePhoto()
     {
-        return $this->morphOne(Media::class, 'attachable')->where('alt_text', 'like', '%profile%')->latest();
+        // Query via uploaded_by since users have integer IDs but media.attachable_id is UUID
+        return \App\Models\Media::where('uploaded_by', $this->id)
+            ->where('alt_text', 'like', '%profile%')
+            ->latest();
     }
 
     public function isOnboarding(): bool

@@ -4,7 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\PaymentMethod;
 use App\Models\PaymentAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -12,12 +12,12 @@ use Illuminate\Support\Facades\Log;
  * 
  * This service implements the payment routing logic:
  * - PaymentMethod = HOW customer pays (MTN MoMo, Visa, Cash)
- * - PaymentAccount = WHOSE account receives money (Salon's Flutterwave, Yo.Salon routing)
+ * - PaymentAccount = WHOSE account receives money (Provider's Flutterwave, Yo.Salon routing)
  * 
  * Routing priority:
  * 1. PaymentMethod's explicit PaymentAccount (if set)
- * 2. Salon's default PaymentAccount for the provider
- * 3. Salon's default PaymentAccount (any provider)
+ * 2. Provider's default PaymentAccount for the provider
+ * 3. Provider's default PaymentAccount (any provider)
  * 4. Fallback to null (for backward compatibility)
  */
 class PaymentRoutingService
@@ -26,10 +26,10 @@ class PaymentRoutingService
      * Determine the PaymentAccount for a given PaymentMethod.
      * 
      * @param PaymentMethod $paymentMethod
-     * @param Salon|null $salon Optional salon context
+     * @param Provider|null $provider Optional provider context
      * @return PaymentAccount|null
      */
-    public function determinePaymentAccount(PaymentMethod $paymentMethod, ?Salon $salon = null): ?PaymentAccount
+    public function determinePaymentAccount(PaymentMethod $paymentMethod, ?Provider $provider = null): ?PaymentAccount
     {
         // Priority 1: Use PaymentMethod's explicit PaymentAccount if set
         if ($paymentMethod->paymentAccount) {
@@ -51,17 +51,17 @@ class PaymentRoutingService
             }
         }
 
-        // Get salon context from PaymentMethod if not provided
-        $salon = $salon ?? $paymentMethod->salon;
-        if (!$salon) {
-            Log::warning('PaymentRouting: No salon context available', [
+        // Get provider context from PaymentMethod if not provided
+        $provider = $provider ?? $paymentMethod->provider()->first();
+        if (!$provider) {
+            Log::warning('PaymentRouting: No provider context available', [
                 'payment_method_id' => $paymentMethod->id,
             ]);
             return null;
         }
 
-        // Priority 2: Use salon's default PaymentAccount for the provider
-        $providerAccount = PaymentAccount::where('salon_id', $salon->id)
+        // Priority 2: Use provider's default PaymentAccount for the payment provider
+        $providerAccount = PaymentAccount::where('provider_id', $provider->id)
             ->where('provider', $paymentMethod->provider)
             ->where('is_default', true)
             ->active()
@@ -69,7 +69,7 @@ class PaymentRoutingService
             ->first();
 
         if ($providerAccount) {
-            Log::debug('PaymentRouting: Using salon default account for provider', [
+            Log::debug('PaymentRouting: Using provider default account for payment provider', [
                 'payment_method_id' => $paymentMethod->id,
                 'provider' => $paymentMethod->provider,
                 'payment_account_id' => $providerAccount->id,
@@ -77,15 +77,15 @@ class PaymentRoutingService
             return $providerAccount;
         }
 
-        // Priority 3: Use salon's default PaymentAccount (any provider)
-        $defaultAccount = PaymentAccount::where('salon_id', $salon->id)
+        // Priority 3: Use provider's default PaymentAccount (any payment provider)
+        $defaultAccount = PaymentAccount::where('provider_id', $provider->id)
             ->where('is_default', true)
             ->active()
             ->verified()
             ->first();
 
         if ($defaultAccount) {
-            Log::debug('PaymentRouting: Using salon default account', [
+            Log::debug('PaymentRouting: Using provider default account', [
                 'payment_method_id' => $paymentMethod->id,
                 'payment_account_id' => $defaultAccount->id,
             ]);
@@ -95,7 +95,7 @@ class PaymentRoutingService
         // Priority 4: Return null for backward compatibility
         Log::info('PaymentRouting: No suitable PaymentAccount found, using null', [
             'payment_method_id' => $paymentMethod->id,
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
         ]);
         return null;
     }
@@ -103,47 +103,47 @@ class PaymentRoutingService
     /**
      * Determine the PaymentAccount for a manual payment (no PaymentMethod).
      * 
-     * @param Salon $salon
-     * @param string|null $provider Optional provider hint
+     * @param Provider $provider
+     * @param string|null $paymentProvider Optional payment provider hint
      * @return PaymentAccount|null
      */
-    public function determineAccountForManualPayment(Salon $salon, ?string $provider = null): ?PaymentAccount
+    public function determineAccountForManualPayment(Provider $provider, ?string $paymentProvider = null): ?PaymentAccount
     {
-        $query = PaymentAccount::where('salon_id', $salon->id)
+        $query = PaymentAccount::where('provider_id', $provider->id)
             ->active()
             ->verified();
 
-        if ($provider) {
-            $query->where('provider', $provider);
+        if ($paymentProvider) {
+            $query->where('provider', $paymentProvider);
         }
 
         $account = $query->where('is_default', true)->first();
 
         if ($account) {
             Log::debug('PaymentRouting: Using default account for manual payment', [
-                'salon_id' => $salon->id,
-                'provider' => $provider,
+                'provider_id' => $provider->id,
+                'payment_provider' => $paymentProvider,
                 'payment_account_id' => $account->id,
             ]);
             return $account;
         }
 
         // Fallback to any active verified account
-        $account = PaymentAccount::where('salon_id', $salon->id)
+        $account = PaymentAccount::where('provider_id', $provider->id)
             ->active()
             ->verified()
             ->first();
 
         if ($account) {
             Log::debug('PaymentRouting: Using fallback account for manual payment', [
-                'salon_id' => $salon->id,
+                'provider_id' => $provider->id,
                 'payment_account_id' => $account->id,
             ]);
             return $account;
         }
 
         Log::info('PaymentRouting: No suitable PaymentAccount for manual payment', [
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
         ]);
         return null;
     }
@@ -160,28 +160,28 @@ class PaymentRoutingService
     }
 
     /**
-     * Get all available PaymentAccounts for a salon.
+     * Get all available PaymentAccounts for a provider.
      * 
-     * @param Salon $salon
+     * @param Provider $provider
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    public function getAvailableAccounts(Salon $salon)
+    public function getAvailableAccounts(Provider $provider)
     {
-        return PaymentAccount::where('salon_id', $salon->id)
+        return PaymentAccount::where('provider_id', $provider->id)
             ->active()
             ->verified()
             ->get();
     }
 
     /**
-     * Get the default PaymentAccount for a salon.
+     * Get the default PaymentAccount for a provider.
      * 
-     * @param Salon $salon
+     * @param Provider $provider
      * @return PaymentAccount|null
      */
-    public function getDefaultAccount(Salon $salon): ?PaymentAccount
+    public function getDefaultAccount(Provider $provider): ?PaymentAccount
     {
-        return PaymentAccount::where('salon_id', $salon->id)
+        return PaymentAccount::where('provider_id', $provider->id)
             ->where('is_default', true)
             ->active()
             ->verified()

@@ -20,4 +20,18 @@ class WindowDTO
         public readonly string        $endsAt,     // HH:MM:SS
         public readonly string        $status = 'AVAILABLE', // AVAILABLE, BLOCKED, BREAK, LEAVE
     ) {}
+
+    public function clone(
+        ?string $startsAt = null,
+        ?string $endsAt = null,
+        ?string $status = null
+    ): self {
+        return new self(
+            $this->assignmentId,
+            $this->date,
+            $startsAt ?? $this->startsAt,
+            $endsAt ?? $this->endsAt,
+            $status ?? $this->status
+        );
+    }
 }

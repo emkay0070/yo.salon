@@ -13,30 +13,30 @@ class BroadcastNotification
         // This listener exists for future extensibility (e.g., logging, analytics)
         
         $bookingId = null;
-        $salonId = null;
+        $providerId = null;
 
-        // Extract booking ID and salon ID from different event types
+        // Extract booking ID and provider ID from different event types
         if (property_exists($event, 'booking')) {
             $bookingId = $event->booking->id;
-            $salonId = $event->booking->salon_id;
+            $providerId = $event->booking->provider_id;
         } elseif (property_exists($event, 'bookingId')) {
             $bookingId = $event->bookingId;
         }
         
-        if (property_exists($event, 'salonId')) {
-            $salonId = $event->salonId;
+        if (property_exists($event, 'providerId')) {
+            $providerId = $event->providerId;
         }
 
         Log::info('Event broadcasted', [
             'event' => get_class($event),
             'booking_id' => $bookingId,
-            'salon_id' => $salonId,
+            'provider_id' => $providerId,
         ]);
 
         // Invalidate dashboard stats cache when relevant events occur
-        if ($salonId) {
-            $dashboardController = new DashboardController();
-            $dashboardController->invalidateStatsCache($salonId);
+        if ($providerId) {
+            $dashboardController = app(DashboardController::class);
+            $dashboardController->invalidateStatsCache($providerId);
         }
     }
 

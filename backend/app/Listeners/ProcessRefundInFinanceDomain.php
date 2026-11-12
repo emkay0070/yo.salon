@@ -54,7 +54,7 @@ class ProcessRefundInFinanceDomain
                 transactionId: $refundTransaction->id,
                 originalTransactionId: $originalTransaction->id,
                 bookingId: $booking->id,
-                salonId: $event->salonId,
+                providerId: $event->providerId ?? $refundTransaction->provider_id,
                 amount: $event->refundAmount,
                 currency: $event->currency,
                 metadata: [

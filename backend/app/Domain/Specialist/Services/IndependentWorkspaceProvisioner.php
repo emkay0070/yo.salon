@@ -4,7 +4,7 @@ namespace App\Domain\Specialist\Services;
 
 use App\Models\Specialist;
 use App\Models\Provider;
-use App\Models\Salon;
+
 use App\Models\SpecialistAssignment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,7 +13,7 @@ class IndependentWorkspaceProvisioner
 {
     /**
      * Ensures that an independent specialist has a corresponding Provider,
-     * Salon (workspace), and Primary Assignment.
+     * Location (workspace), and Primary Assignment.
      * This operation is idempotent and transactional.
      */
     public function ensureIndependentWorkspace(Specialist $specialist): void
@@ -48,12 +48,12 @@ class IndependentWorkspaceProvisioner
                 ]
             );
 
-            // 3. Ensure Salon (Workspace) exists or create it
-            $salon = Salon::firstOrCreate(
+            // 3. Ensure Location (Workspace) exists or create it
+            $location = \App\Models\Location::firstOrCreate(
                 ['provider_id' => $provider->id],
                 [
                     'name' => $specialist->name . "'s Workspace",
-                    'slug' => $this->generateUniqueSalonSlug($specialist->name . ' Workspace'),
+                    'slug' => $this->generateUniqueLocationSlug($specialist->name . ' Workspace'),
                     'status' => 'active',
                     'email' => $specialist->email,
                     'active' => true,
@@ -65,7 +65,7 @@ class IndependentWorkspaceProvisioner
                 [
                     'specialist_id' => $specialist->id,
                     'provider_id' => $provider->id,
-                    'salon_id' => $salon->id,
+                    'location_id' => $location->id,
                 ],
                 [
                     'is_primary' => true,
@@ -99,7 +99,7 @@ class IndependentWorkspaceProvisioner
         return $slug;
     }
 
-    protected function generateUniqueSalonSlug(string $name): string
+    protected function generateUniqueLocationSlug(string $name): string
     {
         $slug = Str::slug($name);
         if (empty($slug)) {
@@ -109,7 +109,7 @@ class IndependentWorkspaceProvisioner
         $originalSlug = $slug;
         $counter = 1;
 
-        while (Salon::where('slug', $slug)->exists()) {
+        while (\App\Models\Location::where('slug', $slug)->exists()) {
             $slug = $originalSlug . '-' . $counter++;
         }
 

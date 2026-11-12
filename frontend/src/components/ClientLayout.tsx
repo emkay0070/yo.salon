@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -32,11 +34,18 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
   const isAuthPage = ['/portal/login', '/portal/create-account'].includes(pathname);
 
+  useEffect(() => {
+    if (!isLoading && !customer && !isAuthPage) {
+      router.push('/portal/login?message=Please+log+in+to+continue');
+    }
+  }, [isLoading, customer, isAuthPage, router]);
+
   if (isAuthPage) {
     return <main className="min-h-screen bg-background font-sans text-text-primary selection:bg-gold/30">{children}</main>;
   }
 
-  if (isLoading) {
+  // If not on auth page and not loaded/no customer, don't flash the UI
+  if (isLoading || !customer) {
     return (
       <div className="min-h-[100dvh] bg-background flex items-center justify-center">
         <div className="text-text-primary">Loading...</div>

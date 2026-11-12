@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
   ? `${process.env.NEXT_PUBLIC_API_URL}/v1` 
   : '/backend/api/v1';
 
-const SALON_STORAGE_KEY = 'portal_active_salon_id';
+const PROVIDER_STORAGE_KEY = 'portal_active_provider_id';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INVALID_ID_SET = new Set(['null', 'undefined', '0', 'nan', '']);
@@ -35,15 +35,6 @@ class PortalApiClient {
           config.headers.Authorization = `Bearer ${token}`;
         }
 
-        const rawSalonId = localStorage.getItem(SALON_STORAGE_KEY);
-        const salonId = sanitizePortalId(rawSalonId);
-        if (salonId) {
-          config.headers['X-Salon-Id'] = salonId;
-        } else if (rawSalonId) {
-          localStorage.removeItem(SALON_STORAGE_KEY);
-          console.warn('[PortalApiClient] Discarded invalid stored salon_id:', JSON.stringify(rawSalonId));
-        }
-
         return config;
       },
       (error) => Promise.reject(error)
@@ -60,11 +51,11 @@ class PortalApiClient {
         if (error.response?.status === 401 && !isFollowOrFavorite) {
           // Only hard-redirect on protected routes — not on public pages like /login
           // where the login page is handling auth fallback itself.
-          const publicPaths = ['/login', '/portal/login', '/register', '/book', '/welcome', '/salons', '/forgot-password'];
+          const publicPaths = ['/login', '/portal/login', '/register', '/book', '/welcome', '/providers', '/forgot-password'];
           const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
           if (!isPublicPage) {
             localStorage.removeItem('portal_auth_token');
-            localStorage.removeItem(SALON_STORAGE_KEY);
+            localStorage.removeItem(PROVIDER_STORAGE_KEY);
             window.location.href = '/portal/login';
           }
         }
@@ -83,24 +74,24 @@ class PortalApiClient {
     );
   }
 
-  setActiveSalonId(salonId: string) {
-    const clean = sanitizePortalId(salonId);
+  setActiveProviderId(providerId: string) {
+    const clean = sanitizePortalId(providerId);
     if (clean) {
-      localStorage.setItem(SALON_STORAGE_KEY, clean);
+      localStorage.setItem(PROVIDER_STORAGE_KEY, clean);
     } else {
-      localStorage.removeItem(SALON_STORAGE_KEY);
-      if (salonId) {
-        console.warn('[PortalApiClient] Rejected invalid salon_id in setActiveSalonId:', JSON.stringify(salonId));
+      localStorage.removeItem(PROVIDER_STORAGE_KEY);
+      if (providerId) {
+        console.warn('[PortalApiClient] Rejected invalid provider_id in setActiveProviderId:', JSON.stringify(providerId));
       }
     }
   }
 
-  getActiveSalonId(): string | null {
-    return sanitizePortalId(localStorage.getItem(SALON_STORAGE_KEY));
+  getActiveProviderId(): string | null {
+    return sanitizePortalId(localStorage.getItem(PROVIDER_STORAGE_KEY));
   }
 
-  clearActiveSalonId() {
-    localStorage.removeItem(SALON_STORAGE_KEY);
+  clearActiveProviderId() {
+    localStorage.removeItem(PROVIDER_STORAGE_KEY);
   }
 
   // Auth endpoints
@@ -108,7 +99,7 @@ class PortalApiClient {
     email: string;
     password: string;
     phone: string;
-    salon_id: string;
+    provider_id: string;
     name?: string;
   }) {
     const response = await this.client.post('/portal/create', data);
@@ -124,9 +115,9 @@ class PortalApiClient {
     const { token, context } = response.data;
     localStorage.setItem('portal_auth_token', token);
 
-    // Store the active salon from context
-    if (context?.active_salon?.id) {
-      this.setActiveSalonId(context.active_salon.id);
+    // Store the active provider from context
+    if (context?.active_provider?.id) {
+      this.setActiveProviderId(context.active_provider.id);
     }
 
     return { context, token };
@@ -137,7 +128,7 @@ class PortalApiClient {
       await this.client.post('/portal/logout');
     } finally {
       localStorage.removeItem('portal_auth_token');
-      this.clearActiveSalonId();
+      this.clearActiveProviderId();
     }
   }
 
@@ -175,7 +166,7 @@ class PortalApiClient {
   // Booking — creates a portal booking using the portal booking endpoint
   async createPortalBooking(data: {
     service_id: string;
-    salon_id: string;
+    provider_id: string;
     specialist_id?: string;
     date: string;
     time: string;
@@ -192,9 +183,9 @@ class PortalApiClient {
   }
 
   // Booking Context / Payments
-  async getPaymentInstructions(salonId: string, serviceId: string) {
+  async getPaymentInstructions(providerId: string, serviceId: string) {
     const response = await this.client.get('/booking-context/payment', {
-      params: { salon_id: salonId, service_id: serviceId }
+      params: { provider_id: providerId, service_id: serviceId }
     });
     return response.data;
   }
@@ -204,7 +195,7 @@ class PortalApiClient {
   // Booking Rules methods
   async validateBookingRules(data: {
     service_id: string;
-    salon_id: string;
+    provider_id: string;
     date: string;
     time?: string;
     customer_id?: string;
@@ -218,7 +209,7 @@ class PortalApiClient {
 
   async getCancellationPolicy(params: {
     service_id: string;
-    salon_id: string;
+    provider_id: string;
   }) {
     const response = await this.client.get('/booking-rules/cancellation-policy', { params });
     return response.data;
@@ -226,7 +217,7 @@ class PortalApiClient {
 
   async checkCancellation(data: {
     service_id: string;
-    salon_id: string;
+    provider_id: string;
     booking_time: string;
     deposit_amount: number;
   }) {
@@ -236,7 +227,7 @@ class PortalApiClient {
 
   async getBookingRequirements(params: {
     service_id: string;
-    salon_id: string;
+    provider_id: string;
   }) {
     const response = await this.client.get('/booking-rules/requirements', { params });
     return response.data;

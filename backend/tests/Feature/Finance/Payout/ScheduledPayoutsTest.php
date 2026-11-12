@@ -6,7 +6,7 @@ use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Domain\Finance\Settlement\Settlement;
 use App\Models\User;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\PaymentMethod;
 use App\Models\PaymentProfile;
 use App\Jobs\ProcessScheduledPayouts;
@@ -25,12 +25,12 @@ class ScheduledPayoutsTest extends TestCase
 
     public function test_it_dispatches_execute_job_for_eligible_settlements()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $user = User::factory()->create();
 
-        // 1. Valid Salon config for MTN
+        // 1. Valid Provider config for MTN
         PaymentMethod::create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'display_name' => 'MTN Mobile Money',
             'provider' => 'mtn_disbursement',
             'is_active' => true,
@@ -53,8 +53,9 @@ class ScheduledPayoutsTest extends TestCase
 
         // 3. Due Settlement
         $settlement = Settlement::create([
-            'payable_type' => get_class($salon),
-            'payable_id' => $salon->id,
+            'provider_id' => $provider->id,
+            'payable_type' => get_class($provider),
+            'payable_id' => $provider->id,
             'recipient_type' => get_class($user),
             'recipient_id' => $user->id,
             'amount' => 500.00,
@@ -76,11 +77,11 @@ class ScheduledPayoutsTest extends TestCase
 
     public function test_it_skips_settlements_with_active_payouts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $user = User::factory()->create();
 
         PaymentMethod::create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'display_name' => 'MTN Mobile Money',
             'provider' => 'mtn_disbursement',
             'is_active' => true,
@@ -101,8 +102,9 @@ class ScheduledPayoutsTest extends TestCase
         ]);
 
         $settlement = Settlement::create([
-            'payable_type' => get_class($salon),
-            'payable_id' => $salon->id,
+            'provider_id' => $provider->id,
+            'payable_type' => get_class($provider),
+            'payable_id' => $provider->id,
             'recipient_type' => get_class($user),
             'recipient_id' => $user->id,
             'amount' => 500.00,

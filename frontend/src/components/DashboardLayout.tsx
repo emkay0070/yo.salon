@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -24,10 +24,11 @@ import Link from 'next/link';
 import RoleSwitcher from './RoleSwitcher';
 import { NotificationCenter } from './Notifications/NotificationCenter';
 import { useSidebar } from '@/contexts/SidebarContext';
-import { useSalonBranding } from '@/hooks/useSalonBranding';
+import { useProviderBranding } from '@/hooks/useProviderBranding';
 import OnboardingChecklist from '@/components/dashboard/OnboardingChecklist';
 import { useRole } from '@/contexts/RoleContext';
-import { salonRoutes, type SalonRoutes } from '@/lib/routes';
+import { useCategory } from '@/contexts/CategoryContext';
+import { providerRoutes, type ProviderRoutes } from '@/lib/routes';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -36,48 +37,104 @@ interface DashboardLayoutProps {
 interface NavItem {
   icon: any;
   label: string;
-  routeKey?: keyof SalonRoutes;
+  routeKey?: keyof ProviderRoutes;
   href: string;
 }
-
-const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Dashboard', routeKey: 'dashboard', href: '/dashboard' },
-  { icon: Calendar, label: 'Bookings', routeKey: 'bookings', href: '/bookings' },
-  { icon: Users, label: 'Customers', routeKey: 'customers', href: '/customers' },
-  { icon: Scissors, label: 'Services', routeKey: 'services', href: '/services' },
-  { icon: UserCheck, label: 'Staff', routeKey: 'staff', href: '/staff' },
-  { icon: TrendingUp, label: 'Analytics', routeKey: 'analytics', href: '/analytics' },
-  { icon: Brain, label: 'Intelligence', href: '/analytics/intelligence' },
-  { icon: CreditCard, label: 'Payments', routeKey: 'payments', href: '/payments' },
-  { icon: DollarSign, label: 'Team Finance', routeKey: 'financeTeam', href: '/finance/team' },
-  { icon: Activity, label: 'Pulse', routeKey: 'pulse', href: '/pulse' },
-  { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
-];
-
-const mobileNavItems: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Home', routeKey: 'dashboard', href: '/dashboard' },
-  { icon: Calendar, label: 'Bookings', routeKey: 'bookings', href: '/bookings' },
-  { icon: Users, label: 'Clients', routeKey: 'customers', href: '/customers' },
-  { icon: TrendingUp, label: 'Stats', routeKey: 'analytics', href: '/analytics' },
-];
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, setSidebarOpen } = useSidebar();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { salon, colors, isWhiteLabel } = useSalonBranding();
-  const { salonSlug } = useRole();
+  const { provider, colors, isWhiteLabel } = useProviderBranding();
+  const { providerSlug, activeProvider, role } = useRole();
+  const { terminology, setCategorySlug } = useCategory();
+
+  // Seed CategoryContext so terminology.business reflects the provider's category
+  useEffect(() => {
+    const slug = activeProvider?.businessCategory?.slug;
+    if (slug) {
+      setCategorySlug(slug);
+    }
+  }, [activeProvider?.businessCategory?.slug]);
 
   // Get tenant-aware routes
-  const routes = salonRoutes(salonSlug);
+  const routes = providerRoutes(providerSlug);
+
+  // Role-aware navigation items
+  const getNavItems = (): NavItem[] => {
+    const baseItems: NavItem[] = [
+      { icon: LayoutDashboard, label: 'Dashboard', routeKey: 'dashboard', href: '/dashboard' },
+    ];
+
+    // Owner/Manager: Full access
+    if (role === 'owner' || role === 'manager') {
+      return [
+        ...baseItems,
+        { icon: Calendar, label: terminology.appointmentPlural, routeKey: 'bookings', href: '/bookings' },
+        { icon: Users, label: terminology.customerPlural, routeKey: 'customers', href: '/customers' },
+        { icon: Scissors, label: 'Services', routeKey: 'services', href: '/services' },
+        { icon: UserCheck, label: terminology.specialistPlural, routeKey: 'staff', href: '/staff' },
+        { icon: TrendingUp, label: 'Analytics', routeKey: 'analytics', href: '/analytics' },
+        { icon: Brain, label: 'Intelligence', href: '/analytics/intelligence' },
+        { icon: CreditCard, label: 'Payments', routeKey: 'payments', href: '/payments' },
+        { icon: DollarSign, label: 'Team Finance', routeKey: 'financeTeam', href: '/finance/team' },
+        { icon: Activity, label: 'Pulse', routeKey: 'pulse', href: '/pulse' },
+        { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
+      ];
+    }
+
+    // Receptionist: Limited access
+    if (role === 'receptionist') {
+      return [
+        ...baseItems,
+        { icon: Calendar, label: terminology.appointmentPlural, routeKey: 'bookings', href: '/bookings' },
+        { icon: Users, label: terminology.customerPlural, routeKey: 'customers', href: '/customers' },
+        { icon: UserCheck, label: terminology.specialistPlural, routeKey: 'staff', href: '/staff' },
+        { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
+      ];
+    }
+
+    // Employee: Very limited access
+    if (role === 'employee') {
+      return [
+        ...baseItems,
+        { icon: Calendar, label: terminology.appointmentPlural, routeKey: 'bookings', href: '/bookings' },
+        { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
+      ];
+    }
+
+    // Default to full access for unknown roles
+    return [
+      ...baseItems,
+      { icon: Calendar, label: terminology.appointmentPlural, routeKey: 'bookings', href: '/bookings' },
+      { icon: Users, label: terminology.customerPlural, routeKey: 'customers', href: '/customers' },
+      { icon: Scissors, label: 'Services', routeKey: 'services', href: '/services' },
+      { icon: UserCheck, label: terminology.specialistPlural, routeKey: 'staff', href: '/staff' },
+      { icon: TrendingUp, label: 'Analytics', routeKey: 'analytics', href: '/analytics' },
+      { icon: Brain, label: 'Intelligence', href: '/analytics/intelligence' },
+      { icon: CreditCard, label: 'Payments', routeKey: 'payments', href: '/payments' },
+      { icon: DollarSign, label: 'Team Finance', routeKey: 'financeTeam', href: '/finance/team' },
+      { icon: Activity, label: 'Pulse', routeKey: 'pulse', href: '/pulse' },
+      { icon: Settings, label: 'Settings', routeKey: 'settings', href: '/settings' },
+    ];
+  };
+
+  const navItems = getNavItems();
+
+  const mobileNavItems: NavItem[] = [
+    { icon: LayoutDashboard, label: 'Home', routeKey: 'dashboard', href: '/dashboard' },
+    { icon: Calendar, label: terminology.appointmentPlural, routeKey: 'bookings', href: '/bookings' },
+    { icon: Users, label: terminology.customerPlural, routeKey: 'customers', href: '/customers' },
+    { icon: TrendingUp, label: 'Stats', routeKey: 'analytics', href: '/analytics' },
+  ];
 
   // Convert navItems to use salonRoutes helper
   const currentNavItems = navItems.map(item => ({
     ...item,
     href: item.routeKey ? routes[item.routeKey] : (item.href || '#')
   }));
-    
+  
   const currentMobileNavItems = mobileNavItems.map(item => ({
     ...item,
     href: item.routeKey ? routes[item.routeKey] : (item.href || '#')
@@ -94,8 +151,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Global background image texture – very subtle noir depth, hidden in light mode */}
       <div
         className="fixed inset-0 bg-cover bg-center pointer-events-none z-0"
-        style={{ 
-          backgroundImage: `url('${salon?.logo || '/images/salon-dark.jpg'}')`,
+        style={{
+          backgroundImage: `url('${provider?.logo_url || '/images/salon-dark.jpg'}')`,
           opacity: 'var(--texture-opacity, 0.04)',
         }}
       />
@@ -112,12 +169,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        <div className="flex items-center justify-between mb-6 overflow-hidden">
+        <div className="group relative flex items-center mb-6 overflow-hidden min-h-[40px]">
           <div className="flex items-center gap-3">
-            {salon?.logo ? (
-              <img 
-                src={salon.logo} 
-                alt={salon.name} 
+            {provider?.logo_url ? (
+              <img
+                src={provider.logo_url} 
+                alt={provider.name} 
                 className="w-10 h-10 rounded-xl object-cover flex-shrink-0 shadow-lg"
               />
             ) : (
@@ -130,12 +187,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Scissors className="w-6 h-6 text-white" />
               </div>
             )}
-            {sidebarOpen && (
-              <span className="text-xl font-bold text-text-primary tracking-tight whitespace-nowrap">
-                {isWhiteLabel ? salon?.name : salon?.name}
+            <div className={`min-w-0 transition-opacity duration-300 ${!sidebarOpen ? 'hidden' : ''}`}>
+              <span className="text-xl font-bold text-text-primary tracking-tight whitespace-nowrap block truncate">
+                {isWhiteLabel ? provider?.name : provider?.name}
               </span>
-            )}
+            </div>
           </div>
+          
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={`hidden lg:flex w-10 h-10 rounded-lg hover:bg-surface text-text-secondary shrink-0 transition-opacity items-center justify-center ${
+              !sidebarOpen ? 'opacity-0 group-hover:opacity-100 absolute -right-2' : 'opacity-100 ml-auto'
+            }`}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
         </div>
 
         {sidebarOpen && <RoleSwitcher />}
@@ -182,14 +249,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         className={`relative z-10 flex-1 min-w-0 overflow-x-hidden transition-all duration-300 pb-20 lg:pb-0 ${sidebarOpen ? 'lg:ml-[260px]' : 'lg:ml-[80px]'}`}
       >
         <div className="p-4 lg:p-8">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="hidden lg:flex p-2 rounded-xl bg-surface/50 border border-border-light hover:bg-text-primary/10 transition-colors duration-300 backdrop-blur-md"
-            >
-              <Menu className="w-6 h-6 text-text-secondary" />
-            </button>
-            <div className="flex-1" />
+          <div className="flex items-center justify-end mb-3 lg:mb-6">
             <NotificationCenter />
           </div>
           
@@ -319,10 +379,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </>
         )}
       </AnimatePresence>
-      {/* Onboarding Checklist – rendered at root level so CSS `fixed` works
-          correctly and is NOT affected by framer-motion transform ancestors */}
-      <OnboardingChecklist />
-
     </div>
   );
 }

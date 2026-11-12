@@ -22,10 +22,24 @@ class AvailabilityController extends Controller
     }
 
     /**
-     * Get available slots for a salon
+     * Get available slots for a provider
      */
-    public function index(Request $request, string $salonId): JsonResponse
+    public function index(Request $request, string $providerId): JsonResponse
     {
+        // Support both direct params and nested params[date] format
+        $params = $request->input('params', []);
+        $date = $request->input('date') ?? ($params['date'] ?? null);
+        $serviceId = $request->input('service_id') ?? ($params['service_id'] ?? null);
+        $specialistId = $request->input('specialist_id') ?? ($params['specialist_id'] ?? null);
+        $slotGranularity = $request->input('slot_granularity') ?? ($params['slot_granularity'] ?? 15);
+
+        $request->merge([
+            'date' => $date,
+            'service_id' => $serviceId,
+            'specialist_id' => $specialistId,
+            'slot_granularity' => $slotGranularity,
+        ]);
+
         $request->validate([
             'date' => 'required|date|after_or_equal:today',
             'service_id' => 'nullable|uuid|exists:services,id',
@@ -35,11 +49,12 @@ class AvailabilityController extends Controller
 
         try {
             $availability = $this->availabilityEngine->getAvailableSlots(
-                $salonId,
-                $request->input('date'),
-                $request->input('service_id'),
-                $request->input('specialist_id'),
-                $request->input('slot_granularity', 15)
+                $providerId,
+                null, // locationId - not used in this public endpoint
+                $date,
+                $serviceId,
+                $specialistId,
+                $slotGranularity
             );
 
             // Map rich internal domain states → stable public statuses.
@@ -62,22 +77,37 @@ class AvailabilityController extends Controller
     /**
      * Get batch availability for multiple dates
      */
-    public function batch(Request $request, string $salonId): JsonResponse
+    public function batch(Request $request, string $providerId): JsonResponse
     {
+        // Support both direct params and nested params[date] format
+        $params = $request->input('params', []);
+        $startDate = $request->input('start_date') ?? ($params['start_date'] ?? null);
+        $endDate = $request->input('end_date') ?? ($params['end_date'] ?? null);
+        $serviceId = $request->input('service_id') ?? ($params['service_id'] ?? null);
+        $specialistId = $request->input('specialist_id') ?? ($params['specialist_id'] ?? null);
+
+        $request->merge([
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'service_id' => $serviceId,
+            'specialist_id' => $specialistId,
+        ]);
+
         $request->validate([
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'service_id' => 'nullable|uuid|exists:services,id',
-            'specialist_id' => 'nullable|uuid|exists:specialists,id',
+            'service_id' => 'nullable|uuid',
+            'specialist_id' => 'nullable|uuid',
         ]);
 
         try {
             $availability = $this->availabilityEngine->getBatchAvailability(
-                $salonId,
-                $request->input('start_date'),
-                $request->input('end_date'),
-                $request->input('service_id'),
-                $request->input('specialist_id')
+                $providerId,
+                null, // locationId - not used in this public endpoint
+                $startDate,
+                $endDate,
+                $serviceId,
+                $specialistId
             );
 
             return response()->json($availability);
@@ -92,20 +122,33 @@ class AvailabilityController extends Controller
     /**
      * Get first available slot
      */
-    public function firstAvailable(Request $request, string $salonId): JsonResponse
+    public function firstAvailable(Request $request, string $providerId): JsonResponse
     {
+        // Support both direct params and nested params[date] format
+        $params = $request->input('params', []);
+        $serviceId = $request->input('service_id') ?? ($params['service_id'] ?? null);
+        $specialistId = $request->input('specialist_id') ?? ($params['specialist_id'] ?? null);
+        $daysAhead = $request->input('days_ahead') ?? ($params['days_ahead'] ?? 30);
+
+        $request->merge([
+            'service_id' => $serviceId,
+            'specialist_id' => $specialistId,
+            'days_ahead' => $daysAhead,
+        ]);
+
         $request->validate([
-            'service_id' => 'nullable|uuid|exists:services,id',
-            'specialist_id' => 'nullable|uuid|exists:specialists,id',
+            'service_id' => 'nullable|uuid',
+            'specialist_id' => 'nullable|uuid',
             'days_ahead' => 'nullable|integer|min:1|max:365',
         ]);
 
         try {
             $slot = $this->availabilityEngine->getFirstAvailableSlot(
-                $salonId,
-                $request->input('service_id'),
-                $request->input('specialist_id'),
-                $request->input('days_ahead', 30)
+                $providerId,
+                null, // locationId - not used in this public endpoint
+                $serviceId,
+                $specialistId,
+                $daysAhead
             );
 
             if (!$slot) {
@@ -127,7 +170,7 @@ class AvailabilityController extends Controller
     /**
      * Lock a time slot
      */
-    public function lockSlot(Request $request, string $salonId): JsonResponse
+    public function lockSlot(Request $request, string $providerId): JsonResponse
     {
         $request->validate([
             'date' => 'required|date|after_or_equal:today',
@@ -138,7 +181,7 @@ class AvailabilityController extends Controller
 
         try {
             $lock = $this->availabilityEngine->lockSlot(
-                $salonId,
+                $providerId,
                 $request->input('date'),
                 $request->input('start_time'),
                 $request->input('service_id'),
@@ -162,7 +205,7 @@ class AvailabilityController extends Controller
     /**
      * Release a locked slot
      */
-    public function releaseSlot(Request $request, string $salonId, string $lockId): JsonResponse
+    public function releaseSlot(Request $request, string $providerId, string $lockId): JsonResponse
     {
         try {
             $this->availabilityEngine->releaseSlot($lockId);

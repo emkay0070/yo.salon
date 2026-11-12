@@ -11,7 +11,8 @@ class Offer extends Model
     use HasUuids;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
+        'location_id',
         'title',
         'description',
         'discount_type',
@@ -37,9 +38,14 @@ class Offer extends Model
         'image_url',
     ];
 
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function imageMedia(): BelongsTo
@@ -91,11 +97,45 @@ class Offer extends Model
     }
 
     /**
-     * Get active offers for a salon
+     * Get active offers for a provider
      */
-    public static function getActiveForSalon(string $salonId)
+    public static function getActiveForProvider(string $providerId)
     {
-        return self::where('salon_id', $salonId)
+        return self::where('provider_id', $providerId)
+            ->where('active', true)
+            ->where('start_date', '<=', now()->toDateString())
+            ->where('end_date', '>=', now()->toDateString())
+            ->where(function ($query) {
+                $query->whereNull('usage_limit')
+                    ->orWhereColumn('usage_count', '<', 'usage_limit');
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    /**
+     * Get active offers for a location
+     */
+    public static function getActiveForLocation(string $locationId)
+    {
+        return self::where('location_id', $locationId)
+            ->where('active', true)
+            ->where('start_date', '<=', now()->toDateString())
+            ->where('end_date', '>=', now()->toDateString())
+            ->where(function ($query) {
+                $query->whereNull('usage_limit')
+                    ->orWhereColumn('usage_count', '<', 'usage_limit');
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    /**
+     * Get active offers for a provider (including provider-wide and location-specific)
+     */
+    public static function getActiveForProviderWithLocations(string $providerId)
+    {
+        return self::where('provider_id', $providerId)
             ->where('active', true)
             ->where('start_date', '<=', now()->toDateString())
             ->where('end_date', '>=', now()->toDateString())

@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Service;
@@ -23,13 +24,15 @@ class DashboardLiveStatsVerificationTest extends TestCase
 
     public function test_operational_analytics_service_includes_payments_today()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service = Service::factory()->create(['provider_id' => $salon->provider_id]);
+        $service = Service::factory()->create(['provider_id' => $provider->id]);
 
         // Create paid booking
         Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
             'status' => 'completed',
@@ -38,7 +41,7 @@ class DashboardLiveStatsVerificationTest extends TestCase
         ]);
 
         $operationalService = app(OperationalAnalyticsService::class);
-        $facts = $operationalService->getOperationalFacts($salon);
+        $facts = $operationalService->getOperationalFacts($provider, $location);
 
         $this->assertArrayHasKey('payments_today', $facts['today']);
         $this->assertEquals(1, $facts['today']['payments_today']);
@@ -46,13 +49,15 @@ class DashboardLiveStatsVerificationTest extends TestCase
 
     public function test_dashboard_controller_uses_operational_analytics_service()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service = Service::factory()->create(['provider_id' => $salon->provider_id]);
+        $service = Service::factory()->create(['provider_id' => $provider->id]);
 
         // Create bookings
         Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
             'status' => 'pending',
@@ -60,7 +65,7 @@ class DashboardLiveStatsVerificationTest extends TestCase
         ]);
 
         $operationalService = app(OperationalAnalyticsService::class);
-        $facts = $operationalService->getOperationalFacts($salon);
+        $facts = $operationalService->getOperationalFacts($provider, $location);
 
         // Verify the service returns the expected structure
         $this->assertArrayHasKey('today', $facts);
@@ -72,10 +77,10 @@ class DashboardLiveStatsVerificationTest extends TestCase
 
     public function test_finance_analytics_service_has_today_metrics()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         
         $financeService = app(FinanceAnalyticsService::class);
-        $metrics = $financeService->getTodayMetrics($salon);
+        $metrics = $financeService->getTodayMetrics($provider);
 
         $this->assertArrayHasKey('today_gross_revenue', $metrics);
         $this->assertArrayHasKey('today_net_revenue', $metrics);

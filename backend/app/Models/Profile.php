@@ -16,15 +16,15 @@ class Profile extends Model
         'name',
         'password',
         'role',
-        'salon_id',
+        'location_id',
     ];
 
     protected $hidden = [
         'password',
     ];
 
-    public function salon(): BelongsTo
+    public function location()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Location::class, 'location_id');
     }
 }

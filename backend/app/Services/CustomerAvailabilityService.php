@@ -2,77 +2,104 @@
 
 namespace App\Services;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
+// Salon model removed — legacy salonId params now represent Location IDs
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Booking;
+use App\Domain\Availability\DTOs\ProviderLocationContext;
 use App\Domain\Availability\Statuses\AvailabilityDomainStatus;
 use Carbon\Carbon;
 
 class CustomerAvailabilityService
 {
-    public function getAvailableSlots(string $salonId, ?string $serviceId, ?string $staffId, string $date): array
-    {
-        $salon = Salon::find($salonId);
-        if (!$salon) {
-            throw new \Exception('Salon not found');
+    // -------------------------------------------------------------------------
+    // PRIMARY API — Provider + Location
+    // -------------------------------------------------------------------------
+
+    public function getAvailableSlots(
+        string $providerId,
+        ?string $locationId,
+        ?string $serviceId,
+        ?string $staffId,
+        string $date
+    ): array {
+        $ctx      = new ProviderLocationContext($providerId, $locationId);
+        $provider = Provider::findOrFail($providerId);
+        $location = $locationId ? Location::find($locationId) : null;
+        $service  = $serviceId ? Service::withoutGlobalScope('salon')->find($serviceId) : null;
+
+        // Resolve location-specific buffer overrides to match AvailabilityEngine and BookingConflictService
+        $bufferBefore = 0;
+        $bufferAfter = 0;
+        if ($service && $location) {
+            $catalogResolver = new LocationServiceCatalogResolver();
+            $resolvedService = $catalogResolver->queryAllServices($location)
+                ->where('services.id', $service->id)
+                ->first();
+            $bufferBefore = $resolvedService?->pivot_buffer_before_override ?? $service->buffer_before ?? 0;
+            $bufferAfter = $resolvedService?->pivot_buffer_after_override ?? $service->buffer_after ?? 0;
+        } elseif ($service) {
+            $bufferBefore = $service->buffer_before ?? 0;
+            $bufferAfter = $service->buffer_after ?? 0;
         }
 
-        $service = $serviceId ? Service::withoutGlobalScope('salon')->find($serviceId) : null;
-        $staff = $staffId ? Staff::withoutGlobalScope('salon')->find($staffId) : null;
-
-        $duration = $service ? $service->duration : 60;
-
-        $dayOfWeek = Carbon::parse($date)->dayOfWeek;
-        $openingHours = $this->getOpeningHoursForDay($salon, $dayOfWeek);
+        $duration    = $service ? $service->duration : 60;
+        $totalDuration = $duration + $bufferBefore + $bufferAfter;
+        $dayOfWeek   = Carbon::parse($date)->dayOfWeek;
+        $openingHours = $this->resolveScheduleByContext($ctx, $dayOfWeek);
 
         $allStatuses = [];
+        $timezone    = $location?->timezone ?? $provider->timezone ?? 'Africa/Kampala';
 
         if (!$openingHours) {
             return [
-                'salon_id' => $salonId,
-                'date' => $date,
-                'service_id' => $serviceId,
-                'staff_id' => $staffId,
-                'duration' => $duration,
-                'is_closed' => true,
-                'slots' => [],
-                'first_available_slot' => null,
+                'provider_id' => $providerId,
+                'location_id' => $locationId,
+                'date'        => $date,
+                'service_id'  => $serviceId,
+                'staff_id'    => $staffId,
+                'duration'    => $duration,
+                'is_closed'   => true,
+                'slots'       => [],
+                'first_available_slot'  => null,
                 'total_available_slots' => 0,
-                'domain_status' => AvailabilityDomainStatus::BRANCH_CLOSED->value,
+                'domain_status'  => AvailabilityDomainStatus::BRANCH_CLOSED->value,
                 'domain_statuses' => [AvailabilityDomainStatus::BRANCH_CLOSED->value],
-                'timezone' => $salon->timezone ?? 'Africa/Kampala',
+                'timezone'       => $timezone,
                 'operating_hours' => null,
             ];
         }
 
-        $existingBookings = $this->getExistingBookings($salonId, $staffId, $date);
+        $existingBookings = $this->getExistingBookingsByContext($ctx, $staffId, $date);
+        $slots = $this->generateTimeSlots($openingHours, $totalDuration, $existingBookings);
 
-        $slots = $this->generateTimeSlots($openingHours, $duration, $existingBookings);
+        $primary = count($slots) > 0
+            ? AvailabilityDomainStatus::AVAILABLE
+            : AvailabilityDomainStatus::NO_WINDOWS;
 
-        if (count($slots) > 0) {
-            $primary = AvailabilityDomainStatus::AVAILABLE;
-        } else {
-            $primary = AvailabilityDomainStatus::NO_WINDOWS;
+        if ($primary === AvailabilityDomainStatus::NO_WINDOWS) {
             $allStatuses[] = AvailabilityDomainStatus::NO_WINDOWS;
         }
 
         return [
-            'salon_id' => $salonId,
-            'date' => $date,
-            'service_id' => $serviceId,
-            'staff_id' => $staffId,
-            'duration' => $duration,
-            'timezone' => $salon->timezone ?? 'Africa/Kampala',
+            'provider_id' => $providerId,
+            'location_id' => $locationId,
+            'date'        => $date,
+            'service_id'  => $serviceId,
+            'staff_id'    => $staffId,
+            'duration'    => $duration,
+            'timezone'    => $timezone,
             'operating_hours' => [
-                'open' => $openingHours['open'],
+                'open'  => $openingHours['open'],
                 'close' => $openingHours['close'],
             ],
-            'is_closed' => false,
-            'slots' => $slots,
-            'first_available_slot' => count($slots) > 0 ? $slots[0] : null,
+            'is_closed'   => false,
+            'slots'       => $slots,
+            'first_available_slot'  => count($slots) > 0 ? $slots[0] : null,
             'total_available_slots' => count($slots),
-            'domain_status' => $primary->value,
+            'domain_status'  => $primary->value,
             'domain_statuses' => array_values(array_unique(array_map(
                 static fn (AvailabilityDomainStatus $s) => $s->value,
                 array_merge([$primary], $allStatuses),
@@ -80,25 +107,25 @@ class CustomerAvailabilityService
         ];
     }
 
-    public function getAvailableDates(string $salonId, string $year, string $month): array
-    {
-        $salon = Salon::find($salonId);
-        if (!$salon) {
-            throw new \Exception('Salon not found');
-        }
-
+    public function getAvailableDates(
+        string $providerId,
+        ?string $locationId,
+        string $year,
+        string $month
+    ): array {
+        $ctx           = new ProviderLocationContext($providerId, $locationId);
         $availableDates = [];
         $startDate = Carbon::create($year, $month, 1);
-        $endDate = $startDate->copy()->endOfMonth();
+        $endDate   = $startDate->copy()->endOfMonth();
 
         while ($startDate->lte($endDate)) {
-            $dayOfWeek = $startDate->dayOfWeek;
-            $openingHours = $this->getOpeningHoursForDay($salon, $dayOfWeek);
+            $dayOfWeek    = $startDate->dayOfWeek;
+            $openingHours = $this->resolveScheduleByContext($ctx, $dayOfWeek);
 
             if ($openingHours) {
                 $availableDates[] = [
-                    'date' => $startDate->toDateString(),
-                    'day_of_week' => $dayOfWeek,
+                    'date'         => $startDate->toDateString(),
+                    'day_of_week'  => $dayOfWeek,
                     'is_available' => true,
                     'opening_hours' => $openingHours,
                 ];
@@ -108,88 +135,114 @@ class CustomerAvailabilityService
         }
 
         return [
-            'year' => $year,
-            'month' => $month,
+            'year'            => $year,
+            'month'           => $month,
             'available_dates' => $availableDates,
         ];
     }
 
-    private function getOpeningHoursForDay(Salon $salon, int $dayOfWeek): ?array
+    /**
+     * Resolve opening hours for a given day via Provider+Location context.
+     *
+     * - locationId set  → LocationSchedule (CUSTOM) falling back to ProviderSchedule (INHERIT)
+     * - locationId null → ProviderSchedule only
+     */
+    private function resolveScheduleByContext(ProviderLocationContext $ctx, int $dayOfWeek): ?array
     {
-        $dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        $dayName = $dayNames[$dayOfWeek];
+        // Try LocationSchedule first if we have a location
+        if ($ctx->locationId) {
+            $dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            $dayName  = ucfirst($dayNames[$dayOfWeek]);
 
-        // Check if salon has INHERIT mode - use provider schedule
-        if ($salon->schedule_mode === 'INHERIT' && $salon->provider_id) {
-            $providerSchedule = \App\Models\ProviderSchedule::where('provider_id', $salon->provider_id)
-                ->where('day_of_week', $dayOfWeek)
+            $locationSchedule = \App\Models\LocationSchedule::where('location_id', $ctx->locationId)
+                ->where('day_of_week', $dayName)
                 ->first();
 
-            if ($providerSchedule && !$providerSchedule->is_closed) {
+            if ($locationSchedule && !$locationSchedule->is_closed) {
                 return [
-                    'open' => substr($providerSchedule->open_time, 0, 5),
-                    'close' => substr($providerSchedule->close_time, 0, 5),
+                    'open'  => substr($locationSchedule->open_time, 0, 5),
+                    'close' => substr($locationSchedule->close_time, 0, 5),
                     'break_start' => null,
-                    'break_end' => null,
+                    'break_end'   => null,
                 ];
             }
 
-            return null;
+            if ($locationSchedule && $locationSchedule->is_closed) {
+                return null; // Location explicitly closed this day
+            }
+            // No LocationSchedule — fall through to ProviderSchedule
         }
 
-        // Otherwise use salon's opening_hours
-        $openingHours = $salon->opening_hours;
+        // Provider-level schedule (integer day_of_week)
+        $providerSchedule = \App\Models\ProviderSchedule::where('provider_id', $ctx->providerId)
+            ->where('day_of_week', $dayOfWeek)
+            ->first();
 
-        if (!$openingHours || !isset($openingHours[$dayName])) {
-            return null;
+        if ($providerSchedule && !$providerSchedule->is_closed) {
+            return [
+                'open'  => substr($providerSchedule->open_time, 0, 5),
+                'close' => substr($providerSchedule->close_time, 0, 5),
+                'break_start' => null,
+                'break_end'   => null,
+            ];
         }
 
-        $dayHours = $openingHours[$dayName];
-
-        if (!($dayHours['is_open'] ?? false)) {
-            return null;
-        }
-
-        return [
-            'open' => $dayHours['open'] ?? '09:00',
-            'close' => $dayHours['close'] ?? '18:00',
-            'break_start' => $dayHours['break_start'] ?? null,
-            'break_end' => $dayHours['break_end'] ?? null,
-        ];
+        return null;
     }
 
-    private function getExistingBookings(string $salonId, ?string $staffId, string $date): array
-    {
-        $salon = \App\Models\Salon::find($salonId);
-        $providerId = $salon ? $salon->provider_id : null;
+    private function getExistingBookingsByContext(
+        ProviderLocationContext $ctx,
+        ?string $staffId,
+        string $date
+    ): array {
+        $query = \App\Models\BookingService::with(['booking', 'service'])
+            ->whereHas('booking', function ($q) use ($ctx, $date) {
+                $q->where('provider_id', $ctx->providerId)
+                  ->where('date', $date)
+                  ->whereIn('status', ['confirmed', 'pending']);
 
-        if (!$providerId) {
-            return [];
-        }
-
-        $query = Booking::where('salon_id', $salonId)
-            ->where('date', $date)
-            ->whereIn('status', ['confirmed', 'pending']);
+                if ($ctx->locationId) {
+                    $q->where('location_id', $ctx->locationId);
+                }
+            });
 
         if ($staffId) {
-            // staff_id is the salon-local identity for bookings.
-            // We no longer fall back to specialist_id — those are distinct identities.
-            $query->where('staff_id', $staffId);
+            $query->whereHas('booking', function ($q) use ($staffId) {
+                $q->where('specialist_id', $staffId);
+            });
         }
 
-        $bookings = $query->get();
+        $bookingServices = $query->get();
 
-        return $bookings->map(function ($booking) {
-            $start = $booking->start_time ?? $booking->time;
-            $end = $booking->end_time;
-            if (!$end && $booking->service) {
-                $end = Carbon::parse($start)->addMinutes($booking->service->duration ?? 60)->toTimeString();
+        $location = $ctx->locationId ? \App\Models\Location::find($ctx->locationId) : null;
+
+        return $bookingServices->map(function ($bs) use ($location) {
+            $start = $bs->start_time ? Carbon::parse($bs->start_time)->toTimeString() : null;
+            $end = $bs->end_time ? Carbon::parse($bs->end_time)->toTimeString() : null;
+
+            if (!$end && $bs->service) {
+                // Calculate end time with the booking's own service buffers
+                $bufferBefore = $bs->service->buffer_before ?? 0;
+                $bufferAfter = $bs->service->buffer_after ?? 0;
+
+                // Apply location-specific buffer overrides if available
+                if ($location && $bs->service) {
+                    $catalogResolver = new LocationServiceCatalogResolver();
+                    $resolvedService = $catalogResolver->queryAllServices($location)
+                        ->where('services.id', $bs->service->id)
+                        ->first();
+                    $bufferBefore = $resolvedService?->pivot_buffer_before_override ?? $bufferBefore;
+                    $bufferAfter = $resolvedService?->pivot_buffer_after_override ?? $bufferAfter;
+                }
+
+                $totalDuration = ($bs->service->duration ?? 60) + $bufferBefore + $bufferAfter;
+                $end = Carbon::parse($bs->start_time)->addMinutes($totalDuration)->toTimeString();
             }
+
             return [
-                'start' => $start,
-                'end' => $end,
-                // staff_id is the canonical local identity for slot occupancy
-                'staff_id' => $booking->staff_id,
+                'start' => $start ? substr($start, 0, 5) : null,
+                'end' => $end ? substr($end, 0, 5) : null,
+                'staff_id' => $bs->booking->specialist_id,
             ];
         })->toArray();
     }
@@ -223,15 +276,13 @@ class CustomerAvailabilityService
 
             $isAvailable = !$this->hasConflict($slotStart, $slotEnd, $existingBookings);
 
-            if ($isAvailable) {
-                $slots[] = [
-                    'start' => substr($slotStart, 0, 5),
-                    'end' => substr($slotEnd, 0, 5),
-                    'duration' => $duration,
-                    'available' => true,
-                    'time' => substr($slotStart, 0, 5),
-                ];
-            }
+            $slots[] = [
+                'start' => substr($slotStart, 0, 5),
+                'end' => substr($slotEnd, 0, 5),
+                'duration' => $duration,
+                'available' => $isAvailable,
+                'time' => substr($slotStart, 0, 5),
+            ];
 
             $currentTime->addMinutes(15);
         }
@@ -267,12 +318,19 @@ class CustomerAvailabilityService
         $slotStart = Carbon::parse($time);
         $slotEnd = $slotStart->copy()->addMinutes($duration);
 
+        // Resolve provider_id and location_id from Location (salonId is a legacy Location ID)
+        $location = \App\Models\Location::find($salonId);
+        if (!$location) {
+            throw new \Exception('Location not found');
+        }
+
         $allStaff = Staff::withoutGlobalScope('salon')
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $location->provider_id)
+            ->where('location_id', $location->id)
             ->where('active', true)
             ->get();
 
-        $existingBookings = Booking::where('salon_id', $salonId)
+        $existingBookings = Booking::where('location_id', $salonId)
             ->where('date', $date)
             ->whereIn('status', ['confirmed', 'pending'])
             ->get();
@@ -307,7 +365,6 @@ class CustomerAvailabilityService
                 $availableStaff[] = [
                     'id' => $staff->id,
                     'name' => $staff->name,
-                    'specializations' => $staff->specializations,
                     'avatar' => $staff->avatar,
                 ];
             }
@@ -323,7 +380,21 @@ class CustomerAvailabilityService
 
     private function staffOffersService(Staff $staff, Service $service): bool
     {
-        return true;
+        // Resolve specialist_id from staff via SpecialistAssignment
+        $assignment = \App\Models\SpecialistAssignment::where('staff_id', $staff->id)
+            ->where('provider_id', $staff->provider_id)
+            ->whereIn('status', ['active', 'ACTIVE'])
+            ->first();
+
+        if (!$assignment) {
+            return false; // No specialist assignment found
+        }
+
+        // Check if specialist offers this service via specialist_service pivot
+        return \DB::table('specialist_service')
+            ->where('specialist_id', $assignment->specialist_id)
+            ->where('service_id', $service->id)
+            ->exists();
     }
 
     public function getSpecialistsForService(string $salonId, string $serviceId): array
@@ -333,13 +404,20 @@ class CustomerAvailabilityService
             throw new \Exception('Service not found');
         }
 
+        // Resolve provider_id and location_id from Location (salonId is a legacy Location ID)
+        $location = \App\Models\Location::find($salonId);
+        if (!$location) {
+            throw new \Exception('Location not found');
+        }
+
         $allStaff = Staff::withoutGlobalScope('salon')
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $location->provider_id)
+            ->where('location_id', $location->id)
             ->where('active', true)
             ->get();
 
         \Log::info('getSpecialistsForService', [
-            'salon_id' => $salonId,
+            'location_id' => $salonId,
             'service_id' => $serviceId,
             'staff_count' => $allStaff->count(),
         ]);
@@ -354,7 +432,6 @@ class CustomerAvailabilityService
             $specialists[] = [
                 'id' => $staff->id,
                 'name' => $staff->name,
-                'specializations' => $staff->specializations,
                 'avatar' => $staff->avatar,
                 'available' => true,
             ];
@@ -362,7 +439,7 @@ class CustomerAvailabilityService
 
         return [
             'service_id' => $serviceId,
-            'salon_id' => $salonId,
+            'location_id' => $salonId, // semantically a Location ID
             'available_staff' => $specialists,
         ];
     }

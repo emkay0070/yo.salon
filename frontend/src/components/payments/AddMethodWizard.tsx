@@ -15,7 +15,7 @@ type WizardStep = 'choose' | 'explain' | 'configure' | 'success';
 interface AddMethodWizardProps {
   isOpen: boolean;
   onClose: () => void;
-  salonId: string;
+  providerId: string;
 }
 
 const PROVIDERS: Record<ProviderId, {
@@ -94,7 +94,7 @@ const PROVIDERS: Record<ProviderId, {
   }
 };
 
-export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodWizardProps) {
+export default function AddMethodWizard({ isOpen, onClose, providerId }: AddMethodWizardProps) {
   const [step, setStep] = useState<WizardStep>('choose');
   const [selectedProvider, setSelectedProvider] = useState<ProviderId | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -139,7 +139,7 @@ export default function AddMethodWizard({ isOpen, onClose, salonId }: AddMethodW
       
       // Submit
       mutation.mutate({
-        salon_id: salonId,
+        provider_id: providerId,
         provider: selectedProvider,
         type: provider?.type,
         display_name: provider?.name,

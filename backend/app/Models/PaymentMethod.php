@@ -4,11 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Traits\BelongsToSalon;
 
 class PaymentMethod extends Model
 {
-    use HasFactory, BelongsToSalon;
+    use HasFactory;
 
     protected static function newFactory()
     {
@@ -16,7 +15,7 @@ class PaymentMethod extends Model
     }
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'payment_account_id',
         'provider',
         'type',
@@ -54,6 +53,11 @@ class PaymentMethod extends Model
         'webhook_secret',
     ];
 
+    public function provider()
+    {
+        return $this->belongsTo(Provider::class);
+    }
+
     public function transactions()
     {
         return $this->hasMany(Transaction::class);
@@ -90,6 +94,11 @@ class PaymentMethod extends Model
     public function scopeByProvider($query, string $provider)
     {
         return $query->where('provider', $provider);
+    }
+
+    public function scopeForProvider($query, string $providerId)
+    {
+        return $query->where('provider_id', $providerId);
     }
 
     public function scopeProduction($query)

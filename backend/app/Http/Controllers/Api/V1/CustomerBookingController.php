@@ -30,12 +30,12 @@ class CustomerBookingController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
         $customerId = $request->attributes->get('customer_id');
+        $locationId = $request->attributes->get('location_id');
 
         try {
-            $upcoming = $this->bookingService->getUpcomingBookings($customerId, $salonId);
-            $history = $this->bookingService->getBookingHistory($customerId, $salonId, 50);
+            $upcoming = $this->bookingService->getUpcomingBookings($customerId, $locationId);
+            $history = $this->bookingService->getBookingHistory($customerId, $locationId, 50);
 
             return response()->json([
                 'upcoming' => $upcoming,
@@ -58,9 +58,12 @@ class CustomerBookingController extends Controller
             'service_id' => 'nullable|uuid',
             'staff_id' => 'nullable|uuid',
             'date' => 'nullable|date',
+            'location_id' => 'required|uuid|exists:locations,id',
+            'salon_id' => 'nullable|uuid',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
+        $providerId = $request->attributes->get('provider_id');
 
         // If no date provided, return empty slots
         if (empty($validated['date'])) {
@@ -72,7 +75,8 @@ class CustomerBookingController extends Controller
 
         try {
             $availability = $this->availabilityService->getAvailableSlots(
-                $salonId,
+                $providerId,
+                $locationId,
                 $validated['service_id'] ?? null,
                 $validated['staff_id'] ?? null,
                 $validated['date']
@@ -101,13 +105,17 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'year' => 'required|integer',
             'month' => 'required|integer|min:1|max:12',
+            'location_id' => 'required|uuid|exists:locations,id',
+            'salon_id' => 'nullable|uuid',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
+        $providerId = $request->attributes->get('provider_id');
 
         try {
             $dates = $this->availabilityService->getAvailableDates(
-                $salonId,
+                $providerId,
+                $locationId,
                 $validated['year'],
                 $validated['month']
             );
@@ -131,22 +139,26 @@ class CustomerBookingController extends Controller
             'service_id' => 'required|uuid',
             'date' => 'nullable|date',
             'time' => 'nullable',
+            'location_id' => 'required|uuid|exists:locations,id',
+            'salon_id' => 'nullable|uuid',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
+        $providerId = $request->attributes->get('provider_id');
 
         try {
             // If date and time are provided, check availability for that specific slot
             if (!empty($validated['date']) && !empty($validated['time'])) {
                 $staff = $this->availabilityService->getAvailableStaff(
-                    $salonId,
+                    $providerId,
+                    $locationId,
                     $validated['service_id'],
                     $validated['date'],
                     $validated['time']
                 );
             } else {
                 // Otherwise, return all specialists who offer this service at the salon
-                $staff = $this->availabilityService->getSpecialistsForService($salonId, $validated['service_id']);
+                $staff = $this->availabilityService->getSpecialistsForService($providerId, $locationId, $validated['service_id']);
             }
 
             return response()->json($staff);
@@ -166,14 +178,18 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'service_id' => 'required|uuid',
             'staff_id' => 'nullable|uuid',
-            'specialist_id' => 'nullable|uuid',
             'date' => 'required|date',
             'time' => 'required',
             'notes' => 'nullable|string',
             'offer_id' => 'nullable|uuid',
+            'location_id' => 'required|uuid|exists:locations,id',
+            'salon_id' => 'nullable|uuid',
+            'customer_phone' => 'nullable|string|regex:/^[0-9+\s\-\(\)]{7,20}$/',
+        ], [
+            'customer_phone.regex' => 'Please enter a valid phone number.',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $validated['location_id'];
         $customerId = $request->attributes->get('customer_id');
 
         try {
@@ -183,7 +199,7 @@ class CustomerBookingController extends Controller
             // The domain resolves staff_id via SpecialistAssignment when needed.
             $bookingData = array_merge($validated, [
                 'customer_id' => $customerId,
-                'salon_id' => $salonId,
+                'location_id' => $locationId,
                 // staff_id only used if explicitly provided (e.g. salon-direct booking)
                 'staff_id' => $validated['staff_id'] ?? null,
             ]);
@@ -204,7 +220,18 @@ class CustomerBookingController extends Controller
                 'message' => 'Booking created successfully',
                 'booking' => $booking,
             ], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Log::error('CustomerBookingController::store failed', [
+                'exception_class' => get_class($e),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'customer_id' => $request->attributes->get('customer_id'),
+                'location_id' => $request->input('location_id'),
+                'service_id' => $request->input('service_id'),
+                'date' => $request->input('date'),
+                'time' => $request->input('time'),
+            ]);
             return response()->json([
                 'message' => 'Failed to create booking',
                 'error' => $e->getMessage(),
@@ -221,13 +248,15 @@ class CustomerBookingController extends Controller
             'date' => 'required|date',
             'time' => 'required',
             'notes' => 'nullable|string',
+            'location_id' => 'required|uuid|exists:locations,id',
+            'salon_id' => 'nullable|uuid',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
 
         try {
             $newData = array_merge($validated, [
-                'salon_id' => $salonId,
+                'location_id' => $locationId,
             ]);
 
             $booking = $this->bookingService->rebookFromPrevious($previousBookingId, $newData);
@@ -250,7 +279,7 @@ class CustomerBookingController extends Controller
     public function cancel(string $bookingId): JsonResponse
     {
         try {
-            $booking = $this->bookingService->cancelBooking($bookingId);
+            $booking = $this->customerBookingService->cancelBooking($bookingId);
 
             return response()->json([
                 'message' => 'Booking cancelled successfully',

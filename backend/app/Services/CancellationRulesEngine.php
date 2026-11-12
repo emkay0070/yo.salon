@@ -16,9 +16,9 @@ class CancellationRulesEngine
     /**
      * Check if cancellation is allowed
      */
-    public function canCancel(string $serviceId, string $salonId, Carbon $bookingTime): array
+    public function canCancel(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingTime): array
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         $freeCancellationHours = $cancellationPolicy['free_cancellation_hours'] ?? 24;
 
         $now = Carbon::now();
@@ -52,9 +52,9 @@ class CancellationRulesEngine
     /**
      * Calculate cancellation fee
      */
-    public function calculateCancellationFee(string $serviceId, string $salonId, float $depositAmount, Carbon $bookingTime): array
+    public function calculateCancellationFee(string $serviceId, string $providerId, ?string $locationId = null, float $depositAmount, Carbon $bookingTime): array
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         $freeCancellationHours = $cancellationPolicy['free_cancellation_hours'] ?? 24;
         $lateFeeType = $cancellationPolicy['late_cancellation_fee'] ?? 'deposit';
         $lateFeeAmount = $cancellationPolicy['late_cancellation_amount'] ?? null;
@@ -102,17 +102,22 @@ class CancellationRulesEngine
     /**
      * Check if customer has no-show violations
      */
-    public function checkNoShowStatus(string $customerId, string $salonId): array
+    public function checkNoShowStatus(string $customerId, string $providerId, ?string $locationId = null): array
     {
-        $cancellationPolicy = $this->configService->getPolicy(null, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy(null, $providerId, $locationId, 'cancellation_policy');
         $noShowPolicy = $cancellationPolicy['no_show_policy'] ?? [];
 
-        // Count no-shows in the last 90 days
-        $noShowCount = \App\Models\Booking::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+        // Count no-shows in the last 90 days for this provider (and optionally location)
+        $noShowQuery = \App\Models\Booking::where('customer_id', $customerId)
+            ->where('provider_id', $providerId)
             ->where('status', 'no_show')
-            ->where('date', '>=', Carbon::now()->subDays(90))
-            ->count();
+            ->where('date', '>=', Carbon::now()->subDays(90));
+
+        if ($locationId) {
+            $noShowQuery->where('location_id', $locationId);
+        }
+
+        $noShowCount = $noShowQuery->count();
 
         $status = 'good';
         $restriction = null;
@@ -174,9 +179,9 @@ class CancellationRulesEngine
     /**
      * Get late arrival grace period in minutes
      */
-    public function getLateArrivalGracePeriod(string $serviceId, string $salonId): int
+    public function getLateArrivalGracePeriod(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         // Note: This would be in a separate late_arrival_policy, using cancellation for now
         return $cancellationPolicy['late_arrival_grace_minutes'] ?? 10;
     }
@@ -184,18 +189,18 @@ class CancellationRulesEngine
     /**
      * Get auto-cancel time after late arrival
      */
-    public function getAutoCancelAfterMinutes(string $serviceId, string $salonId): int
+    public function getAutoCancelAfterMinutes(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         return $cancellationPolicy['auto_cancel_after_minutes'] ?? 15;
     }
 
     /**
      * Check if rescheduling is allowed
      */
-    public function canReschedule(string $serviceId, string $salonId, Carbon $bookingTime): array
+    public function canReschedule(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingTime): array
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         $freeCancellationHours = $cancellationPolicy['free_cancellation_hours'] ?? 24;
 
         $now = Carbon::now();
@@ -227,9 +232,9 @@ class CancellationRulesEngine
     /**
      * Get cancellation policy summary for display
      */
-    public function getCancellationPolicySummary(string $serviceId, string $salonId): array
+    public function getCancellationPolicySummary(string $serviceId, string $providerId, ?string $locationId = null): array
     {
-        $cancellationPolicy = $this->configService->getPolicy($serviceId, $salonId, 'cancellation_policy');
+        $cancellationPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy');
         $freeCancellationHours = $cancellationPolicy['free_cancellation_hours'] ?? 24;
         $lateFeeType = $cancellationPolicy['late_cancellation_fee'] ?? 'deposit';
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Booking;
+use App\Models\Location;
 use App\Models\Staff;
 use Carbon\Carbon;
 
@@ -14,31 +15,45 @@ class PulseController extends Controller
     {
         $user = $request->user();
 
-        // Use salon_id injected by ResolveSalonContext middleware (via request attributes)
-        $salonId = $request->attributes->get('salon_id');
+        // Use provider_id + location_id injected by ResolvePortalContext middleware
+        $providerId = $request->attributes->get('provider_id');
+        $locationId  = $request->attributes->get('location_id');
 
-        // Fallback to query param (for direct testing), then to user's first salon
-        if (!$salonId) {
-            $salonId = $request->query('salon_id');
+        // Fallback to query params (for direct testing)
+        if (!$providerId) {
+            $providerId = $request->query('provider_id');
         }
 
-        if (!$salonId) {
-            $salon = $user->salons()->first();
-            if (!$salon) {
-                return response()->json(['error' => 'No salon associated with user'], 400);
+        if (!$providerId) {
+            $provider = $user->currentProvider();
+            if (!$provider) {
+                return response()->json(['error' => 'No provider associated with user'], 400);
             }
-            $salonId = $salon->id;
+            $providerId = $provider->id;
+        }
+
+        // Resolve locationId from primary location if not set
+        if (!$locationId) {
+            $locationId = \App\Models\Location::where('provider_id', $providerId)
+                ->where('is_primary', true)
+                ->value('id');
+        }
+
+        if (!$locationId) {
+            return response()->json(['error' => 'No location found for provider'], 404);
         }
 
         $today = Carbon::today();
         $currentTime = Carbon::now();
 
         // 1. Fetch Staff (Stations/Chairs)
-        $staffMembers = Staff::where('salon_id', $salonId)->get();
+        $staffMembers = Staff::where('provider_id', $providerId)
+            ->where('location_id', $locationId)
+            ->get();
 
         // 2. Fetch Today's Bookings
         $bookings = Booking::with(['customer', 'service', 'staff'])
-            ->where('salon_id', $salonId)
+            ->where('location_id', $locationId)
             ->whereDate('date', $today)
             ->orderBy('time', 'asc')
             ->get();

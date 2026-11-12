@@ -40,11 +40,51 @@ class OnboardingController extends Controller
     {
         $validated = $request->validate([
             'bio' => 'required|string|max:1000',
-            'specialties' => 'required|array',
             'years_experience' => 'required|integer|min:0',
+            'profession_ids' => 'nullable|array',
+            'profession_ids.*' => 'uuid|exists:professions,id',
+            'expertise_ids' => 'nullable|array',
+            'expertise_ids.*' => 'uuid|exists:craft_taxonomy,id',
+            // Keep specialties for fallback/legacy support if needed
+            'specialties' => 'nullable|array',
         ]);
 
-        $request->user()->specialist->update($validated);
+        $specialist = $request->user()->specialist;
+        
+        $specialist->update([
+            'bio' => $validated['bio'],
+            'years_experience' => $validated['years_experience'],
+            'specialties' => $validated['specialties'] ?? [],
+        ]);
+
+        if (isset($validated['profession_ids'])) {
+            // Treat the first profession as primary if we must, or just simple sync for now.
+            $syncData = [];
+            foreach ($validated['profession_ids'] as $index => $profId) {
+                $syncData[$profId] = ['is_primary' => $index === 0];
+            }
+            $specialist->professions()->sync($syncData);
+        }
+
+        if (isset($validated['expertise_ids'])) {
+            $specialist->expertise()->delete();
+            
+            $expertises = [];
+            foreach ($validated['expertise_ids'] as $expertiseId) {
+                $expertises[] = [
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'specialist_id' => $specialist->id,
+                    'craft_taxonomy_id' => $expertiseId,
+                    'name' => \App\Models\CraftTaxonomy::find($expertiseId)?->name ?? 'Expertise',
+                    'skill_level' => 'intermediate',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+            if (count($expertises) > 0) {
+                \App\Models\SpecialistExpertise::insert($expertises);
+            }
+        }
 
         return response()->json(['success' => true]);
     }
@@ -73,9 +113,17 @@ class OnboardingController extends Controller
         ]);
 
         $specialist = $request->user()->specialist;
+
+        \Log::info('Updating work preference', [
+            'specialist_id' => $specialist->id,
+            'work_preference' => $validated['work_preference'],
+            'specialist_email' => $specialist->email,
+        ]);
+
         $specialist->update($validated);
 
         if (in_array($validated['work_preference'], ['independent', 'both'])) {
+            \Log::info('Provisioning independent workspace', ['specialist_id' => $specialist->id]);
             $this->onboardingService->getWorkspaceProvisioner()->ensureIndependentWorkspace($specialist);
         }
 
@@ -104,6 +152,26 @@ class OnboardingController extends Controller
             return response()->json($result, 422);
         }
 
-        return response()->json($result);
+        $specialist = $request->user()->specialist;
+
+        // Check if specialist already has an assignment (from invitation)
+        $assignment = $specialist->assignments()->where('is_primary', true)->first();
+
+        if (!$assignment) {
+            // No assignment = independent specialist, provision their workspace
+            $this->onboardingService->getWorkspaceProvisioner()->ensureIndependentWorkspace($specialist);
+            $assignment = $specialist->assignments()->where('is_primary', true)->first();
+        }
+
+        // Return workspace info for redirect
+        $workspace = $assignment ? [
+            'provider_slug' => $assignment->provider->slug,
+            'provider_id' => $assignment->provider_id,
+        ] : null;
+
+        return response()->json([
+            'success' => true,
+            'workspace' => $workspace,
+        ]);
     }
 }

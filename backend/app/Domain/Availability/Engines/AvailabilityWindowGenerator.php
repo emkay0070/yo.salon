@@ -5,8 +5,11 @@ namespace App\Domain\Availability\Engines;
 use App\Domain\Availability\DTOs\AvailabilityContext;
 use App\Domain\Availability\DTOs\WindowDTO;
 use App\Domain\Availability\Constraints\ResolvedScheduleConstraint;
+use App\Domain\Availability\Constraints\ScheduleExceptionConstraint;
 use App\Domain\Availability\Constraints\BookingConflictConstraint;
 use App\Domain\Availability\Constraints\TimeOffConstraint;
+use App\Domain\Availability\Constraints\ResourceAvailabilityConstraint;
+use App\Services\ResourceAvailabilityService;
 use Illuminate\Support\Collection;
 
 /**
@@ -27,8 +30,9 @@ final class AvailabilityWindowGenerator
 {
     private ConstraintPipeline $pipeline;
 
-    public function __construct()
-    {
+    public function __construct(
+        private ResourceAvailabilityService $resourceService
+    ) {
         // Register the constraint pipeline in priority order.
         // Each constraint is pluggable — future constraints like
         // EquipmentConstraint or RoomConstraint just register here.
@@ -36,7 +40,8 @@ final class AvailabilityWindowGenerator
             ->register(new ResolvedScheduleConstraint())
             ->register(new ScheduleExceptionConstraint())
             ->register(new TimeOffConstraint())
-            ->register(new BookingConflictConstraint());
+            ->register(new BookingConflictConstraint())
+            ->register(new ResourceAvailabilityConstraint($resourceService));
     }
 
     /**

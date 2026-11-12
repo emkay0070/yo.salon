@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use App\Services\CapabilityService;
-use App\Models\Salon;
+use App\Models\Provider;
 
 class FeatureFlagMiddleware
 {
@@ -18,7 +18,7 @@ class FeatureFlagMiddleware
 
     /**
      * Handle an incoming request.
-     * Checks if the specified feature is enabled for the salon.
+     * Checks if the specified feature is enabled for the provider.
      * Returns 403 if feature not enabled.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -28,24 +28,24 @@ class FeatureFlagMiddleware
      */
     public function handle(Request $request, Closure $next, string $feature)
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
 
-        if (!$salonId) {
+        if (!$providerId) {
             return response()->json([
-                'message' => 'Salon context not found',
+                'message' => 'Provider context not found',
             ], 400);
         }
 
-        $salon = Salon::find($salonId);
-        if (!$salon) {
+        $provider = Provider::find($providerId);
+        if (!$provider) {
             return response()->json([
-                'message' => 'Salon not found',
+                'message' => 'Provider not found',
             ], 404);
         }
 
-        if (!$this->capabilityService->allows($salon, $feature)) {
+        if (!$this->capabilityService->allows($provider, $feature)) {
             return response()->json([
-                'message' => "Feature '{$feature}' is not enabled for this salon",
+                'message' => "Feature '{$feature}' is not enabled for this provider",
                 'feature' => $feature,
             ], 403);
         }

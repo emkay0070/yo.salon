@@ -6,29 +6,25 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use App\Models\Traits\BelongsToSalon;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Staff extends Model
 {
-    use HasUuids, BelongsToSalon;
+    use HasFactory, HasUuids;
     
     protected $fillable = [
-        'salon_id',
+        'provider_id',
+        'location_id',
         'user_id',
         'name',
         'phone',
         'email',
-        'specializations',
-        'availability',
         'photo',
         'active',
-        'role',
         'commission_rate',
     ];
 
     protected $casts = [
-        'specializations' => 'array',
-        'availability' => 'array',
         'active' => 'boolean',
     ];
 
@@ -40,6 +36,16 @@ class Staff extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function provider(): BelongsTo
+    {
+        return $this->belongsTo(Provider::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function media(): BelongsTo

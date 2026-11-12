@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Specialist;
+use App\Models\Invitation;
+use App\Models\SpecialistAssignment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -11,7 +13,7 @@ class SpecialistDiscoveryController extends Controller
 {
     /**
      * Search for specialists available for hire
-     * This is for salons to discover talent
+     * This is for providers to discover talent
      */
     public function search(Request $request): JsonResponse
     {
@@ -72,7 +74,7 @@ class SpecialistDiscoveryController extends Controller
 
         // Filter by location (would need geolocation integration)
         if (!empty($validated['location'])) {
-            $query->whereHas('salons', function ($q) use ($validated) {
+            $query->whereHas('assignments.location', function ($q) use ($validated) {
                 $q->where('address', 'ilike', "%{$validated['location']}%");
             });
         }
@@ -108,9 +110,8 @@ class SpecialistDiscoveryController extends Controller
             'reviews' => function ($q) {
                 $q->latest()->limit(5);
             },
-            'salons' => function ($q) {
-                $q->wherePivot('active', true);
-            },
+            'assignments.provider',
+            'assignments.location',
         ])
         ->withCount(['customerRelationships as follower_count' => function ($q) {
             $q->where('is_following', true);
@@ -122,12 +123,11 @@ class SpecialistDiscoveryController extends Controller
         ->findOrFail($specialistId);
 
         // Calculate employment status
-        $currentEmployments = $specialist->salons->where('pivot.active', true);
+        $currentEmployments = $specialist->assignments()->where('status', 'active')->get();
         $hasCurrentEmployment = $currentEmployments->isNotEmpty();
-        $isAvailableForHire = !$hasCurrentEmployment || 
-                              $currentEmployments->contains(function ($salon) {
-                                  return $salon->pivot->employment_type === 'freelance' || 
-                                         $salon->pivot->employment_type === 'contract';
+        $isAvailableForHire = !$hasCurrentEmployment ||
+                              $currentEmployments->contains(function ($assignment) {
+                                  return in_array($assignment->employment_type, ['freelance', 'contract']);
                               });
 
         return response()->json([
@@ -153,14 +153,17 @@ class SpecialistDiscoveryController extends Controller
             ],
             'employment' => [
                 'is_available_for_hire' => $isAvailableForHire,
-                'current_salons' => $currentEmployments->map(function ($salon) {
+                'current_assignments' => $currentEmployments->map(function ($assignment) {
                     return [
-                        'id' => $salon->id,
-                        'name' => $salon->name,
-                        'role' => $salon->pivot->roles,
-                        'employment_type' => $salon->pivot->employment_type,
-                        'is_primary' => $salon->pivot->is_primary_salon,
-                        'hired_at' => $salon->pivot->hired_at,
+                        'id' => $assignment->id,
+                        'provider_id' => $assignment->provider_id,
+                        'provider_name' => $assignment->provider?->display_name,
+                        'location_id' => $assignment->location_id,
+                        'location_name' => $assignment->location?->name,
+                        'role' => $assignment->role,
+                        'employment_type' => $assignment->employment_type,
+                        'is_primary' => $assignment->is_primary,
+                        'started_at' => $assignment->starts_at,
                     ];
                 }),
             ],
@@ -186,15 +189,15 @@ class SpecialistDiscoveryController extends Controller
         ]);
 
         // Specialists who are either:
-        // 1. Not currently employed at any salon
+        // 1. Not currently employed at any provider
         // 2. Currently employed but as freelance/contract (open to additional work)
         $query = Specialist::where('is_active', true)
             ->where(function ($q) {
-                $q->whereDoesntHave('salons', function ($sq) {
-                    $sq->where('active', true);
+                $q->whereDoesntHave('assignments', function ($sq) {
+                    $sq->where('status', 'active');
                 })
-                ->orWhereHas('salons', function ($sq) {
-                    $sq->where('active', true)
+                ->orWhereHas('assignments', function ($sq) {
+                    $sq->where('status', 'active')
                        ->whereIn('employment_type', ['freelance', 'contract']);
                 });
             })
@@ -226,7 +229,7 @@ class SpecialistDiscoveryController extends Controller
     public function invite(Request $request, string $specialistId): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'provider_id' => 'required|uuid|exists:providers,id',
             'roles' => 'required|array',
             'roles.*' => 'in:stylist,barber,colorist,nail_artist,makeup_artist,receptionist,manager',
             'employment_type' => 'required|in:full_time,part_time,contract,freelance',
@@ -235,38 +238,54 @@ class SpecialistDiscoveryController extends Controller
             'message' => 'nullable|string',
         ]);
 
-        // Check if salon already has this specialist
-        $existing = \DB::table('salon_specialist')
-            ->where('specialist_id', $specialistId)
-            ->where('salon_id', $validated['salon_id'])
-            ->where('active', true)
+        // Check if provider already has this specialist
+        $existing = SpecialistAssignment::where('specialist_id', $specialistId)
+            ->where('provider_id', $validated['provider_id'])
+            ->where('status', 'ACTIVE')
             ->first();
 
         if ($existing) {
             return response()->json([
-                'message' => 'Specialist is already employed at this salon',
+                'message' => 'Specialist is already employed at this provider',
             ], 400);
         }
 
-        // Create invitation record (you may have a separate invitations table)
-        // For now, we'll create a pending salon_specialist record
-        \DB::table('salon_specialist')->insert([
-            'specialist_id' => $specialistId,
-            'salon_id' => $validated['salon_id'],
-            'roles' => json_encode($validated['roles']),
-            'employment_type' => $validated['employment_type'],
-            'commission_rate' => $validated['commission_rate'],
-            'hourly_rate' => $validated['hourly_rate'],
-            'hiring_status' => 'pending',
-            'hiring_notes' => $validated['message'] ?? null,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Check if there's already a pending invitation
+        $pendingInvitation = Invitation::where('provider_id', $validated['provider_id'])
+            ->where('target_id', $specialistId)
+            ->where('role', 'specialist')
+            ->where('status', 'pending')
+            ->first();
 
-        // TODO: Send notification to specialist
+        if ($pendingInvitation) {
+            return response()->json([
+                'message' => 'Invitation already pending for this specialist',
+            ], 400);
+        }
+
+        // Create invitation using existing Invitation model
+        $specialist = Specialist::findOrFail($specialistId);
+        
+        $issueData = Invitation::issue([
+            'provider_id' => $validated['provider_id'],
+            'role' => 'specialist',
+            'email' => $specialist->email,
+            'target_id' => $specialistId,
+            'status' => 'pending',
+        ], now()->addDays(7));
+
+        $invitation = $issueData['invitation'];
+        $rawToken = $issueData['rawToken'];
+        
+        // TODO: Send notification to specialist with invitation link
+        // Assignment details (roles, employment_type, rates) will be set when accepting
+        // or through a separate admin interface
+        $joinUrl = $invitation->publicJoinUrl($rawToken);
 
         return response()->json([
             'message' => 'Invitation sent successfully',
+            'invitation_id' => $invitation->id,
+            'join_url' => $joinUrl,
         ], 201);
     }
 
@@ -284,23 +303,28 @@ class SpecialistDiscoveryController extends Controller
             ], 400);
         }
 
-        $invitations = \DB::table('salon_specialist')
-            ->where('specialist_id', $specialistId)
-            ->where('hiring_status', 'pending')
-            ->join('salons', 'salon_specialist.salon_id', '=', 'salons.id')
-            ->select(
-                'salons.id',
-                'salons.name',
-                'salons.logo',
-                'salons.address',
-                'salon_specialist.roles',
-                'salon_specialist.employment_type',
-                'salon_specialist.commission_rate',
-                'salon_specialist.hourly_rate',
-                'salon_specialist.hiring_notes',
-                'salon_specialist.created_at as invited_at'
-            )
-            ->get();
+        $invitations = Invitation::where('target_id', $specialistId)
+            ->where('role', 'specialist')
+            ->where('status', 'pending')
+            ->with('provider')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($invitation) {
+                $metadata = $invitation->metadata ?? [];
+                return [
+                    'id' => $invitation->id,
+                    'provider_id' => $invitation->provider_id,
+                    'provider_name' => $invitation->provider?->display_name,
+                    'provider_logo' => $invitation->provider?->logo,
+                    'role' => $metadata['roles'][0] ?? null,
+                    'employment_type' => $metadata['employment_type'] ?? null,
+                    'commission_rate' => $metadata['commission_rate'] ?? null,
+                    'hourly_rate' => $metadata['hourly_rate'] ?? null,
+                    'message' => $metadata['message'] ?? null,
+                    'invited_at' => $invitation->created_at,
+                    'expires_at' => $invitation->expires_at,
+                ];
+            });
 
         return response()->json([
             'invitations' => $invitations,
@@ -309,18 +333,21 @@ class SpecialistDiscoveryController extends Controller
 
     /**
      * Respond to hiring invitation
+     * This is a simplified response endpoint - the actual acceptance flow
+     * should go through InvitationController::accept() which handles
+     * SpecialistAssignment creation properly
      */
-    public function respondToInvitation(Request $request, string $salonId): JsonResponse
+    public function respondToInvitation(Request $request, string $invitationId): JsonResponse
     {
         $validated = $request->validate([
             'action' => 'required|in:accept,decline',
             'specialist_id' => 'required|uuid',
         ]);
 
-        $invitation = \DB::table('salon_specialist')
-            ->where('specialist_id', $validated['specialist_id'])
-            ->where('salon_id', $salonId)
-            ->where('hiring_status', 'pending')
+        $invitation = Invitation::where('id', $invitationId)
+            ->where('target_id', $validated['specialist_id'])
+            ->where('role', 'specialist')
+            ->where('status', 'pending')
             ->first();
 
         if (!$invitation) {
@@ -330,24 +357,38 @@ class SpecialistDiscoveryController extends Controller
         }
 
         if ($validated['action'] === 'accept') {
-            \DB::table('salon_specialist')
-                ->where('specialist_id', $validated['specialist_id'])
-                ->where('salon_id', $salonId)
-                ->update([
-                    'hiring_status' => 'active',
-                    'hired_at' => now(),
-                    'active' => true,
-                    'updated_at' => now(),
-                ]);
+            // Mark invitation as accepted
+            $invitation->update([
+                'status' => 'accepted',
+                'accepted_at' => now(),
+            ]);
+
+            // Create SpecialistAssignment with default values
+            // Assignment details can be updated later through admin interface
+            $provider = \App\Models\Provider::find($invitation->provider_id);
+            
+            SpecialistAssignment::firstOrCreate(
+                [
+                    'specialist_id' => $validated['specialist_id'],
+                    'provider_id' => $invitation->provider_id,
+                    'location_id' => $provider?->primary_location_id,
+                ],
+                [
+                    'role' => 'SPECIALIST',
+                    'employment_type' => 'EMPLOYEE',
+                    'status' => 'ACTIVE',
+                    'starts_at' => now(),
+                ]
+            );
 
             return response()->json([
                 'message' => 'Invitation accepted',
             ]);
         } else {
-            \DB::table('salon_specialist')
-                ->where('specialist_id', $validated['specialist_id'])
-                ->where('salon_id', $salonId)
-                ->delete();
+            // Decline - mark invitation as expired
+            $invitation->update([
+                'status' => 'expired',
+            ]);
 
             return response()->json([
                 'message' => 'Invitation declined',

@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('payment_accounts', function (Blueprint $table) {
             $table->id();
-            $table->uuid('salon_id')->nullable();
+            $table->uuid('provider_id')->nullable();
             $table->uuid('specialist_id')->nullable();
             $table->string('provider'); // flutterwave, stripe, manual
             $table->string('account_type'); // merchant, subaccount, routing, manual
@@ -28,10 +28,10 @@ return new class extends Migration
             $table->boolean('is_default')->default(false);
             $table->timestamps();
 
-            $table->foreign('salon_id')->references('id')->on('salons')->onDelete('cascade');
+            $table->foreign('provider_id')->references('id')->on('providers')->onDelete('cascade');
             $table->foreign('specialist_id')->references('id')->on('specialists')->onDelete('cascade');
             
-            $table->index('salon_id');
+            $table->index('provider_id');
             $table->index('specialist_id');
             $table->index('provider');
             $table->index('account_type');

@@ -24,8 +24,20 @@ class Payout extends Model
 {
     use HasUuids;
 
+    const STATUS_PENDING = 'pending';
+    const STATUS_QUEUED = 'queued';
+    const STATUS_PROCESSING = 'processing';
+    const STATUS_COMPLETED = 'completed';
+    const STATUS_FAILED = 'failed';
+    const STATUS_FAILED_FINAL = 'failed_final';
+    const STATUS_AMBIGUOUS = 'ambiguous';
+    const STATUS_CANCELLED = 'cancelled';
+
+    const MAX_RETRY_ATTEMPTS = 3;
+
     protected $fillable = [
         'idempotency_key',
+        'disbursement_idempotency_key',
         'settlement_id',
         'recipient_type',
         'recipient_id',
@@ -34,6 +46,9 @@ class Payout extends Model
         'method',
         'execution_mode',
         'status',
+        'attempt_count',
+        'last_error_at',
+        'last_error_message',
         'reference',
         'provider',
         'provider_reference',
@@ -47,8 +62,10 @@ class Payout extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'attempt_count' => 'integer',
         'initiated_at' => 'datetime',
         'completed_at' => 'datetime',
+        'last_error_at' => 'datetime',
         'metadata' => 'array',
     ];
 
@@ -108,21 +125,99 @@ class Payout extends Model
     }
 
     /**
-     * Mark payout as failed
+     * Mark payout as failed (recoverable — eligible for retry).
      */
     public function markAsFailed(string $reason): void
     {
-        if ($this->status === 'completed') {
-            return; // terminal state, safe no-op
+        if ($this->status === self::STATUS_COMPLETED) {
+            return;
         }
 
         $this->update([
-            'status' => 'failed',
+            'status' => self::STATUS_FAILED,
             'failure_reason' => $reason,
+            'last_error_at' => now(),
+            'last_error_message' => $reason,
             'metadata' => array_merge($this->metadata ?? [], [
                 'failed_at' => now(),
             ]),
         ]);
+    }
+
+    /**
+     * Mark payout as failed_final (non-recoverable — never retry).
+     */
+    public function markAsFailedFinal(string $reason): void
+    {
+        if ($this->status === self::STATUS_COMPLETED) {
+            return;
+        }
+
+        $this->update([
+            'status' => self::STATUS_FAILED_FINAL,
+            'failure_reason' => $reason,
+            'last_error_at' => now(),
+            'last_error_message' => $reason,
+        ]);
+    }
+
+    /**
+     * Mark payout as ambiguous (provider outcome unknown — block auto-retry).
+     * Reconciliation job must query provider status via disbursement_idempotency_key.
+     */
+    public function markAsAmbiguous(string $reason, ?string $disbursementIdempotencyKey = null): void
+    {
+        if ($this->status === self::STATUS_COMPLETED) {
+            return;
+        }
+
+        $this->update([
+            'status' => self::STATUS_AMBIGUOUS,
+            'disbursement_idempotency_key' => $disbursementIdempotencyKey ?? $this->disbursement_idempotency_key,
+            'last_error_at' => now(),
+            'last_error_message' => $reason,
+            'metadata' => array_merge($this->metadata ?? [], [
+                'ambiguous_at' => now(),
+                'ambiguous_reason' => $reason,
+            ]),
+        ]);
+    }
+
+    /**
+     * Atomically flip status from a known source set to a target.
+     * Returns true if this process won the race and actually flipped.
+     *
+     * @param  string[]  $fromStatuses
+     */
+    public function transitionIfStatusIn(array $fromStatuses, string $toStatus, array $additionalUpdates = []): bool
+    {
+        $affected = self::where('id', $this->id)
+            ->whereIn('status', $fromStatuses)
+            ->update(array_merge($additionalUpdates, [
+                'status' => $toStatus,
+            ]));
+
+        if ($affected > 0) {
+            $this->refresh();
+            return true;
+        }
+
+        $this->refresh();
+        return false;
+    }
+
+    /**
+     * True if the payout is in a terminal state and no further state changes should occur
+     * without reconciliation intervention.
+     */
+    public function isTerminalForAutoExecute(): bool
+    {
+        return in_array($this->status, [
+            self::STATUS_COMPLETED,
+            self::STATUS_FAILED_FINAL,
+            self::STATUS_AMBIGUOUS,
+            self::STATUS_CANCELLED,
+        ], true);
     }
 
     /**

@@ -60,7 +60,7 @@ class ProcessPaymentInFinanceDomain
             $transaction = $event->transaction;
 
             $transactionId = $transaction->id ?? '';
-            $salonId       = $event->salonId ?? $booking->salon_id;
+            $providerId    = $event->providerId ?? $transaction->provider_id;
             $amount        = $event->amount ?? $transaction->gross_amount;
 
             // ── 1. Notify Finance Domain that a payment was captured ────────
@@ -68,7 +68,7 @@ class ProcessPaymentInFinanceDomain
             Event::dispatch(new PaymentCaptured(
                 transactionId: $transactionId,
                 bookingId:     $booking->id,
-                salonId:       $salonId,
+                providerId:    $providerId,
                 amount:        $amount,
                 currency:      'UGX',
                 metadata: [
@@ -82,7 +82,7 @@ class ProcessPaymentInFinanceDomain
             // Distribution is idempotent; firing twice is safe.
             Event::dispatch(new RevenueDistributionRequested(
                 bookingId:     $booking->id,
-                salonId:       $salonId,
+                providerId:    $providerId,
                 amount:        $amount,
                 currency:      'UGX',
                 transactionId: $transactionId,

@@ -5,7 +5,7 @@ namespace Tests\Unit\Finance;
 use Tests\TestCase;
 use App\Domain\Finance\Journal\JournalEntry;
 use App\Domain\Finance\Ledger\LedgerAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -15,18 +15,18 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_entry_must_balance()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account1 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 0,
         ]);
 
         $account2 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'receivable',
             'currency' => 'UGX',
             'balance' => 0,
@@ -58,18 +58,18 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_entry_creates_ledger_entries()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account1 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 0,
         ]);
 
         $account2 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'receivable',
             'currency' => 'UGX',
             'balance' => 0,
@@ -118,18 +118,18 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_entry_updates_account_balances()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account1 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,
         ]);
 
         $account2 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'receivable',
             'currency' => 'UGX',
             'balance' => 500,
@@ -179,18 +179,18 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_void_creates_reversing_entries()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account1 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,
         ]);
 
         $account2 = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'receivable',
             'currency' => 'UGX',
             'balance' => 500,
@@ -237,10 +237,10 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_entry_is_immutable()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 0,
@@ -274,10 +274,10 @@ class JournalEntryTest extends TestCase
 
     public function test_journal_entry_status_change_allowed()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 0,

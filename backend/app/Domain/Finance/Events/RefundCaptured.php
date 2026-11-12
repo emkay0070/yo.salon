@@ -21,7 +21,7 @@ class RefundCaptured
         public readonly string $transactionId,
         public readonly string $originalTransactionId,
         public readonly string $bookingId,
-        public readonly string $salonId,
+        public readonly string $providerId,
         public readonly float $amount,
         public readonly string $currency,
         public readonly array $metadata = []

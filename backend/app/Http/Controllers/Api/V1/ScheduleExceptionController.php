@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ScheduleException;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,25 +15,25 @@ use Illuminate\Support\Facades\Log;
  *
  * Manages exceptions to the recurring weekly schedule at three hierarchy levels:
  *   provider   → applies to every branch of the signed-in owner's business
- *   salon      → applies to a specific branch
+ *   location   → applies to a specific branch
  *   assignment → applies to a specific specialist at a specific branch
  *
  * Example types: HOLIDAY, VACATION, TRAINING, CLOSURE, POWER_OUTAGE, EVENT, OTHER
  */
 class ScheduleExceptionController extends Controller
 {
-    public function index(Request $request, string $salonId): JsonResponse
+    public function index(Request $request, string $providerId): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-        if (!$salon || $salon->id !== $salonId) {
+        $provider = $request->attributes->get('salon');
+        if (!$provider || $provider->id !== $providerId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $scope = $request->query('scope', 'salon'); // 'provider' | 'salon' | 'assignment'
+        $scope = $request->query('scope', 'location'); // 'provider' | 'location' | 'assignment'
         $assignmentId = $request->query('assignment_id');
 
         if ($scope === 'provider') {
-            $exceptions = ScheduleException::forProvider($salon->provider_id)
+            $exceptions = ScheduleException::forProvider($provider->provider_id)
                 ->orderByDesc('start_date')
                 ->paginate(50);
         } elseif ($scope === 'assignment' && $assignmentId) {
@@ -42,8 +42,8 @@ class ScheduleExceptionController extends Controller
                 ->orderByDesc('start_date')
                 ->paginate(50);
         } else {
-            $exceptions = ScheduleException::forSalon($salonId)
-                ->where('scope_level', 'salon')
+            $exceptions = ScheduleException::forLocation($providerId)
+                ->where('scope_level', 'location')
                 ->orderByDesc('start_date')
                 ->paginate(50);
         }
@@ -54,15 +54,15 @@ class ScheduleExceptionController extends Controller
         ]]);
     }
 
-    public function store(Request $request, string $salonId): JsonResponse
+    public function store(Request $request, string $providerId): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-        if (!$salon || $salon->id !== $salonId) {
+        $provider = $request->attributes->get('salon');
+        if (!$provider || $provider->id !== $providerId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $validated = $request->validate([
-            'scope_level'   => 'required|string|in:provider,salon,assignment',
+            'scope_level'   => 'required|string|in:provider,location,assignment',
             'assignment_id' => 'nullable|string',
             'start_date'    => 'required|date',
             'end_date'      => 'nullable|date|after_or_equal:start_date',
@@ -121,8 +121,8 @@ class ScheduleExceptionController extends Controller
 
             $exception = ScheduleException::create([
                 'scope_level'       => $validated['scope_level'],
-                'provider_id'       => $salon->provider_id,
-                'salon_id'          => $validated['scope_level'] === 'salon' ? $salonId : null,
+                'provider_id'       => $provider->provider_id,
+                'location_id'       => $validated['scope_level'] === 'location' ? $providerId : null,
                 'assignment_id'     => $validated['scope_level'] === 'assignment' ? ($validated['assignment_id'] ?? null) : null,
                 'start_date'        => $validated['start_date'],
                 'end_date'          => $validated['end_date'] ?? null,
@@ -154,10 +154,10 @@ class ScheduleExceptionController extends Controller
         }
     }
 
-    public function update(Request $request, string $salonId, string $id): JsonResponse
+    public function update(Request $request, string $providerId, string $id): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-        if (!$salon || $salon->id !== $salonId) {
+        $provider = $request->attributes->get('salon');
+        if (!$provider || $provider->id !== $providerId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -167,11 +167,11 @@ class ScheduleExceptionController extends Controller
         }
 
         $allowedToEdit =
-            $exception->provider_id === $salon->provider_id &&
+            $exception->provider_id === $provider->provider_id &&
             (
                 $exception->scope_level === 'provider' ||
-                $exception->salon_id === $salonId ||
-                ($exception->assignment_id && $exception->assignment?->salon_id === $salonId)
+                $exception->location_id === $providerId ||
+                ($exception->assignment_id && $exception->assignment?->location_id === $providerId)
             );
 
         if (!$allowedToEdit) {
@@ -220,10 +220,10 @@ class ScheduleExceptionController extends Controller
         }
     }
 
-    public function destroy(Request $request, string $salonId, string $id): JsonResponse
+    public function destroy(Request $request, string $providerId, string $id): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-        if (!$salon || $salon->id !== $salonId) {
+        $provider = $request->attributes->get('salon');
+        if (!$provider || $provider->id !== $providerId) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -233,11 +233,11 @@ class ScheduleExceptionController extends Controller
         }
 
         $allowedToEdit =
-            $exception->provider_id === $salon->provider_id &&
+            $exception->provider_id === $provider->provider_id &&
             (
                 $exception->scope_level === 'provider' ||
-                $exception->salon_id === $salonId ||
-                ($exception->assignment_id && optional($exception->assignment)->salon_id === $salonId)
+                $exception->location_id === $providerId ||
+                ($exception->assignment_id && optional($exception->assignment)->location_id === $providerId)
             );
 
         if (!$allowedToEdit) {

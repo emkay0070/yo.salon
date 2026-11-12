@@ -39,8 +39,8 @@ export default function SpecialistDetailsDrawer({ isOpen, onClose, specialist }:
   const handleBook = () => {
     const params = new URLSearchParams();
     params.set('specialist_id', specialist.id);
-    if (specialist.provider) {
-      params.set('provider_id', specialist.provider.id);
+    if (specialist.provider?.slug) {
+      params.set('provider_slug', specialist.provider.slug);
     }
     router.push(`/book?${params.toString()}`);
     onClose();
@@ -53,7 +53,7 @@ export default function SpecialistDetailsDrawer({ isOpen, onClose, specialist }:
 
   const handleViewSalon = () => {
     if (specialist.provider?.slug) {
-      router.push(`/salons/${specialist.provider.slug}`);
+      router.push(`/${specialist.provider.slug}`);
       onClose();
     }
   };
@@ -65,8 +65,8 @@ export default function SpecialistDetailsDrawer({ isOpen, onClose, specialist }:
 
   return (
     <SideDrawer isOpen={isOpen} onClose={onClose} title="Specialist Details" position="right" width="wide">
-      <div className="space-y-6">
-        {/* Specialist Photo */}
+      <div className="space-y-6 p-6">
+        {/* Header/Profile */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

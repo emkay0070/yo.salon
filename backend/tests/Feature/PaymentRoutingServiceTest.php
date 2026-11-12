@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\PaymentMethod;
 use App\Models\PaymentAccount;
 use App\Services\Payments\PaymentRoutingService;
@@ -14,20 +14,20 @@ class PaymentRoutingServiceTest extends TestCase
     use RefreshDatabase;
 
     private PaymentRoutingService $routingService;
-    private Salon $salon;
+    private Provider $provider;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->routingService = app(PaymentRoutingService::class);
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
     }
 
     public function test_routing_matrix_payment_method_explicit_account_takes_priority()
     {
         // Create MTN payment method with explicit MTN account
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => false,
@@ -36,7 +36,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -45,7 +45,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => $mtnAccount->id,
         ]);
@@ -61,7 +61,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create MTN payment method without explicit account
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -70,7 +70,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -79,7 +79,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => null,
         ]);
@@ -95,7 +95,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create MTN payment method without explicit account, no MTN default
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -104,7 +104,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => null,
         ]);
@@ -120,7 +120,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Cash payment method with no accounts
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'cash',
             'type' => 'cash',
             'payment_account_id' => null,
@@ -135,7 +135,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create two Flutterwave accounts
         $flutterwaveA = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => false,
@@ -144,7 +144,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveB = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -153,7 +153,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'type' => 'card',
             'payment_account_id' => $flutterwaveA->id,
@@ -169,7 +169,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create Flutterwave default account
         $flutterwaveB = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -178,7 +178,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'type' => 'card',
             'payment_account_id' => null,
@@ -194,7 +194,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create suspended MTN account and active Flutterwave account
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -203,7 +203,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -212,7 +212,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => $mtnAccount->id,
         ]);
@@ -228,7 +228,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create unverified MTN account and verified Flutterwave account
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -237,7 +237,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -246,7 +246,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => $mtnAccount->id,
         ]);
@@ -262,7 +262,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // Create only suspended/unverified accounts
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -271,7 +271,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => null,
         ]);
@@ -286,7 +286,7 @@ class PaymentRoutingServiceTest extends TestCase
     {
         // PaymentMethod is MTN but explicit account is Flutterwave
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => false,
@@ -295,7 +295,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -304,7 +304,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'payment_account_id' => $flutterwaveAccount->id, // Wrong provider
         ]);
@@ -320,7 +320,7 @@ class PaymentRoutingServiceTest extends TestCase
     public function test_manual_payment_uses_default_account()
     {
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -328,7 +328,7 @@ class PaymentRoutingServiceTest extends TestCase
             'verification_status' => 'verified',
         ]);
 
-        $result = $this->routingService->determineAccountForManualPayment($this->salon);
+        $result = $this->routingService->determineAccountForManualPayment($this->provider);
 
         $this->assertNotNull($result);
         $this->assertEquals($flutterwaveAccount->id, $result->id);
@@ -337,7 +337,7 @@ class PaymentRoutingServiceTest extends TestCase
     public function test_manual_payment_with_provider_hint_uses_provider_default()
     {
         $mtnAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -346,7 +346,7 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -354,7 +354,7 @@ class PaymentRoutingServiceTest extends TestCase
             'verification_status' => 'verified',
         ]);
 
-        $result = $this->routingService->determineAccountForManualPayment($this->salon, 'mtn');
+        $result = $this->routingService->determineAccountForManualPayment($this->provider, 'mtn');
 
         $this->assertNotNull($result);
         $this->assertEquals($mtnAccount->id, $result->id);
@@ -364,27 +364,27 @@ class PaymentRoutingServiceTest extends TestCase
     public function test_get_available_accounts_returns_only_active_verified()
     {
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'is_active' => true,
             'verification_status' => 'verified',
         ]);
 
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'is_active' => false, // Suspended
             'verification_status' => 'verified',
         ]);
 
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'airtel',
             'is_active' => true,
             'verification_status' => 'pending', // Unverified
         ]);
 
-        $accounts = $this->routingService->getAvailableAccounts($this->salon);
+        $accounts = $this->routingService->getAvailableAccounts($this->provider);
 
         $this->assertCount(1, $accounts);
         $this->assertEquals('mtn', $accounts->first()->provider);
@@ -393,7 +393,7 @@ class PaymentRoutingServiceTest extends TestCase
     public function test_get_default_account_returns_salon_default()
     {
         $flutterwaveAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'is_default' => true,
             'is_active' => true,
@@ -401,14 +401,14 @@ class PaymentRoutingServiceTest extends TestCase
         ]);
 
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn',
             'is_default' => false,
             'is_active' => true,
             'verification_status' => 'verified',
         ]);
 
-        $result = $this->routingService->getDefaultAccount($this->salon);
+        $result = $this->routingService->getDefaultAccount($this->provider);
 
         $this->assertNotNull($result);
         $this->assertEquals($flutterwaveAccount->id, $result->id);

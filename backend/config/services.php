@@ -36,6 +36,8 @@ return [
     ],
 
     'flutterwave' => [
+        'client_id' => env('FLUTTERWAVE_CLIENT_ID'),
+        'client_secret' => env('FLUTTERWAVE_CLIENT_SECRET'),
         'public_key' => env('FLUTTERWAVE_PUBLIC_KEY'),
         'secret_key' => env('FLUTTERWAVE_SECRET_KEY'),
         'encryption_key' => env('FLUTTERWAVE_ENCRYPTION_KEY'),

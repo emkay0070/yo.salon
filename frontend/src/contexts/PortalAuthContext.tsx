@@ -51,7 +51,7 @@ interface PortalAuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
-  switchSalon: (salonId: string) => Promise<void>;
+  switchProvider: (providerId: string) => Promise<void>;
 }
 
 const PortalAuthContext = createContext<PortalAuthContextType | undefined>(undefined);
@@ -109,6 +109,9 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
         const status = error?.response?.status;
         if (status === 401) {
           localStorage.removeItem('portal_auth_token');
+          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/portal/login')) {
+            window.location.href = '/portal/login';
+          }
         }
       }
     }
@@ -134,12 +137,12 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
     setCapabilities({});
   };
 
-  const switchSalon = async (salonId: string) => {
+  const switchProvider = async (providerId: string) => {
     setIsSwitching(true);
     try {
-      // Update the stored salon ID so subsequent requests use it
-      portalApiClient.setActiveSalonId(salonId);
-      // Re-fetch context with new salon
+      // Update the stored provider ID so subsequent requests use it
+      portalApiClient.setActiveProviderId(providerId);
+      // Re-fetch context with new provider
       const data = await portalApiClient.get('/portal/context');
       hydrateFromContext(data);
     } catch (error) {
@@ -163,7 +166,7 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refresh,
-        switchSalon,
+        switchProvider,
       }}
     >
       {children}

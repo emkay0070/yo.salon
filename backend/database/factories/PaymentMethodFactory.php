@@ -12,7 +12,7 @@ class PaymentMethodFactory extends Factory
     public function definition(): array
     {
         return [
-            'salon_id' => $this->faker->uuid(),
+            'provider_id' => \App\Models\Provider::factory(),
             'provider' => $this->faker->randomElement(['flutterwave', 'mtn', 'airtel', 'stripe', 'cash']),
             'type' => $this->faker->randomElement(['card', 'mobile_money', 'cash']),
             'display_name' => $this->faker->word(),
@@ -22,14 +22,14 @@ class PaymentMethodFactory extends Factory
         ];
     }
 
-    public function forSalon(Salon $salon): self
+    public function forProvider(\App\Models\Provider $provider): self
     {
         return $this->state(fn (array $attributes) => [
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
         ]);
     }
 
-    public function forProvider(string $provider): self
+    public function usingProvider(string $provider): self
     {
         return $this->state(fn (array $attributes) => [
             'provider' => $provider,

@@ -18,14 +18,14 @@ class UsageService
     {
         return DB::transaction(function () use ($subscriptionId, $metric, $value) {
             $subscription = Subscription::findOrFail($subscriptionId);
-            $salon = $subscription->salon;
+            $provider = $subscription->provider;
 
-            if (!$salon) {
-                throw new \Exception('Salon not found for subscription');
+            if (!$provider) {
+                throw new \Exception('Provider not found for subscription');
             }
 
             // Get the effective limit from CapabilityResolver (plan + add-ons)
-            $limit = $this->capabilityResolver->limit($salon->id, $metric);
+            $limit = $this->capabilityResolver->limit($provider->id, $metric);
 
             // Get or create usage record for current period
             $periodStart = Carbon::now()->startOfMonth();
@@ -99,23 +99,23 @@ class UsageService
     public function syncUsageWithActualData(string $subscriptionId): array
     {
         $subscription = Subscription::findOrFail($subscriptionId);
-        $salon = $subscription->salon;
+        $provider = $subscription->provider;
 
-        if (!$salon) {
+        if (!$provider) {
             // If no salon exists, return empty usage
             return $this->getUsageBySubscription($subscriptionId);
         }
 
         // Sync staff count using CapabilityResolver resource codes
-        $staffCount = $salon->staff()->count();
+        $staffCount = $provider->assignments()->count();
         $this->recordUsage($subscriptionId, 'STAFF_SEAT', $staffCount);
 
         // Sync branches using CapabilityResolver resource codes
-        $branchCount = $this->capabilityResolver->usage($salon->id, 'BRANCH');
+        $branchCount = $this->capabilityResolver->usage($provider->id, 'BRANCH');
         $this->recordUsage($subscriptionId, 'BRANCH', $branchCount);
 
         // Sync storage using CapabilityResolver resource codes
-        $storageUsage = $this->capabilityResolver->usage($salon->id, 'STORAGE_GB');
+        $storageUsage = $this->capabilityResolver->usage($provider->id, 'STORAGE_GB');
         $this->recordUsage($subscriptionId, 'STORAGE_GB', $storageUsage);
 
         return $this->getUsageBySubscription($subscriptionId);

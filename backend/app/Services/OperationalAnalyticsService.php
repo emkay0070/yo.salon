@@ -2,32 +2,41 @@
 
 namespace App\Services;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Booking;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
  * OperationalAnalyticsService
- * 
+ *
  * Provides canonical operational facts for the Intelligence Engine.
- * 
+ *
  * Principle: This service owns booking behavior facts, NOT revenue.
  * All revenue calculations must use FinanceAnalyticsService.
+ *
+ * FACT CONTRACT PRINCIPLE: Return null for untracked data, not 0.
+ * This allows Intelligence to distinguish between "zero" and "unknown".
  */
 class OperationalAnalyticsService
 {
     /**
-     * Get comprehensive operational facts for a salon
-     * 
-     * @param Salon $salon
+     * Get comprehensive operational facts for a provider/location
+     *
+     * @param Provider $provider
+     * @param Location|null $location
      * @return array
      */
-    public function getOperationalFacts(Salon $salon): array
+    public function getOperationalFacts(Provider $provider, ?Location $location = null): array
     {
-        $bookings = Booking::where('salon_id', $salon->id)
-            ->with(['service', 'specialist', 'customer'])
-            ->get();
+        $query = Booking::where('provider_id', $provider->id);
+        
+        if ($location) {
+            $query->where('location_id', $location->id);
+        }
+        
+        $bookings = $query->with(['service', 'specialist', 'customer'])->get();
 
         return [
             'totals' => $this->getTotals($bookings),
@@ -36,7 +45,7 @@ class OperationalAnalyticsService
             'by_specialist' => $this->getBySpecialist($bookings),
             'by_customer' => $this->getByCustomer($bookings),
             'temporal' => $this->getTemporal($bookings),
-            'today' => $this->getToday($salon),
+            'today' => $this->getToday($provider, $location),
             // Legacy-compatible fields for AnalyticsController
             'status_counts' => $this->getByStatus($bookings),
             'total_bookings' => $bookings->count(),
@@ -200,27 +209,33 @@ class OperationalAnalyticsService
     /**
      * Get today's operational stats
      */
-    private function getToday(Salon $salon): array
+    private function getToday(Provider $provider, ?Location $location = null): array
     {
         $today = Carbon::today();
         $todayDate = $today->toDateString();
         $todayTime = $today->format('H:i:s');
 
-        $newBookingsToday = Booking::where('salon_id', $salon->id)
+        $query = Booking::where('provider_id', $provider->id);
+        
+        if ($location) {
+            $query->where('location_id', $location->id);
+        }
+
+        $newBookingsToday = (clone $query)
             ->whereDate('created_at', $todayDate)
             ->count();
 
-        $paymentsToday = Booking::where('salon_id', $salon->id)
+        $paymentsToday = (clone $query)
             ->where('payment_status', 'paid')
             ->whereDate('updated_at', $todayDate)
             ->count();
 
-        $awaitingApproval = Booking::where('salon_id', $salon->id)
+        $awaitingApproval = (clone $query)
             ->where('status', 'pending')
             ->whereDate('date', '>=', $todayDate)
             ->count();
 
-        $customersWaiting = Booking::where('salon_id', $salon->id)
+        $customersWaiting = (clone $query)
             ->where('status', 'confirmed')
             ->whereDate('date', $todayDate)
             ->where('time', '>=', $todayTime)

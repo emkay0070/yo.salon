@@ -9,9 +9,9 @@ class CreateBookingNotification
 {
     public function handle(BookingCreated $event)
     {
-        // Create notification for salon
+        // Create notification for provider
         Notification::create([
-            'salon_id' => $event->salonId,
+            'provider_id' => $event->providerId,
             'type' => 'booking_created',
             'category' => 'booking',
             'priority' => 'high',
@@ -47,8 +47,4 @@ class CreateBookingNotification
         ]);
     }
 
-    public function __invoke(BookingCreated $event)
-    {
-        return $this->handle($event);
-    }
 }

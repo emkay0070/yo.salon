@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { MessageSquare, Save, X, Tag, Eye, EyeOff, Star } from 'lucide-react';
 import { useState } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface Customer {
   id: string;
@@ -13,14 +14,14 @@ interface Customer {
 
 interface NoteFormProps {
   customer: Customer;
-  salonId: string;
+  providerId: string;
   specialistId: string;
   bookingId?: string;
   onCancel: () => void;
   onSuccess: () => void;
 }
 
-export default function NoteForm({ customer, salonId, specialistId, bookingId, onCancel, onSuccess }: NoteFormProps) {
+export default function NoteForm({ customer, providerId, specialistId, bookingId, onCancel, onSuccess }: NoteFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     note: '',
@@ -36,25 +37,13 @@ export default function NoteForm({ customer, salonId, specialistId, bookingId, o
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('specialist_auth_token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          customer_id: customer.id,
-          specialist_id: specialistId,
-          salon_id: salonId,
-          booking_id: bookingId,
-          ...formData,
-        }),
+      await apiClient.post('/v1/notes', {
+        customer_id: customer.id,
+        specialist_id: specialistId,
+        provider_id: providerId,
+        booking_id: bookingId,
+        ...formData,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create note');
-      }
 
       onSuccess();
     } catch (error) {

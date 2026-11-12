@@ -9,7 +9,7 @@ use App\Models\PortalAccount;
 use App\Models\Specialist;
 use App\Models\Customer;
 use App\Models\CustomerTimeline;
-use App\Models\Salon;
+
 use App\Models\Service;
 use App\Models\Provider;
 
@@ -21,7 +21,7 @@ use App\Models\Provider;
  * It only answers: "Can this actor perform this action on this Media?"
  *
  * Authorization is driven by the attachable entity (what the media belongs to),
- * not by salon membership. Salon membership is only relevant for salon-owned
+ * not by location membership. Location membership is only relevant for location-owned
  * assets (branding, services, galleries).
  *
  *  Actor → can they modify the attachable? → grant/deny
@@ -158,17 +158,17 @@ class MediaAuthorizationService
             $attachable instanceof CustomerTimeline
                 => $this->portalActorOwnsTimeline($actor, $attachable),
 
-            // --- Salon admin manages salon branding/assets ---
-            $attachable instanceof Salon
-                => $this->salonActorManagesSalon($actor, $attachable),
-
-            // --- Salon admin manages services (scoped via provider) ---
+            // --- Provider admin manages services (scoped via provider) ---
             $attachable instanceof Service
-                => $this->salonActorManagesService($actor, $attachable),
+                => $this->providerActorManagesService($actor, $attachable),
 
-            // --- Salon admin manages provider-level assets ---
+            // --- Provider admin manages provider-level assets ---
             $attachable instanceof Provider
-                => $this->salonActorManagesProvider($actor, $attachable),
+                => $this->providerActorManagesProvider($actor, $attachable),
+
+            // --- Provider admin manages location-level assets ---
+            $attachable instanceof \App\Models\Location
+                => $this->providerActorManagesLocation($actor, $attachable),
 
             // Unknown entity type — deny by default
             default => false,
@@ -183,8 +183,8 @@ class MediaAuthorizationService
      * A SpecialistAccount controls a Specialist when the account's specialist_id
      * matches the specialist's primary key.
      *
-     * Salon users do NOT control a specialist's personal media via this path
-     * (they may manage salon-scoped assignments separately, but not personal photos).
+     * Provider users do NOT control a specialist's personal media via this path
+     * (they may manage location-scoped assignments separately, but not personal photos).
      */
     protected function specialistActorOwnsSpecialist(mixed $actor, Specialist $specialist): bool
     {
@@ -222,61 +222,61 @@ class MediaAuthorizationService
     }
 
     /**
-     * A salon User controls a Salon when that salon is their current active salon.
+     * A provider User controls a Location when that location's provider is their current active provider.
      */
-    protected function salonActorManagesSalon(mixed $actor, Salon $salon): bool
+    protected function providerActorManagesLocation(mixed $actor, \App\Models\Location $location): bool
     {
         if (!$actor instanceof User) {
             return false;
         }
 
-        if (!method_exists($actor, 'currentSalon')) {
+        if (!method_exists($actor, 'currentProvider')) {
             return false;
         }
 
-        $currentSalon = $actor->currentSalon();
+        $currentProvider = $actor->currentProvider();
 
-        return $currentSalon && (string) $currentSalon->getKey() === (string) $salon->getKey();
+        return $currentProvider && (string) $currentProvider->getKey() === (string) $location->provider_id;
     }
 
     /**
-     * A salon User controls a Service when the service's provider matches
-     * the user's current salon's provider.
+     * A provider User controls a Service when the service's provider matches
+     * the user's current provider.
      */
-    protected function salonActorManagesService(mixed $actor, Service $service): bool
+    protected function providerActorManagesService(mixed $actor, Service $service): bool
     {
         if (!$actor instanceof User) {
             return false;
         }
 
-        if (!method_exists($actor, 'currentSalon')) {
+        if (!method_exists($actor, 'currentProvider')) {
             return false;
         }
 
-        $currentSalon = $actor->currentSalon();
+        $currentProvider = $actor->currentProvider();
 
-        return $currentSalon
+        return $currentProvider
             && $service->provider_id
-            && (string) $currentSalon->provider_id === (string) $service->provider_id;
+            && (string) $currentProvider->id === (string) $service->provider_id;
     }
 
     /**
-     * A salon User controls a Provider when the provider matches
-     * the user's current salon's provider.
+     * A provider User controls a Provider when the provider matches
+     * the user's current provider.
      */
-    protected function salonActorManagesProvider(mixed $actor, Provider $provider): bool
+    protected function providerActorManagesProvider(mixed $actor, Provider $provider): bool
     {
         if (!$actor instanceof User) {
             return false;
         }
 
-        if (!method_exists($actor, 'currentSalon')) {
+        if (!method_exists($actor, 'currentProvider')) {
             return false;
         }
 
-        $currentSalon = $actor->currentSalon();
+        $currentProvider = $actor->currentProvider();
 
-        return $currentSalon
-            && (string) $currentSalon->provider_id === (string) $provider->getKey();
+        return $currentProvider
+            && (string) $currentProvider->id === (string) $provider->getKey();
     }
 }

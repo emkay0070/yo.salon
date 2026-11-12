@@ -17,6 +17,16 @@ interface BookingDetailsDrawerProps {
     price: number;
     notes?: string;
     id?: string;
+    operational_state?: string;
+    grace_period_ends_at?: string | null;
+    resolution?: {
+      outcome: string;
+      reason_code: string;
+      notes?: string;
+      follow_up_required: boolean;
+      follow_up_status?: string;
+      follow_up_notes?: string;
+    } | null;
   };
   onCheckIn?: () => void;
   onStartService?: () => void;
@@ -24,16 +34,21 @@ interface BookingDetailsDrawerProps {
   onReschedule?: () => void;
   onCancel?: () => void;
   onAssignStaff?: () => void;
+  onResolve?: () => void;
   currentUserRole?: string;
 }
 
 // Status config for cinematic header accent
 const STATUS_STYLE: Record<string, { label: string; chip: string; dot: string }> = {
   confirmed:   { label: 'Confirmed',   chip: 'bg-blue-500/20 border-blue-500/30 text-blue-400',    dot: 'bg-blue-500'    },
+  pending:     { label: 'Pending approval', chip: 'bg-amber-500/20 border-amber-500/30 text-amber-400', dot: 'bg-amber-500' },
+  reserved:    { label: 'Reservation held', chip: 'bg-purple-500/20 border-purple-500/30 text-purple-400', dot: 'bg-purple-500' },
+  pending_payment: { label: 'Payment pending', chip: 'bg-orange-500/20 border-orange-500/30 text-orange-400', dot: 'bg-orange-500' },
   checked_in:  { label: 'Checked In',  chip: 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400', dot: 'bg-emerald-500' },
   in_service:  { label: 'In Service',  chip: 'bg-[#FFD700]/20 border-[#FFD700]/30 text-gold', dot: 'bg-[#FFD700]'   },
   completed:   { label: 'Completed',   chip: 'bg-zinc-700/40 border-zinc-600/30 text-zinc-400',    dot: 'bg-zinc-500'    },
   cancelled:   { label: 'Cancelled',   chip: 'bg-red-500/20 border-red-500/30 text-red-400',       dot: 'bg-red-500'     },
+  unknown:     { label: 'Unknown',     chip: 'bg-zinc-500/20 border-zinc-500/30 text-zinc-400',    dot: 'bg-zinc-500'    },
 };
 
 // Cinematic header photos — cycle by first letter of customer name
@@ -54,6 +69,38 @@ function getHeaderPhoto(name: string) {
   return HEADER_PHOTOS[code % HEADER_PHOTOS.length];
 }
 
+// Helper: Get operational state display
+function getOperationalStateDisplay(booking: any): { text: string; color: string } | null {
+  if (!booking.operational_state) return null;
+  
+  switch (booking.operational_state) {
+    case 'upcoming':
+      return { text: 'Upcoming', color: 'text-text-secondary' };
+    case 'due_soon':
+      return { text: 'Due soon', color: 'text-amber-400' };
+    case 'grace_period':
+      if (booking.grace_period_ends_at) {
+        const now = new Date();
+        const endsAt = new Date(booking.grace_period_ends_at);
+        const minsRemaining = Math.floor((endsAt.getTime() - now.getTime()) / 60000);
+        if (minsRemaining > 0) {
+          return { text: `${minsRemaining} min remaining`, color: 'text-amber-400' };
+        }
+      }
+      return { text: 'Grace period', color: 'text-amber-400' };
+    case 'needs_resolution':
+      if (booking.grace_period_ends_at) {
+        const now = new Date();
+        const endsAt = new Date(booking.grace_period_ends_at);
+        const minsOverdue = Math.floor((now.getTime() - endsAt.getTime()) / 60000);
+        return { text: `${minsOverdue} min overdue`, color: 'text-red-400' };
+      }
+      return { text: 'Needs attention', color: 'text-red-400' };
+    default:
+      return null;
+  }
+}
+
 export default function BookingDetailsDrawer({
   isOpen,
   onClose,
@@ -64,6 +111,7 @@ export default function BookingDetailsDrawer({
   onReschedule,
   onCancel,
   onAssignStaff,
+  onResolve,
   currentUserRole,
 }: BookingDetailsDrawerProps) {
   const canCheckIn       = currentUserRole === 'manager' || currentUserRole === 'receptionist';
@@ -74,7 +122,7 @@ export default function BookingDetailsDrawer({
   const canAssignStaff   = currentUserRole === 'manager' || currentUserRole === 'owner';
   const isUnassigned     = booking.staffName === 'Unassigned' || !booking.staffName;
 
-  const statusStyle = STATUS_STYLE[booking.status] ?? STATUS_STYLE['confirmed'];
+  const statusStyle = STATUS_STYLE[booking.status] ?? STATUS_STYLE['unknown'];
   const headerPhoto = getHeaderPhoto(booking.customerName);
 
   return (
@@ -141,6 +189,12 @@ export default function BookingDetailsDrawer({
                   <Clock className="w-3.5 h-3.5" />
                   {booking.time} – {booking.endTime}
                 </p>
+                {(() => {
+                  const opState = getOperationalStateDisplay(booking);
+                  return opState ? (
+                    <p className={`text-xs mt-1 ${opState.color}`}>{opState.text}</p>
+                  ) : null;
+                })()}
               </div>
             </div>
 
@@ -190,6 +244,55 @@ export default function BookingDetailsDrawer({
                   </div>
                 )}
 
+                {/* Resolution Information */}
+                {booking.resolution && (
+                  <div className="bg-card border border-border-medium rounded-xl p-4">
+                    <p className="text-text-secondary text-xs uppercase tracking-wider mb-2 font-semibold flex items-center gap-2">
+                      <CheckCircle className="w-3.5 h-3.5" /> Resolution
+                    </p>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-primary/70 text-sm">Outcome</span>
+                        <span className="text-text-primary font-medium text-sm">
+                          {booking.resolution.outcome === 'NO_SHOW' ? 'No Show' :
+                           booking.resolution.outcome === 'CANCELLED' ? 'Cancelled' :
+                           booking.resolution.outcome === 'RESCHEDULED' ? 'Rescheduled' :
+                           booking.resolution.outcome === 'COMPLETED_LATE' ? 'Completed Late' :
+                           booking.resolution.outcome === 'CUSTOMER_ARRIVED' ? 'Arrived' :
+                           booking.resolution.outcome}
+                        </span>
+                      </div>
+                      {booking.resolution.notes && (
+                        <div>
+                          <span className="text-text-primary/70 text-sm block mb-1">Notes</span>
+                          <p className="text-text-primary/80 text-sm">{booking.resolution.notes}</p>
+                        </div>
+                      )}
+                      {booking.resolution.follow_up_required && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 mt-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className={`w-2 h-2 rounded-full ${
+                              booking.resolution.follow_up_status === 'COMPLETED' ? 'bg-emerald-400' :
+                              booking.resolution.follow_up_status === 'SENT' ? 'bg-blue-400' :
+                              booking.resolution.follow_up_status === 'RESPONDED' ? 'bg-purple-400' :
+                              'bg-amber-400'
+                            }`} />
+                            <span className="text-emerald-400 text-xs font-medium uppercase">
+                              {booking.resolution.follow_up_status === 'COMPLETED' ? 'Follow-up Complete' :
+                               booking.resolution.follow_up_status === 'SENT' ? 'Follow-up Sent' :
+                               booking.resolution.follow_up_status === 'RESPONDED' ? 'Customer Responded' :
+                               'Follow-up Pending'}
+                            </span>
+                          </div>
+                          {booking.resolution.follow_up_notes && (
+                            <p className="text-text-primary/70 text-xs">{booking.resolution.follow_up_notes}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Actions ─────────────────────────────── */}
                 <div className="space-y-2.5 pt-1">
                   <p className="text-text-secondary text-xs uppercase tracking-wider font-semibold">Actions</p>
@@ -227,6 +330,16 @@ export default function BookingDetailsDrawer({
                       className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 text-text-primary font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-emerald-900/30"
                     >
                       <CheckCircle className="w-4 h-4" /> Complete Service
+                    </button>
+                  )}
+
+                  {/* Resolve button for bookings needing attention */}
+                  {booking.operational_state === 'needs_resolution' && onResolve && (
+                    <button
+                      onClick={onResolve}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-red-500 to-red-600 text-text-primary font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-red-900/30"
+                    >
+                      <XCircle className="w-4 h-4" /> Decide What Happened
                     </button>
                   )}
 

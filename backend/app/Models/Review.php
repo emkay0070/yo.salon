@@ -5,15 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Review extends Model
 {
-    use HasUuids;
+    use HasUuids, HasFactory;
 
     protected $fillable = [
         'booking_id',
         'provider_id',
-        'salon_id',
         'service_id',
         'staff_id',
         'specialist_id',
@@ -22,10 +22,12 @@ class Review extends Model
         'subject_id',
         'rating',
         'comment',
+        'status',
     ];
 
     protected $casts = [
         'rating' => 'integer',
+        'status' => 'string',
     ];
 
     public function booking(): BelongsTo
@@ -38,10 +40,6 @@ class Review extends Model
         return $this->belongsTo(Provider::class);
     }
 
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
-    }
 
     public function service(): BelongsTo
     {
@@ -74,10 +72,6 @@ class Review extends Model
         return $query->where('subject_type', 'specialist')->where('subject_id', $specialistId);
     }
 
-    public function scopeForSalon($query, string $salonId)
-    {
-        return $query->where('subject_type', 'salon')->where('subject_id', $salonId);
-    }
 
     public function scopeForProvider($query, string $providerId)
     {

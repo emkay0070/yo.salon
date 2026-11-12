@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Services\Finance\FinanceAnalyticsService;
 use App\Services\OperationalAnalyticsService;
 use App\Services\Intelligence\IntelligenceEngine;
@@ -34,17 +35,18 @@ class AnalyticsProjectionService
     /**
      * Compose the legacy-compatible analytics response from canonical facts.
      * 
-     * @param Salon $salon
+     * @param Provider $provider
+     * @param Location|null $location
      * @return array Legacy-compatible response shape
      */
-    public function compose(Salon $salon): array
+    public function compose(Provider $provider, ?Location $location = null): array
     {
         // Fetch canonical facts from each domain
-        $financeMetrics = $this->financeAnalyticsService->getSalonMetrics($salon);
-        $todayMetrics = $this->financeAnalyticsService->getTodayMetrics($salon);
-        $revenueTrend = $this->financeAnalyticsService->getRevenueTrend($salon);
-        $operationalFacts = $this->operationalAnalyticsService->getOperationalFacts($salon);
-        $intelligenceDto = $this->intelligenceEngine->generate($salon);
+        $financeMetrics = $this->financeAnalyticsService->getProviderMetrics($provider);
+        $todayMetrics = $this->financeAnalyticsService->getTodayMetrics($provider);
+        $revenueTrend = $this->financeAnalyticsService->getRevenueTrend($provider);
+        $operationalFacts = $this->operationalAnalyticsService->getOperationalFacts($provider, $location);
+        $intelligenceDto = $this->intelligenceEngine->generate($provider, $location);
 
         // Compose legacy-compatible response
         return [

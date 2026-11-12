@@ -9,7 +9,8 @@ use App\Domain\Finance\Events\EarningRecognized;
 use App\Domain\Finance\Settlement\Settlement;
 use App\Listeners\Finance\RecordEarning;
 use App\Models\Booking;
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -19,7 +20,8 @@ class RecordEarningListenerTest extends TestCase
     use RefreshDatabase;
 
     private RecordEarning $listener;
-    private Salon $salon;
+    private Provider $provider;
+    private Location $location;
     private Specialist $specialist;
     private Booking $booking;
 
@@ -31,11 +33,13 @@ class RecordEarningListenerTest extends TestCase
         
         $this->listener = new RecordEarning();
 
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
+        $this->location = Location::factory()->create(['provider_id' => $this->provider->id]);
         $this->specialist = Specialist::factory()->create();
         
         $this->booking = Booking::factory()->create([
-            'salon_id' => $this->salon->id,
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
             'specialist_id' => $this->specialist->id,
             'status' => 'completed',
         ]);
@@ -46,8 +50,8 @@ class RecordEarningListenerTest extends TestCase
         $policy = CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'type' => 'commission',
             'rules' => [['service_category' => '*', 'rate' => 0.40]],
             'settlement_frequency' => 'immediate',
@@ -82,8 +86,8 @@ class RecordEarningListenerTest extends TestCase
         $policy = CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'type' => 'commission',
             'rules' => [['service_category' => '*', 'rate' => 0.40]],
             'settlement_frequency' => 'monthly',

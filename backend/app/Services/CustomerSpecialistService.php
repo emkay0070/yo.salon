@@ -30,16 +30,33 @@ class CustomerSpecialistService
             $relationshipOrigin = $this->determineRelationshipOrigin($booking->provider_id);
             $acquisitionSource = CustomerSpecialist::SOURCE_BOOKING;
 
-            if ($relationship) {
-                // Update existing provider-specific relationship
-                $relationship->update([
-                    'last_booking_id' => $booking->id,
-                    'total_bookings' => $relationship->total_bookings + 1,
-                    'total_spent' => $relationship->total_spent + $servicePrice,
-                    'last_interaction_at' => now(),
-                    'last_seen_at' => now(),
-                    'relationship_score' => $this->calculateRelationshipScore($relationship->total_bookings + 1, $relationship->total_spent + $servicePrice),
-                ]);
+            // Check if relationship exists using a more reliable method for composite keys
+            $exists = DB::table('customer_specialist')
+                ->where('customer_id', $booking->customer_id)
+                ->where('specialist_id', $booking->specialist_id)
+                ->where('provider_id', $booking->provider_id)
+                ->exists();
+
+            if ($exists) {
+                // Update existing provider-specific relationship using query builder for composite key safety
+                DB::table('customer_specialist')
+                    ->where('customer_id', $booking->customer_id)
+                    ->where('specialist_id', $booking->specialist_id)
+                    ->where('provider_id', $booking->provider_id)
+                    ->update([
+                        'last_booking_id' => $booking->id,
+                        'total_bookings' => DB::raw('total_bookings + 1'),
+                        'total_spent' => DB::raw('total_spent + ' . $servicePrice),
+                        'last_interaction_at' => now(),
+                        'last_seen_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                // Fetch the updated relationship to return
+                $relationship = CustomerSpecialist::where('customer_id', $booking->customer_id)
+                    ->where('specialist_id', $booking->specialist_id)
+                    ->where('provider_id', $booking->provider_id)
+                    ->first();
             } else {
                 // Create new provider-specific relationship
                 $relationship = CustomerSpecialist::create([
@@ -72,7 +89,8 @@ class CustomerSpecialistService
             return CustomerSpecialist::ORIGIN_SALON; // Default fallback
         }
 
-        if ($provider->type === \App\Models\Provider::TYPE_SPECIALIST) {
+        $definition = app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type);
+        if ($definition->isIndependent) {
             return CustomerSpecialist::ORIGIN_INDEPENDENT;
         }
 

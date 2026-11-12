@@ -12,10 +12,10 @@ use Illuminate\Support\Facades\Log;
 
 class AssignmentScheduleController extends Controller
 {
-    public function index(string $salonId, string $specialistId): JsonResponse
+    public function index(string $locationId, string $specialistId): JsonResponse
     {
         $assignment = SpecialistAssignment::where('specialist_id', $specialistId)
-            ->where('salon_id', $salonId)
+            ->where('location_id', $locationId)
             ->first();
 
         if (!$assignment) {
@@ -36,10 +36,10 @@ class AssignmentScheduleController extends Controller
         ]);
     }
 
-    public function update(Request $request, string $salonId, string $specialistId): JsonResponse
+    public function update(Request $request, string $locationId, string $specialistId): JsonResponse
     {
         $assignment = SpecialistAssignment::where('specialist_id', $specialistId)
-            ->where('salon_id', $salonId)
+            ->where('location_id', $locationId)
             ->first();
 
         if (!$assignment) {
@@ -141,10 +141,10 @@ class AssignmentScheduleController extends Controller
         }
     }
 
-    public function publish(Request $request, string $salonId, string $specialistId): JsonResponse
+    public function publish(Request $request, string $locationId, string $specialistId): JsonResponse
     {
         $assignment = SpecialistAssignment::where('specialist_id', $specialistId)
-            ->where('salon_id', $salonId)
+            ->where('location_id', $locationId)
             ->first();
 
         if (!$assignment) {

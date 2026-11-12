@@ -12,6 +12,7 @@ interface ChurnRisk {
   days_since_visit: number;
   lifetime_value: number;
   recommended_action: string;
+  confidence?: string;
 }
 
 interface ChurnRadarProps {
@@ -69,7 +70,7 @@ export default function ChurnRadar({ risks }: ChurnRadarProps) {
                   Last visit: <span className="text-text-primary">{risk.days_since_visit} days ago</span>
                 </p>
                 <p className="text-xs text-text-secondary">
-                  Lifetime Value: <span className="text-gold font-medium">UGX {risk.lifetime_value.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  Lifetime Value: <span className="text-gold font-medium">UGX {(risk.lifetime_value || 0).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </p>
               </div>
 

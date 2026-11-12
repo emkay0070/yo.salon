@@ -11,7 +11,7 @@ interface ManagerDashboardProps {
 }
 
 export default function ManagerDashboard({ userName }: ManagerDashboardProps) {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -21,15 +21,15 @@ export default function ManagerDashboard({ userName }: ManagerDashboardProps) {
 
   // Fetch real data from API
   const { data: bookings = [] } = useQuery({
-    queryKey: ['bookings', salonId, 'today'],
-    queryFn: () => apiClient.getBookings({ salon_id: salonId, date: 'today' }),
-    enabled: !!salonId,
+    queryKey: ['bookings', providerId, 'today'],
+    queryFn: () => apiClient.getBookings(),
+    enabled: !!providerId,
   });
 
   const { data: staff = [] } = useQuery({
-    queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId }),
-    enabled: !!salonId,
+    queryKey: ['staff', providerId],
+    queryFn: () => apiClient.getStaff({ provider_id: providerId }),
+    enabled: !!providerId,
   });
 
   // Calculate stats from real data
@@ -61,7 +61,7 @@ export default function ManagerDashboard({ userName }: ManagerDashboardProps) {
   const recentActivity = bookings
     .slice(0, 3)
     .map((b: any) => ({
-      action: `${b.staff?.name || 'Staff'} ${b.status === 'completed' ? 'finished' : 'started'} ${b.service?.name || 'service'}`,
+      action: `${b.specialist?.name || b.staff?.name || 'Staff'} ${b.status === 'completed' ? 'finished' : 'started'} ${b.service?.name || 'service'}`,
       time: b.date ? new Date(b.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '00:00',
     }));
 

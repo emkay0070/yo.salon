@@ -36,9 +36,9 @@ class RevenueDistributionRequested
         public readonly string $bookingId,
 
         /**
-         * The salon receiving the revenue.
+         * The provider receiving the revenue.
          */
-        public readonly string $salonId,
+        public readonly string $providerId,
 
         /**
          * Gross amount of the payment.

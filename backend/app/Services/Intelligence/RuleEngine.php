@@ -36,8 +36,11 @@ class RuleEngine
         if (!empty($demandByDay)) {
             $sortedByIntensity = collect($demandByDay)->sortBy('intensity')->values();
             $slowestDay = $sortedByIntensity->first();
-            
-            if ($slowestDay && $slowestDay['intensity'] < 0.4) {
+
+            // Only generate signal if there's actual data (not all zeros)
+            $hasActualData = collect($demandByDay)->where('bookings', '>', 0)->count() > 0;
+
+            if ($slowestDay && $slowestDay['intensity'] < 0.4 && $hasActualData && $slowestDay['bookings'] > 0) {
                 $signals[] = [
                     'id' => 'low_demand_' . strtolower($slowestDay['day']),
                     'priority' => 'high',
@@ -48,6 +51,12 @@ class RuleEngine
                     'deep_link' => '/analytics/intelligence#demand',
                     'is_predictive' => false,
                     'dismissible' => true,
+                    'evidence' => [
+                        'day' => $slowestDay['day'],
+                        'bookings' => $slowestDay['bookings'],
+                        'intensity' => $slowestDay['intensity'],
+                        'max_bookings' => collect($demandByDay)->max('bookings'),
+                    ],
                 ];
             }
         }

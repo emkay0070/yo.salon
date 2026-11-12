@@ -4,7 +4,6 @@ namespace App\Domain\Finance\Settlement;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 
@@ -34,15 +33,16 @@ class Settlement extends Model
 
 
     protected $fillable = [
+        'provider_id',
         'payable_type',
         'payable_id',
         'recipient_type',
         'recipient_id',
+        'payment_method_id',
         'amount',
         'currency',
         'status',
-        'reference_type',
-        'reference_id',
+        'reference',
         'scheduled_for',
         'completed_at',
         'notes',
@@ -57,25 +57,25 @@ class Settlement extends Model
     ];
 
     /**
-     * The entity that owes the money (Salon, Platform, etc.)
+     * The provider that owes the money
      */
-    public function payable(): MorphTo
+    public function provider(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Provider::class);
+    }
+
+    /**
+     * The entity that owes the money (polymorphic)
+     */
+    public function payable()
     {
         return $this->morphTo();
     }
 
     /**
-     * The entity that should receive the money (Specialist, Supplier, etc.)
+     * The entity receiving the payment (polymorphic)
      */
-    public function recipient(): MorphTo
-    {
-        return $this->morphTo();
-    }
-
-    /**
-     * The entity that caused this settlement (Booking, Invoice, etc.)
-     */
-    public function reference(): MorphTo
+    public function recipient()
     {
         return $this->morphTo();
     }
@@ -180,20 +180,10 @@ class Settlement extends Model
     }
 
     /**
-     * Scope for specific recipient
+     * Scope for specific provider
      */
-    public function scopeForRecipient($query, string $recipientType, string $recipientId)
+    public function scopeForProvider($query, string $providerId)
     {
-        return $query->where('recipient_type', $recipientType)
-            ->where('recipient_id', $recipientId);
-    }
-
-    /**
-     * Scope for specific payable
-     */
-    public function scopeForPayable($query, string $payableType, string $payableId)
-    {
-        return $query->where('payable_type', $payableType)
-            ->where('payable_id', $payableId);
+        return $query->where('provider_id', $providerId);
     }
 }

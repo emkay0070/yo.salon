@@ -1,0 +1,238 @@
+{
+    "generated_at": "2026-10-09T05:17:10+00:00",
+    "total_bookings": 11,
+    "missing_relationships_count": 11,
+    "ambiguous_cases_count": 0,
+    "by_provider": {
+        "01a0e836-39fa-700e-991d-797669bb5a32": {
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "missing_count": 11,
+            "relationships": [
+                {
+                    "booking_id": "01a113b5-ae38-738b-9fbb-283893f873cd",
+                    "customer_id": "01a113b5-adca-70b3-b21b-6e0ad248cd8c",
+                    "customer_name": "Mark Neyo",
+                    "customer_phone": "0780698341",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-07T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a10a86-3e24-7031-bb56-06f64679b6e2",
+                    "customer_id": "01a10a86-3d78-7151-beac-0acb3b87ba3c",
+                    "customer_name": "booky",
+                    "customer_phone": "0780906050",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-05T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a10aeb-4f1d-7183-9ce7-122e43a38b92",
+                    "customer_id": "01a10aeb-4edf-73c9-a14e-a022d4972699",
+                    "customer_name": "jk",
+                    "customer_phone": null,
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-05T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a11221-d6fb-7351-b1c3-23151b977816",
+                    "customer_id": "01a11221-d69e-7016-9db2-a459edb5e8e5",
+                    "customer_name": "kkkk",
+                    "customer_phone": "089900000",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-06T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a10a7b-1fcc-709f-928a-082a4e10333b",
+                    "customer_id": "01a0f68d-6999-7219-96d5-1d7c1c7d33e9",
+                    "customer_name": "mimo",
+                    "customer_phone": "0780605040",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-05T00:00:00.000000Z",
+                    "booking_status": "arrived"
+                },
+                {
+                    "booking_id": "01a11cf9-8a58-718a-b6ad-f7ca91fcdadb",
+                    "customer_id": "01a0f6f8-a466-7229-9571-bd5c2a8b82fe",
+                    "customer_name": "mariam",
+                    "customer_phone": "0700 000 000",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-16T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a11cfb-6538-73ab-9b08-b26a95d35bab",
+                    "customer_id": "01a11cfb-64ca-73a0-b5c3-d499e44137d5",
+                    "customer_name": "koma",
+                    "customer_phone": "0700 800 800",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-16T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a11cfd-bba9-727a-9323-381042a8935d",
+                    "customer_id": "01a11cfd-bba2-704f-aaa7-9bff13b826fa",
+                    "customer_name": "noma",
+                    "customer_phone": "00000000000",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-17T00:00:00.000000Z",
+                    "booking_status": "reserved"
+                },
+                {
+                    "booking_id": "01a11cff-a32d-708a-8789-ce2e5aa79c41",
+                    "customer_id": "01a11cff-a309-70ff-9307-488e6ea0a8ad",
+                    "customer_name": "noma",
+                    "customer_phone": "0700 000 001",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-17T00:00:00.000000Z",
+                    "booking_status": "confirmed"
+                },
+                {
+                    "booking_id": "01a11d23-aaf2-7220-b91d-b3b317513438",
+                    "customer_id": "01a11d23-aaec-72df-9730-ab7f2755190f",
+                    "customer_name": "jm",
+                    "customer_phone": "0780 000",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-12T00:00:00.000000Z",
+                    "booking_status": "reserved"
+                },
+                {
+                    "booking_id": "01a11d41-1fd6-7290-adf7-fee77a7fd0cb",
+                    "customer_id": "01a11d41-1fd2-7102-8963-ade969357ea5",
+                    "customer_name": "se",
+                    "customer_phone": "078090000",
+                    "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+                    "provider_name": null,
+                    "booking_date": "2026-10-22T00:00:00.000000Z",
+                    "booking_status": "reserved"
+                }
+            ]
+        }
+    },
+    "all_missing_relationships": [
+        {
+            "booking_id": "01a113b5-ae38-738b-9fbb-283893f873cd",
+            "customer_id": "01a113b5-adca-70b3-b21b-6e0ad248cd8c",
+            "customer_name": "Mark Neyo",
+            "customer_phone": "0780698341",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-07T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a10a86-3e24-7031-bb56-06f64679b6e2",
+            "customer_id": "01a10a86-3d78-7151-beac-0acb3b87ba3c",
+            "customer_name": "booky",
+            "customer_phone": "0780906050",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-05T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a10aeb-4f1d-7183-9ce7-122e43a38b92",
+            "customer_id": "01a10aeb-4edf-73c9-a14e-a022d4972699",
+            "customer_name": "jk",
+            "customer_phone": null,
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-05T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a11221-d6fb-7351-b1c3-23151b977816",
+            "customer_id": "01a11221-d69e-7016-9db2-a459edb5e8e5",
+            "customer_name": "kkkk",
+            "customer_phone": "089900000",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-06T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a10a7b-1fcc-709f-928a-082a4e10333b",
+            "customer_id": "01a0f68d-6999-7219-96d5-1d7c1c7d33e9",
+            "customer_name": "mimo",
+            "customer_phone": "0780605040",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-05T00:00:00.000000Z",
+            "booking_status": "arrived"
+        },
+        {
+            "booking_id": "01a11cf9-8a58-718a-b6ad-f7ca91fcdadb",
+            "customer_id": "01a0f6f8-a466-7229-9571-bd5c2a8b82fe",
+            "customer_name": "mariam",
+            "customer_phone": "0700 000 000",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-16T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a11cfb-6538-73ab-9b08-b26a95d35bab",
+            "customer_id": "01a11cfb-64ca-73a0-b5c3-d499e44137d5",
+            "customer_name": "koma",
+            "customer_phone": "0700 800 800",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-16T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a11cfd-bba9-727a-9323-381042a8935d",
+            "customer_id": "01a11cfd-bba2-704f-aaa7-9bff13b826fa",
+            "customer_name": "noma",
+            "customer_phone": "00000000000",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-17T00:00:00.000000Z",
+            "booking_status": "reserved"
+        },
+        {
+            "booking_id": "01a11cff-a32d-708a-8789-ce2e5aa79c41",
+            "customer_id": "01a11cff-a309-70ff-9307-488e6ea0a8ad",
+            "customer_name": "noma",
+            "customer_phone": "0700 000 001",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-17T00:00:00.000000Z",
+            "booking_status": "confirmed"
+        },
+        {
+            "booking_id": "01a11d23-aaf2-7220-b91d-b3b317513438",
+            "customer_id": "01a11d23-aaec-72df-9730-ab7f2755190f",
+            "customer_name": "jm",
+            "customer_phone": "0780 000",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-12T00:00:00.000000Z",
+            "booking_status": "reserved"
+        },
+        {
+            "booking_id": "01a11d41-1fd6-7290-adf7-fee77a7fd0cb",
+            "customer_id": "01a11d41-1fd2-7102-8963-ade969357ea5",
+            "customer_name": "se",
+            "customer_phone": "078090000",
+            "provider_id": "01a0e836-39fa-700e-991d-797669bb5a32",
+            "provider_name": null,
+            "booking_date": "2026-10-22T00:00:00.000000Z",
+            "booking_status": "reserved"
+        }
+    ],
+    "ambiguous_cases": []
+}

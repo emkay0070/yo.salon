@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Specialist;
 use App\Models\Provider;
-use App\Models\Salon;
+use App\Models\Location;
 use App\Models\SpecialistAssignment;
 use App\Models\CustomerSpecialist;
 use App\Models\Booking;
@@ -35,15 +35,15 @@ class CustomerWorkspaceBoundaryTest extends TestCase
      */
     public function test_salon_specialist_access_limited_to_salon_customers(): void
     {
-        // Setup: Create salon, specialist, and customer
+        // Setup: Create provider, location, specialist, and customer
         $salonProvider = Provider::factory()->create(['type' => 'salon']);
-        $salon = Salon::factory()->create(['provider_id' => $salonProvider->id]);
-        
+        $location = Location::factory()->create(['provider_id' => $salonProvider->id]);
+
         $specialist = Specialist::factory()->create();
         SpecialistAssignment::factory()->create([
             'specialist_id' => $specialist->id,
             'provider_id' => $salonProvider->id,
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
             'status' => 'active',
         ]);
 

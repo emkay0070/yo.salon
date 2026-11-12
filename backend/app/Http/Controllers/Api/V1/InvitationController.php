@@ -7,7 +7,7 @@ use App\Models\Invitation;
 use App\Models\Customer;
 use App\Models\PortalAccount;
 use App\Models\User;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -16,17 +16,17 @@ use Illuminate\Support\Str;
 class InvitationController extends Controller
 {
     /**
-     * List invitations for the current salon (authenticated owner/manager)
+     * List invitations for the current provider (authenticated owner/manager)
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id
-            ?? $request->attributes->get('salon_id');
-        if (!$salonId) {
-            return response()->json(['message' => 'No active salon context'], 403);
+        $providerId = auth()->user()->currentProvider()?->id
+            ?? $request->attributes->get('provider_id');
+        if (!$providerId) {
+            return response()->json(['message' => 'No active provider context'], 403);
         }
 
-        $invitations = Invitation::where('salon_id', $salonId)
+        $invitations = Invitation::where('provider_id', $providerId)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -38,26 +38,29 @@ class InvitationController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) {
-            $salonId = $request->attributes->get('salon_id');
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) {
+            $providerId = $request->attributes->get('provider_id');
         }
-        if (!$salonId) {
-            return response()->json(['message' => 'No active salon context'], 403);
+        if (!$providerId) {
+            return response()->json(['message' => 'No active provider context'], 403);
         }
 
         $validated = $request->validate([
             'role' => 'required|in:customer,staff,specialist,manager,receptionist',
             'email' => 'nullable|email',
             'target_id' => 'nullable|uuid', // e.g. Customer ID or Staff ID
+            'location_id' => 'nullable|uuid', // Location-scoped invitation
         ]);
 
         $issueData = Invitation::issue([
-            'salon_id' => $salonId,
+            'provider_id' => $providerId,
+            'location_id' => $validated['location_id'] ?? null,
             'role' => $validated['role'],
             'email' => $validated['email'] ?? null,
             'target_id' => $validated['target_id'] ?? null,
             'status' => 'pending',
+            'created_by' => auth()->id(),
         ], now()->addDays(7));
 
         $invitation = $issueData['invitation'];
@@ -84,18 +87,55 @@ class InvitationController extends Controller
             return response()->json(['message' => 'Invitation not found'], 404);
         }
 
-        $invitation->load('salon');
+        $invitation->load(['provider', 'location', 'createdBy']);
 
         if (!$invitation->isValid()) {
             return response()->json(['message' => 'Invitation is expired or already accepted'], 400);
         }
 
-        // Hide token just in case, return public info
-        return response()->json([
-            'salon_name' => $invitation->salon->name,
+        $response = [
+            'provider_name' => $invitation->provider->display_name,
+            'provider_id' => $invitation->provider->id,
             'role' => $invitation->role,
             'email' => $invitation->email,
-        ]);
+        ];
+
+        // Include location context if invitation is location-scoped
+        if ($invitation->location_id && $invitation->location) {
+            $response['location'] = $invitation->location->name;
+        }
+
+        // Include who sent the invitation
+        if ($invitation->createdBy) {
+            $response['invited_by'] = $invitation->createdBy->name;
+        }
+
+        // Load target information if target_id exists
+        if ($invitation->target_id) {
+            if ($invitation->role === 'customer') {
+                $target = Customer::find($invitation->target_id);
+                if ($target) {
+                    $response['target'] = [
+                        'id' => $target->id,
+                        'name' => $target->name,
+                        'email' => $target->email,
+                        'phone' => $target->phone,
+                    ];
+                }
+            } elseif (in_array($invitation->role, ['staff', 'specialist', 'manager', 'receptionist'])) {
+                $target = \App\Models\Staff::find($invitation->target_id);
+                if ($target) {
+                    $response['target'] = [
+                        'id' => $target->id,
+                        'name' => $target->name,
+                        'email' => $target->email,
+                        'role' => $target->role,
+                    ];
+                }
+            }
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -120,23 +160,25 @@ class InvitationController extends Controller
         } elseif ($invitation->role === 'specialist') {
             return $this->acceptSpecialist($invitation, $validated);
         } else {
-            // staff, manager, receptionist all go to salon workspace
+            // staff, manager, receptionist all go to provider workspace
             return $this->acceptStaff($invitation, $validated, $invitation->role);
         }
     }
 
     private function acceptCustomer(Invitation $invitation, array $validated): JsonResponse
     {
+        $invitation->load(['provider', 'provider.primaryLocation', 'location']);
+
         // 1. Resolve Customer Record
         $customer = null;
         if ($invitation->target_id) {
             $customer = Customer::find($invitation->target_id);
         }
 
-        // If no target_id was provided, try matching by email in that salon
+        // If no target_id was provided, try matching by email in that provider
         if (!$customer) {
-            $customer = Customer::whereHas('salons', function($q) use ($invitation) {
-                $q->where('salons.id', $invitation->salon_id);
+            $customer = Customer::whereHas('providers', function($q) use ($invitation) {
+                $q->where('providers.id', $invitation->provider_id);
             })->where('email', $validated['email'])->first();
         }
 
@@ -149,12 +191,12 @@ class InvitationController extends Controller
             ]);
         }
 
-        // Always ensure the customer has a salon relationship for this invitation's salon.
+        // Always ensure the customer has a provider relationship for this invitation's provider.
         // This is critical for existing customers found by target_id — they may have been
-        // added to the system (e.g. via a booking) but never formally linked to the salon pivot.
-        $hasSalonRelationship = $customer->salons()->where('salons.id', $invitation->salon_id)->exists();
-        if (!$hasSalonRelationship) {
-            $customer->salons()->attach($invitation->salon_id, [
+        // added to the system (e.g. via a booking) but never formally linked to the provider pivot.
+        $hasProviderRelationship = $customer->providers()->where('providers.id', $invitation->provider_id)->exists();
+        if (!$hasProviderRelationship) {
+            $customer->providers()->attach($invitation->provider_id, [
                 'id'        => (string) Str::uuid(),
                 'visits'    => 0,
                 'joined_at' => now(),
@@ -178,8 +220,9 @@ class InvitationController extends Controller
         ]);
 
         $invitation->update([
-            'status'      => 'accepted',
-            'accepted_at' => now(),
+            'status'           => 'accepted',
+            'accepted_at'      => now(),
+            'accepted_user_id' => $portalAccount->id, // Store portal account ID as accepting user
         ]);
 
         return response()->json([
@@ -190,13 +233,16 @@ class InvitationController extends Controller
 
     private function acceptSpecialist(Invitation $invitation, array $validated): JsonResponse
     {
-        // Load salon with provider relationship
-        $invitation->load('salon.provider');
-        $salon = $invitation->salon;
+        // Load provider and location
+        $invitation->load(['provider', 'provider.primaryLocation', 'location']);
+        $provider = $invitation->provider;
         
-        if (!$salon || !$salon->provider) {
-            return response()->json(['message' => 'Invalid salon or provider'], 400);
+        if (!$provider) {
+            return response()->json(['message' => 'Invalid provider'], 400);
         }
+
+        // Use invitation location if specified, otherwise NULL for Provider-wide
+        $locationId = $invitation->location_id;
 
         // Check if SpecialistAccount already exists
         $existingAccount = \App\Models\SpecialistAccount::where('email', $validated['email'])->first();
@@ -231,14 +277,19 @@ class InvitationController extends Controller
             ]);
         }
 
-        // Create SpecialistAssignment to the inviting salon/provider
-        // Use firstOrCreate for idempotency based on specialist_id + provider_id + salon_id
+        // Create SpecialistAssignment to the inviting provider
+        // Only include location_id if invitation is location-scoped
+        $assignmentData = [
+            'specialist_id' => $specialist->id,
+            'provider_id' => $provider->id,
+        ];
+        
+        if ($locationId) {
+            $assignmentData['location_id'] = $locationId;
+        }
+
         $assignment = \App\Models\SpecialistAssignment::firstOrCreate(
-            [
-                'specialist_id' => $specialist->id,
-                'provider_id' => $salon->provider_id,
-                'salon_id' => $salon->id,
-            ],
+            $assignmentData,
             [
                 'is_primary' => false,
                 'status' => 'ACTIVE',
@@ -250,8 +301,9 @@ class InvitationController extends Controller
 
         // Mark Invitation Accepted
         $invitation->update([
-            'status' => 'accepted',
-            'accepted_at' => now(),
+            'status'           => 'accepted',
+            'accepted_at'      => now(),
+            'accepted_user_id' => $account->id ?? $existingAccount->id, // Store specialist account ID
         ]);
 
         return response()->json([
@@ -263,6 +315,11 @@ class InvitationController extends Controller
 
     private function acceptStaff(Invitation $invitation, array $validated, string $role = 'staff'): JsonResponse
     {
+        $invitation->load(['provider', 'provider.primaryLocation', 'location']);
+
+        // Use invitation location if specified, otherwise NULL for Provider-wide
+        $locationId = $invitation->location_id;
+
         // Case A/B: Find or create User account
         $user = User::where('email', $validated['email'])->first();
 
@@ -283,16 +340,44 @@ class InvitationController extends Controller
             }
         }
 
-        // Attach User to Salon with the specified role (idempotent)
-        $user->salons()->syncWithoutDetaching([$invitation->salon_id => ['role' => $role]]);
+        // Attach User to Provider with the specified role (idempotent)
+        // Explicitly set authority_scope to location_scoped - do NOT infer provider-wide authority from NULL location_id
+        $exists = $user->providers()->where('providers.id', $invitation->provider_id)->exists();
+        if (!$exists) {
+            $user->providers()->attach($invitation->provider_id, [
+                'id' => (string) Str::uuid(),
+                'role' => $role,
+                'authority_scope' => 'location_scoped',
+            ]);
+        } else {
+            $user->providers()->updateExistingPivot($invitation->provider_id, [
+                'role' => $role,
+                'authority_scope' => 'location_scoped',
+            ]);
+        }
+
+        // If invitation is location-scoped, create ProviderUserLocation record
+        if ($locationId) {
+            $providerUser = \App\Models\ProviderUser::where('user_id', $user->id)
+                ->where('provider_id', $invitation->provider_id)
+                ->first();
+
+            if ($providerUser) {
+                \App\Models\ProviderUserLocation::firstOrCreate([
+                    'provider_user_id' => $providerUser->id,
+                    'location_id' => $locationId,
+                ]);
+            }
+        }
 
         // Case C: invitation has target_id pointing to existing Staff
         if ($invitation->target_id) {
             $staff = \App\Models\Staff::find($invitation->target_id);
             if ($staff) {
-                // Ensure Staff belongs to the inviting salon
-                if ($staff->salon_id !== $invitation->salon_id) {
-                    return response()->json(['message' => 'Staff record does not belong to this salon'], 400);
+                // Ensure Staff belongs to the inviting provider + location
+                if ($staff->provider_id !== $invitation->provider_id || 
+                    ($locationId && $staff->location_id !== $locationId)) {
+                    return response()->json(['message' => 'Staff record does not belong to this provider/location'], 400);
                 }
                 // Link Staff to User
                 $staff->update([
@@ -304,12 +389,19 @@ class InvitationController extends Controller
                 return response()->json(['message' => 'Target staff record not found'], 404);
             }
         } else {
-            // Case D: Create or find Staff record for this salon/user
+            // Case D: Create or find Staff record for this provider/location/user
+            $staffData = [
+                'provider_id' => $invitation->provider_id,
+                'user_id' => $user->id,
+            ];
+            
+            // Only include location_id if invitation is location-scoped
+            if ($locationId) {
+                $staffData['location_id'] = $locationId;
+            }
+
             $staff = \App\Models\Staff::firstOrCreate(
-                [
-                    'salon_id' => $invitation->salon_id,
-                    'user_id' => $user->id,
-                ],
+                $staffData,
                 [
                     'name' => $validated['name'],
                     'email' => $validated['email'],
@@ -321,8 +413,9 @@ class InvitationController extends Controller
 
         // Mark Invitation Accepted
         $invitation->update([
-            'status' => 'accepted',
-            'accepted_at' => now(),
+            'status'           => 'accepted',
+            'accepted_at'      => now(),
+            'accepted_user_id' => $user->id,
         ]);
 
         return response()->json([

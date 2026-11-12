@@ -29,6 +29,7 @@ class MediaController extends Controller
         $validated = $request->validate([
             'file' => 'required|file|mimes:jpeg,png,jpg,gif,webp,svg|max:10240', // Max 10MB, image types only
             'directory' => 'nullable|string|max:255',
+            'location_id' => 'nullable|uuid',
             'alt_text' => 'nullable|string|max:500',
             'attachable_type' => 'nullable|string|max:255',
             'attachable_id' => 'nullable|string|max:255',
@@ -51,14 +52,28 @@ class MediaController extends Controller
             }
         }
 
-        // Salon/Provider context for backward compatibility when uploaded by a salon User
-        $salon    = method_exists($user, 'currentSalon') ? $user->currentSalon() : null;
-        $provider = $salon?->provider;
+        // Provider context for canonical architecture
+        $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+
+        // Validate location_id if provided (must belong to the same provider)
+        $locationId = null;
+        if (!empty($validated['location_id'])) {
+            if (!$provider) {
+                return response()->json(['error' => 'Provider context required for location-scoped media'], 403);
+            }
+            $location = \App\Models\Location::where('id', $validated['location_id'])
+                ->where('provider_id', $provider->id)
+                ->first();
+            if (!$location) {
+                return response()->json(['error' => 'Location not found or does not belong to your provider'], 403);
+            }
+            $locationId = $location->id;
+        }
 
         $media = $this->mediaService->upload($request->file('file'), [
             'directory'   => $validated['directory'] ?? 'uploads',
             'provider_id' => $provider?->id,
-            'salon_id'    => $salon?->id,
+            'location_id' => $locationId,
             'uploader'    => $user,
             'attachable'  => $attachable,
             'visibility'  => $validated['visibility'] ?? Media::VISIBILITY_PUBLIC,
@@ -76,6 +91,7 @@ class MediaController extends Controller
         $validated = $request->validate([
             'data' => 'required|string|max:10485760', // Max 10MB base64 string
             'directory' => 'nullable|string|max:255',
+            'location_id' => 'nullable|uuid',
             'alt_text' => 'nullable|string|max:500',
             'attachable_type' => 'nullable|string|max:255',
             'attachable_id' => 'nullable|string|max:255',
@@ -97,14 +113,28 @@ class MediaController extends Controller
             }
         }
 
-        // Salon/Provider context for backward compatibility
-        $salon    = method_exists($user, 'currentSalon') ? $user->currentSalon() : null;
-        $provider = $salon?->provider;
+        // Provider context for canonical architecture
+        $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+
+        // Validate location_id if provided (must belong to the same provider)
+        $locationId = null;
+        if (!empty($validated['location_id'])) {
+            if (!$provider) {
+                return response()->json(['error' => 'Provider context required for location-scoped media'], 403);
+            }
+            $location = \App\Models\Location::where('id', $validated['location_id'])
+                ->where('provider_id', $provider->id)
+                ->first();
+            if (!$location) {
+                return response()->json(['error' => 'Location not found or does not belong to your provider'], 403);
+            }
+            $locationId = $location->id;
+        }
 
         $media = $this->mediaService->uploadFromBase64($validated['data'], [
             'directory'   => $validated['directory'] ?? 'uploads',
             'provider_id' => $provider?->id,
-            'salon_id'    => $salon?->id,
+            'location_id' => $locationId,
             'uploader'    => $user,
             'attachable'  => $attachable,
             'visibility'  => $validated['visibility'] ?? Media::VISIBILITY_PUBLIC,

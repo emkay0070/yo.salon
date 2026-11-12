@@ -2,25 +2,27 @@
 
 namespace App\Domain\Catalog\Engines;
 
-use App\Models\Salon;
 use App\Models\Service;
+use App\Models\Location;
+use App\Models\LocationBookingConfig;
+use App\Models\ProviderBookingConfig;
 
 /**
  * PricingEngine
  * 
- * Computes pricing and deposit rules for a specific service at a specific branch.
+ * Computes pricing and deposit rules for a specific service at a specific branch (Location).
  * Takes in a Service model that has already been joined with its branch pivot overrides.
  */
 class PricingEngine
 {
     public function __construct(
-        protected Salon $salon,
+        protected Location $location,
         protected Service $resolvedService
     ) {}
 
     /**
-     * Effective price for a booking at this salon.
-     * Resolution: Salon override → Provider (service) price
+     * Effective price for a booking at this location.
+     * Resolution: Location override → Provider (service) price
      */
     public function effectivePrice(): float
     {
@@ -30,7 +32,7 @@ class PricingEngine
 
     /**
      * Is a deposit required for this booking?
-     * Resolution: Salon-service override → Salon booking deposit policy
+     * Resolution: Location-service override → Location payment policy override → Provider payment policy
      */
     public function requiresDeposit(): bool
     {
@@ -39,15 +41,21 @@ class PricingEngine
             return (bool) $this->resolvedService->pivot_deposit_required_override;
         }
 
-        // Fall back to salon booking deposit policy
-        if (!$this->salon->booking_deposit_enabled) {
+        $paymentPolicy = $this->resolvePaymentPolicy();
+        
+        $strategy = $paymentPolicy['strategy'] ?? 'no_payment';
+        if ($strategy !== 'deposit' && $strategy !== 'full_payment') {
             return false;
         }
-
-        return match ($this->salon->deposit_required_for) {
+        
+        // Match legacy 'deposit_required_for' mappings if present, default to true
+        $depositRequiredFor = $paymentPolicy['deposit']['required_for'] ?? 'all';
+        $minAmount = $paymentPolicy['deposit']['min_service_amount'] ?? 0;
+        
+        return match ($depositRequiredFor) {
             'all'     => true,
-            'above'   => $this->effectivePrice() >= ($this->salon->deposit_min_service_amount ?? 0),
-            default   => false,
+            'above'   => $this->effectivePrice() >= $minAmount,
+            default   => true, // if strategy is deposit and no constraints, require it
         };
     }
 
@@ -60,12 +68,37 @@ class PricingEngine
             return 0;
         }
 
+        $paymentPolicy = $this->resolvePaymentPolicy();
+        $strategy = $paymentPolicy['strategy'] ?? 'no_payment';
+        
+        if ($strategy === 'full_payment') {
+            return $this->effectivePrice();
+        }
+
+        $type = $paymentPolicy['deposit']['type'] ?? 'percentage';
+        $amount = $paymentPolicy['deposit']['amount'] ?? 0;
         $price = $this->effectivePrice();
 
-        return match ($this->salon->deposit_type) {
-            'percentage' => round($price * ($this->salon->deposit_value / 100), 2),
-            'fixed'      => (float) ($this->salon->deposit_value ?? 0),
+        return match ($type) {
+            'percentage' => round($price * ($amount / 100), 2),
+            'fixed'      => (float) $amount,
             default      => 0,
         };
+    }
+    
+    protected function resolvePaymentPolicy(): array
+    {
+        $locationConfig = LocationBookingConfig::where('location_id', $this->location->id)->first();
+        if ($locationConfig && !empty($locationConfig->payment_policy_override)) {
+            return $locationConfig->payment_policy_override;
+        }
+        
+        $providerConfig = ProviderBookingConfig::where('provider_id', $this->location->provider_id)->first();
+        if ($providerConfig) {
+            return $providerConfig->payment_policy ?? $providerConfig->getDefaultPaymentPolicy();
+        }
+        
+        // absolute fallback
+        return (new ProviderBookingConfig())->getDefaultPaymentPolicy();
     }
 }

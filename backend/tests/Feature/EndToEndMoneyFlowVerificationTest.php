@@ -4,9 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\Location;
 use App\Models\PaymentAccount;
 use App\Models\PaymentMethod;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Service;
 use App\Models\Specialist;
 use App\Models\Transaction;
@@ -14,7 +15,7 @@ use App\Domain\Finance\Ledger\LedgerAccount;
 use App\Domain\Finance\Ledger\LedgerEntry;
 use App\Domain\Finance\FinancialTransaction;
 use App\Domain\Finance\Settlement\Settlement;
-use App\Services\Payments\SalonPaymentService;
+use App\Services\Payments\BookingPaymentService;
 use App\Services\FeeEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -35,14 +36,15 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
     public function test_cash_payment_flow_end_to_end()
     {
-        // 1. Setup salon, customer, booking
-        $salon = Salon::factory()->create();
+        // 1. Setup provider, location, customer, booking
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service = Service::factory()->create(['provider_id' => $salon->provider_id, 'price' => 50000]);
+        $service = Service::factory()->create(['provider_id' => $provider->id, 'price' => 50000]);
         
         $booking = Booking::create([
-            'salon_id' => $salon->id,
-            'provider_id' => $salon->provider_id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
             'date' => now()->toDateString(),
@@ -54,11 +56,11 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
         ]);
 
         // 2. Record cash payment
-        $paymentService = app(SalonPaymentService::class);
+        $paymentService = app(BookingPaymentService::class);
         $paymentResult = $paymentService->recordManualPayment([
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
             'amount' => 50000,
             'payment_method' => 'cash',
         ]);
@@ -105,8 +107,8 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
             'Ledger must balance: debits must equal credits');
 
         // 6. Verify revenue account credited with gross amount
-        $revenueAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $revenueAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'revenue')
             ->first();
         
@@ -120,8 +122,8 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
             'Revenue account should be credited with gross amount');
 
         // 7. Verify processing cost account (should be 0 for cash)
-        $processingCostAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $processingCostAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'processing_cost')
             ->first();
         
@@ -136,16 +138,16 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // 8. Verify analytics sees correct numbers
         $financeMetrics = app(\App\Services\Finance\FinanceAnalyticsService::class)
-            ->getSalonMetrics($salon);
+            ->getProviderMetrics($provider);
         
         $this->assertEquals(50000, $financeMetrics['total_gross_revenue']);
         $this->assertEquals(50000, $financeMetrics['total_net_revenue']); // No fees
         $this->assertEquals(0, $financeMetrics['total_fees']);
 
-        // 9. Verify salon isolation (Salon B cannot see Salon A's money)
-        $salonB = Salon::factory()->create();
+        // 9. Verify provider isolation (Provider B cannot see Provider A's money)
+        $providerB = Provider::factory()->create();
         $financeMetricsB = app(\App\Services\Finance\FinanceAnalyticsService::class)
-            ->getSalonMetrics($salonB);
+            ->getProviderMetrics($providerB);
         
         $this->assertEquals(0, $financeMetricsB['total_gross_revenue']);
         $this->assertEquals(0, $financeMetricsB['total_net_revenue']);
@@ -157,8 +159,8 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
         })->where('type', 'credit')->sum('amount');
         
         // For cash, asset should be debited (money in)
-        $cashAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $cashAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'cash')
             ->first();
         
@@ -195,18 +197,19 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
         // For digital payments, gateway fee should be posted to processing_cost
         // This test verifies the accounting structure when gateway fees exist
         
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service = Service::factory()->create(['provider_id' => $salon->provider_id, 'price' => 50000]);
+        $service = Service::factory()->create(['provider_id' => $provider->id, 'price' => 50000]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'mobile_money',
             'provider' => 'flutterwave',
         ]);
         
         $booking = Booking::create([
-            'salon_id' => $salon->id,
-            'provider_id' => $salon->provider_id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
             'date' => now()->toDateString(),
@@ -218,7 +221,7 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // Simulate a payment with gateway fee (e.g., from provider response)
         $transaction = Transaction::create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -240,8 +243,8 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
         $journalService->postForTransaction($transaction);
 
         // Verify processing cost account debited with gateway fee
-        $processingCostAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $processingCostAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'processing_cost')
             ->first();
         
@@ -256,7 +259,7 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // Verify net revenue = gross - gateway fee
         $financeMetrics = app(\App\Services\Finance\FinanceAnalyticsService::class)
-            ->getSalonMetrics($salon);
+            ->getProviderMetrics($provider);
         
         $this->assertEquals(50000, $financeMetrics['total_gross_revenue']);
         $this->assertEquals(49000, $financeMetrics['total_net_revenue']);
@@ -265,22 +268,23 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
     public function test_refund_reverses_ledger_entries()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service = Service::factory()->create(['provider_id' => $salon->provider_id, 'price' => 50000]);
+        $service = Service::factory()->create(['provider_id' => $provider->id, 'price' => 50000]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'provider' => 'manual',
         ]);
         $paymentAccount = PaymentAccount::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
         
         $booking = Booking::create([
-            'salon_id' => $salon->id,
-            'provider_id' => $salon->provider_id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
             'date' => now()->toDateString(),
@@ -293,7 +297,7 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // Create original payment transaction
         $paymentTransaction = Transaction::create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -320,14 +324,14 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // Get revenue before refund
         $financeMetricsBefore = app(\App\Services\Finance\FinanceAnalyticsService::class)
-            ->getSalonMetrics($salon);
+            ->getProviderMetrics($provider);
         $revenueBefore = $financeMetricsBefore['total_gross_revenue'];
 
         $this->assertEquals(50000, $revenueBefore, 'Revenue should be 50,000 before refund');
 
-        // Process refund via SalonPaymentService (triggers event chain)
-        $paymentService = app(SalonPaymentService::class);
-        $refundResult = $paymentService->refundSalonPayment($paymentTransaction->id);
+        // Process refund via BookingPaymentService (triggers event chain)
+        $paymentService = app(BookingPaymentService::class);
+        $refundResult = $paymentService->refundBookingPayment($paymentTransaction->id);
 
         $this->assertTrue($refundResult['success']);
 
@@ -349,8 +353,8 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
         $this->assertEquals('refund', $refundFinancialTransaction->type);
 
         // Debug: Check ledger entries for revenue account
-        $revenueAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $revenueAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'revenue')
             ->first();
 
@@ -367,7 +371,7 @@ class EndToEndMoneyFlowVerificationTest extends TestCase
 
         // Get revenue after refund
         $financeMetricsAfter = app(\App\Services\Finance\FinanceAnalyticsService::class)
-            ->getSalonMetrics($salon);
+            ->getProviderMetrics($provider);
         $revenueAfter = $financeMetricsAfter['total_gross_revenue'];
 
         // Revenue should be back to zero (payment - refund)

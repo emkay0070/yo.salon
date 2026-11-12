@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Media;
+use App\Models\Provider;
 use App\Services\MediaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -18,18 +19,19 @@ class GalleryController extends Controller
     }
 
     /**
-     * Get gallery images for a salon or provider
+     * Get gallery images for a provider
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        $providerId = $request->attributes->get('provider_id');
+
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
-        $media = Media::where('salon_id', $salonId)
+        $media = Media::where('provider_id', $providerId)
             ->where('mime_type', 'like', 'image/%')
+            ->where('path', 'like', 'gallery/%')
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -42,28 +44,27 @@ class GalleryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'file' => 'required|image|max:10240', // Max 10MB
+            'file'     => 'required|image|max:10240', // Max 10MB
             'alt_text' => 'nullable|string',
-            'caption' => 'nullable|string',
+            'caption'  => 'nullable|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
-        
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        $providerId = $request->attributes->get('provider_id');
+
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
-        $salon = \App\Models\Salon::find($salonId);
-        if (!$salon) {
-            return response()->json(['error' => 'Salon not found'], 404);
+        $provider = Provider::find($providerId);
+        if (!$provider) {
+            return response()->json(['error' => 'Provider not found'], 404);
         }
 
         $media = $this->mediaService->upload($request->file('file'), [
-            'directory' => 'gallery',
-            'provider_id' => $salon->provider_id,
-            'salon_id' => $salonId,
-            'alt_text' => $validated['alt_text'] ?? 'Gallery image',
-            'metadata' => [
+            'directory'   => 'gallery',
+            'provider_id' => $providerId,
+            'alt_text'    => $validated['alt_text'] ?? 'Gallery image',
+            'metadata'    => [
                 'caption' => $validated['caption'] ?? null,
             ],
         ]);
@@ -76,14 +77,14 @@ class GalleryController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        $providerId = $request->attributes->get('provider_id');
+
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $media = Media::where('id', $id)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->firstOrFail();
 
         $this->mediaService->delete($media);
@@ -98,17 +99,17 @@ class GalleryController extends Controller
     {
         $validated = $request->validate([
             'alt_text' => 'nullable|string',
-            'caption' => 'nullable|string',
+            'caption'  => 'nullable|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
-        
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        $providerId = $request->attributes->get('provider_id');
+
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
 
         $media = Media::where('id', $id)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->firstOrFail();
 
         $media->update([

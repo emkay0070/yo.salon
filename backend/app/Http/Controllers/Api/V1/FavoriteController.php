@@ -44,34 +44,34 @@ class FavoriteController extends Controller
         ]);
         
         $customerId = $request->attributes->get('customer_id');
-        $salonId = $request->attributes->get('salon_id');
-        
+        $locationId = $request->attributes->get('location_id');
+
         // Map type to model class
         $typeMap = [
             'provider' => Provider::class,
             'specialist' => Specialist::class,
             'service' => Service::class,
         ];
-        
+
         $favoritableType = $typeMap[$validated['type']];
         $favoritableId = $validated['id'];
-        
+
         // Check if item exists
         $item = $favoritableType::findOrFail($favoritableId);
-        
+
         // Check if already favorited
         $existing = CustomerFavorite::where('customer_id', $customerId)
             ->where('favoritable_type', $favoritableType)
             ->where('favoritable_id', $favoritableId)
             ->first();
-        
+
         if ($existing) {
             return response()->json(['message' => 'Already favorited'], 409);
         }
-        
+
         $favorite = CustomerFavorite::create([
             'customer_id' => $customerId,
-            'salon_id' => $salonId,
+            'location_id' => $locationId,
             'favoritable_type' => $favoritableType,
             'favoritable_id' => $favoritableId,
             'collection_id' => $validated['collection_id'] ?? null,

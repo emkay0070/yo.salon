@@ -7,7 +7,7 @@ use App\Domain\Finance\Compensation\CompensationPolicy;
 use App\Domain\Finance\Compensation\Earning;
 use App\Domain\Finance\Compensation\PeriodClosingService;
 use App\Domain\Finance\Settlement\Settlement;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,7 +17,7 @@ class PeriodClosingServiceTest extends TestCase
     use RefreshDatabase;
 
     private PeriodClosingService $service;
-    private Salon $salon;
+    private Provider $provider;
     private Specialist $specialist;
     private CompensationPolicy $policy;
 
@@ -28,14 +28,14 @@ class PeriodClosingServiceTest extends TestCase
         \Illuminate\Support\Facades\Schema::disableForeignKeyConstraints();
         
         $this->service = new PeriodClosingService();
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
         $this->specialist = Specialist::factory()->create();
 
         $this->policy = CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'type' => 'commission',
             'rules' => [['service_category' => '*', 'rate' => 0.40]],
             'settlement_frequency' => 'monthly',
@@ -50,8 +50,8 @@ class PeriodClosingServiceTest extends TestCase
         $pastPeriod = CompensationPeriod::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'compensation_policy_id' => $this->policy->id,
             'period_start' => now()->subMonth()->startOfMonth(),
             'period_end' => now()->subMonth()->endOfMonth(),
@@ -75,8 +75,8 @@ class PeriodClosingServiceTest extends TestCase
         $currentPeriod = CompensationPeriod::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'compensation_policy_id' => $this->policy->id,
             'period_start' => now()->startOfMonth(),
             'period_end' => now()->endOfMonth(),
@@ -109,8 +109,8 @@ class PeriodClosingServiceTest extends TestCase
         $salaryPolicy = CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'type' => 'salary',
             'rules' => [['amount' => 650000]],
             'settlement_frequency' => 'monthly',
@@ -121,8 +121,8 @@ class PeriodClosingServiceTest extends TestCase
         $period = CompensationPeriod::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $this->salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
             'compensation_policy_id' => $salaryPolicy->id,
             'period_start' => now()->subMonth()->startOfMonth(),
             'period_end' => now()->subMonth()->endOfMonth(),

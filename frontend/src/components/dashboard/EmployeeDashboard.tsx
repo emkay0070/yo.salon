@@ -11,7 +11,7 @@ interface EmployeeDashboardProps {
 }
 
 export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) {
-  const { salonId, user } = useRole();
+  const { providerId, user } = useRole();
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -21,21 +21,23 @@ export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) 
 
   const greeting = today.getHours() < 12 ? 'Good Morning' : today.getHours() < 18 ? 'Good Afternoon' : 'Good Evening';
 
-  // Fetch real data from API
-  const { data: bookings = [] } = useQuery({
-    queryKey: ['bookings', salonId, 'today'],
-    queryFn: () => apiClient.getBookings({ salon_id: salonId, date: 'today' }),
-    enabled: !!salonId,
-  });
-
-  const { data: staff = [] } = useQuery({
-    queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId }),
-    enabled: !!salonId,
-  });
-
   // Get current staff member by matching user_id
+  // This must be computed before the early return to maintain hooks order
+  const { data: staff = [] } = useQuery({
+    queryKey: ['staff', providerId],
+    queryFn: () => apiClient.getStaff({ provider_id: providerId }),
+    enabled: !!providerId,
+  });
+
   const currentStaff = staff.find((member: any) => member.user_id === user?.id);
+
+  // Fetch real data from API - server-side filters by staff_id
+  // This hook must be called before the early return to maintain hooks order
+  const { data: bookings = [] } = useQuery({
+    queryKey: ['bookings', providerId, 'today', currentStaff?.id],
+    queryFn: () => apiClient.getBookings({ staff_id: currentStaff?.id }),
+    enabled: !!providerId && !!currentStaff,
+  });
 
   // If no matching staff found, show empty state
   if (!currentStaff) {
@@ -46,8 +48,8 @@ export default function EmployeeDashboard({ userName }: EmployeeDashboardProps) 
     );
   }
 
-  // Filter bookings for current staff
-  const staffBookings = bookings.filter((b: any) => b.staff_id === currentStaff?.id);
+  // Bookings are already filtered by staff_id on the server
+  const staffBookings = bookings;
 
   // Get next client
   const nextBooking = staffBookings.find((b: any) => ['pending', 'confirmed'].includes(b.status));

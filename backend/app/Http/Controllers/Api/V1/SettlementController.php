@@ -10,13 +10,12 @@ class SettlementController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) {
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $query = \App\Domain\Finance\Settlement\Settlement::where('payable_type', \App\Models\Salon::class)
-            ->where('payable_id', $salon->id)
+        $query = \App\Domain\Finance\Settlement\Settlement::where('provider_id', $provider->id)
             ->with(['recipient', 'period', 'payouts']);
 
         if ($request->has('status')) {
@@ -32,13 +31,12 @@ class SettlementController extends Controller
 
     public function show($id): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) {
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $settlement = \App\Domain\Finance\Settlement\Settlement::where('payable_type', \App\Models\Salon::class)
-            ->where('payable_id', $salon->id)
+        $settlement = \App\Domain\Finance\Settlement\Settlement::where('provider_id', $provider->id)
             ->with(['recipient', 'period', 'earnings', 'payouts'])
             ->findOrFail($id);
 

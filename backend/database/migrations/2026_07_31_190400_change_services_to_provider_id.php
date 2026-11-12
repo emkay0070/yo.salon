@@ -12,6 +12,16 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip if provider_id already exists (fresh migration scenario)
+        if (Schema::hasColumn('services', 'provider_id')) {
+            return;
+        }
+
+        // Skip if salon_id doesn't exist (already migrated)
+        if (!Schema::hasColumn('services', 'salon_id')) {
+            return;
+        }
+
         // Add provider_id column
         Schema::table('services', function (Blueprint $table) {
             $table->uuid('provider_id')->nullable()->after('salon_id');

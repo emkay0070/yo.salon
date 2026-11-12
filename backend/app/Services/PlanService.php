@@ -12,6 +12,11 @@ class PlanService
         return Plan::active()->ordered()->get();
     }
 
+    public function getActivePlansByProvider(string $providerType): Collection
+    {
+        return Plan::active()->forProvider($providerType)->ordered()->get();
+    }
+
     public function getPlanBySlug(string $slug): ?Plan
     {
         return Plan::where('slug', $slug)->first();

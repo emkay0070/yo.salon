@@ -27,7 +27,7 @@ class MediaService
         $disk = $options['disk'] ?? 'public';
         $directory = $options['directory'] ?? 'uploads';
         $providerId = $options['provider_id'] ?? null;
-        $salonId = $options['salon_id'] ?? null;
+        $locationId = $options['location_id'] ?? null;
         $altText = $options['alt_text'] ?? null;
         $visibility = $options['visibility'] ?? Media::VISIBILITY_PUBLIC;
 
@@ -74,14 +74,14 @@ class MediaService
         }
 
         // Use transaction to ensure atomicity
-        return DB::transaction(function () use ($file, $disk, $directory, $filename, $path, $providerId, $salonId, $uploaderType, $uploaderId, $uploadedBy, $attachableType, $attachableId, $visibility, $altText, $mimeType, $size, $width, $height, $options) {
+        return DB::transaction(function () use ($file, $disk, $directory, $filename, $path, $providerId, $locationId, $uploaderType, $uploaderId, $uploadedBy, $attachableType, $attachableId, $visibility, $altText, $mimeType, $size, $width, $height, $options) {
             // Store the file
             $file->storeAs($directory, $filename, $disk);
 
             // Create media record
             return Media::create([
                 'provider_id' => $providerId,
-                'salon_id' => $salonId,
+                'location_id' => $locationId,
                 'uploaded_by' => $uploadedBy,
                 'uploader_type' => $uploaderType,
                 'uploader_id' => $uploaderId,
@@ -181,10 +181,10 @@ class MediaService
         $providerCoverCount = \App\Models\Provider::where('cover_image', $media->id)->count();
         if ($providerCoverCount > 0) return true;
 
-        // Check if referenced by BrandExperience (logo or background_image)
-        $brandLogoCount = \App\Models\BrandExperience::where('logo', $media->id)->count();
-        if ($brandLogoCount > 0) return true;
 
+
+        // Check if referenced by BrandExperience (background_image only - logo removed)
+        // BrandExperience no longer owns identity assets
         $brandBgCount = \App\Models\BrandExperience::where('background_image', $media->id)->count();
         if ($brandBgCount > 0) return true;
 

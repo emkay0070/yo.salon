@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Services\AnalyticsProjectionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,10 +21,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_projection_service_returns_legacy_compatible_structure()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // Verify legacy-compatible response structure
         $this->assertArrayHasKey('total_bookings', $analytics);
@@ -46,10 +48,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_projection_uses_canonical_finance_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // Financial facts should come from FinanceAnalyticsService (Ledger-based)
         $this->assertIsArray($analytics['revenue_trend']);
@@ -59,10 +62,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_projection_uses_canonical_operational_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // Operational facts should come from OperationalAnalyticsService
         $this->assertIsArray($analytics['status_counts']);
@@ -72,10 +76,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_projection_uses_canonical_intelligence_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // Intelligence facts should come from NEW Intelligence Engine
         $this->assertIsArray($analytics['insights']);
@@ -84,10 +89,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_service_stats_maps_from_ledger_not_catalog()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // service_stats should be mapped from FinanceAnalyticsService (Ledger)
         // NOT from booking.service.price (catalog)
@@ -104,10 +110,11 @@ class AnalyticsProjectionVerificationTest extends TestCase
 
     public function test_staff_stats_maps_from_ledger_not_catalog()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $projectionService = app(AnalyticsProjectionService::class);
-        $analytics = $projectionService->compose($salon);
+        $analytics = $projectionService->compose($provider, $location);
 
         // staff_stats should be mapped from FinanceAnalyticsService (Ledger)
         // NOT from booking.service.price (catalog)

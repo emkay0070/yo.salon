@@ -39,10 +39,15 @@ export default function ServiceDetailsDrawer({ isOpen, onClose, service }: Servi
   const handleBook = () => {
     const params = new URLSearchParams();
     params.set('service_id', service.id);
-    if (service.provider) {
-      params.set('provider_id', service.provider.id);
+
+    // Prefer the explicit provider_id field; fall back to the nested salon object.
+    // Never use provider_id — Provider is internal and has no public API route.
+    const providerId = (service as any).provider_id ?? (service as any).salon?.id;
+    if (providerId) {
+      params.set('provider_id', providerId);
     }
-    router.push(`/book?${params.toString()}`);
+
+    router.push(`/portal/bookings/new?${params.toString()}`);
     onClose();
   };
 
@@ -53,7 +58,7 @@ export default function ServiceDetailsDrawer({ isOpen, onClose, service }: Servi
 
   const handleViewSalon = () => {
     if (service.provider?.slug) {
-      router.push(`/salons/${service.provider.slug}`);
+      router.push(`/${service.provider.slug}`);
       onClose();
     }
   };
@@ -65,7 +70,7 @@ export default function ServiceDetailsDrawer({ isOpen, onClose, service }: Servi
 
   return (
     <SideDrawer isOpen={isOpen} onClose={onClose} title="Service Details" position="right" width="wide">
-      <div className="space-y-6">
+      <div className="space-y-6 p-6">
         {/* Service Image */}
         {service.image_url && (
           <motion.div

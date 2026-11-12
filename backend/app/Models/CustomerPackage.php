@@ -12,7 +12,7 @@ class CustomerPackage extends Model
 
     protected $fillable = [
         'customer_id',
-        'salon_id',
+        'provider_id',
         'package_id',
         'services_remaining',
         'expires_at',
@@ -28,9 +28,9 @@ class CustomerPackage extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function salon(): BelongsTo
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class, 'provider_id');
     }
 
     public function package(): BelongsTo

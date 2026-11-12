@@ -11,76 +11,115 @@ use Illuminate\Support\Facades\Log;
 
 class FlutterwaveProvider implements PaymentProviderInterface
 {
-    private ?string $secretKey;
+    private ?string $clientId;
+    private ?string $clientSecret;
     private ?string $publicKey;
     private string $baseUrl;
     private ?string $webhookSecret;
 
+    // OAuth 2.0 client credentials token cache
+    private ?string $accessToken = null;
+    private ?int $accessTokenExpiresAt = null; // Unix timestamp
+
+    const TOKEN_URL = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
+    const TOKEN_REFRESH_BUFFER_SECONDS = 60;
+
     public function __construct()
     {
-        $this->secretKey = config('services.flutterwave.secret_key');
+        $this->clientId = config('services.flutterwave.client_id');
+        $this->clientSecret = config('services.flutterwave.client_secret');
         $this->publicKey = config('services.flutterwave.public_key');
-        $this->baseUrl = config('services.flutterwave.base_url', 'https://api.flutterwave.com/v3');
+        $this->baseUrl = config('services.flutterwave.base_url', 'https://developersandbox-api.flutterwave.com');
         $this->webhookSecret = config('services.flutterwave.webhook_secret');
     }
 
+    /**
+     * Initialize a payment via Flutterwave v4 charges API.
+     *
+     * v4 requires creating a customer and payment method before creating a charge.
+     * The charge response includes a redirect URL for the customer to complete payment.
+     *
+     * @param array $data Payment data including amount, currency, customer info, metadata, reference
+     * @return array Response with payment link, reference, and provider data
+     */
     public function initializePayment(array $data): array
     {
-        $payload = [
-            'tx_ref' => $data['reference'] ?? $this->generateReference(),
-            'amount' => $data['amount'],
-            'currency' => $data['currency'] ?? 'UGX',
-            'payment_options' => $data['payment_options'] ?? 'card, mobilemoneyuganda, ussd',
-            'redirect_url' => $data['redirect_url'] ?? config('app.url') . '/payment/callback',
-            'customer' => [
-                'email' => $data['email'] ?? null,
-                'name' => $data['customer_name'] ?? null,
-                'phone' => $data['phone'] ?? null,
-            ],
-            'customizations' => [
-                'title' => $data['title'] ?? 'Payment',
-                'description' => $data['description'] ?? '',
-                'logo' => $data['logo'] ?? null,
-            ],
-            'metadata' => $data['metadata'] ?? [],
-        ];
+        $txRef = $data['reference'] ?? $this->generateReference();
+        $amount = $data['amount'];
+        $currency = $data['currency'] ?? 'UGX';
+        $customerEmail = $data['email'] ?? null;
+        $customerName = $data['customer_name'] ?? null;
+        $customerPhone = $data['phone'] ?? null;
+        $redirectUrl = $data['redirect_url'] ?? config('app.url') . '/payment/callback';
 
-        // Filter out null values
-        $payload = array_filter($payload, function ($value) {
-            return !is_null($value);
-        });
+        try {
+            // Step 1: Create or find Flutterwave customer
+            $customerId = $this->getOrCreateCustomer($customerEmail, $customerName, $customerPhone);
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->secretKey,
-            'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/payments', $payload);
+            // Step 2: Create a payment method for the customer
+            $paymentMethodId = $this->createPaymentMethod($customerId);
 
-        $result = $response->json();
+            // Step 3: Create the charge
+            $chargePayload = [
+                'amount' => $amount,
+                'currency' => $currency,
+                'reference' => $txRef,
+                'customer_id' => $customerId,
+                'payment_method_id' => $paymentMethodId,
+                'redirect_url' => $redirectUrl,
+                'recurring' => false,
+            ];
 
-        if (!$response->successful()) {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->getAccessToken(),
+                'Content-Type' => 'application/json',
+                'X-Idempotency-Key' => str_replace('-', '', uniqid('', true)),
+            ])->post($this->baseUrl . '/charges', $chargePayload);
+
+            $result = $response->json();
+
+            if (!$response->successful()) {
+                Log::error('Flutterwave payment initialization failed', [
+                    'response' => $result,
+                    'payload' => $chargePayload,
+                ]);
+                throw new \Exception('Payment initialization failed: ' . ($result['error']['message'] ?? $result['message'] ?? 'Unknown error'));
+            }
+
+            $chargeData = $result['data'] ?? [];
+            $nextAction = $chargeData['next_action'] ?? [];
+            $redirectUrlFromResponse = $nextAction['redirect_url']['url'] ?? null;
+
+            return [
+                'success' => true,
+                'reference' => $chargeData['id'] ?? $txRef,
+                'provider_reference' => $chargeData['id'] ?? $txRef,
+                'payment_link' => $redirectUrlFromResponse,
+                'access_code' => null,
+                'data' => $chargeData,
+            ];
+
+        } catch (\Exception $e) {
             Log::error('Flutterwave payment initialization failed', [
-                'response' => $result,
-                'payload' => $payload,
+                'error' => $e->getMessage(),
+                'reference' => $txRef,
             ]);
-            throw new \Exception('Payment initialization failed: ' . ($result['message'] ?? 'Unknown error'));
+            throw $e;
         }
-
-        return [
-            'success' => true,
-            'reference' => $result['data']['tx_ref'],
-            'provider_reference' => $result['data']['link'],
-            'payment_link' => $result['data']['link'],
-            'access_code' => $result['data']['access_code'] ?? null,
-            'data' => $result['data'],
-        ];
     }
 
+    /**
+     * Verify a Flutterwave v4 charge.
+     *
+     * @param string $chargeId The Flutterwave charge ID
+     * @return array Payment verification status and details
+     */
     public function verifyPayment(string $reference): array
     {
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->secretKey,
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
             'Content-Type' => 'application/json',
-        ])->get($this->baseUrl . '/transactions/' . $reference . '/verify');
+        ])->get($this->baseUrl . '/charges/' . $reference);
 
         $result = $response->json();
 
@@ -89,32 +128,39 @@ class FlutterwaveProvider implements PaymentProviderInterface
                 'response' => $result,
                 'reference' => $reference,
             ]);
-            throw new \Exception('Payment verification failed: ' . ($result['message'] ?? 'Unknown error'));
+            throw new \Exception('Payment verification failed: ' . ($result['error']['message'] ?? $result['message'] ?? 'Unknown error'));
         }
 
-        $data = $result['data'];
+        $data = $result['data'] ?? [];
         $status = $data['status'] ?? 'failed';
-        $isSuccessful = in_array($status, ['successful', 'completed']);
+        $isSuccessful = $status === 'successful';
 
         return [
             'success' => $isSuccessful,
             'status' => $status,
-            'reference' => $data['tx_ref'],
-            'provider_reference' => $data['flw_ref'],
-            'amount' => $data['amount'],
-            'currency' => $data['currency'],
-            'payment_method' => $data['payment_type'] ?? null,
+            'reference' => $data['reference'] ?? $reference,
+            'provider_reference' => $data['id'] ?? $reference,
+            'amount' => $data['amount'] ?? 0,
+            'currency' => $data['currency'] ?? 'UGX',
+            'payment_method' => ($data['payment_method_details']['type'] ?? null),
             'customer' => [
-                'email' => $data['customer']['email'] ?? null,
-                'name' => $data['customer']['name'] ?? null,
-                'phone' => $data['customer']['phone_number'] ?? null,
+                'email' => null, // v4 charge response doesn't include customer email directly
+                'name' => null,
+                'phone' => null,
             ],
-            'processed_at' => $data['created_at'] ?? null,
-            'fees' => $data['app_fee'] ?? 0,
+            'processed_at' => $data['created_datetime'] ?? null,
+            'fees' => 0, // v4 returns fees as an array, not a single value
             'data' => $data,
         ];
     }
 
+    /**
+     * Handle webhook callback from Flutterwave v4.
+     *
+     * @param array $payload The webhook payload from the provider
+     * @param string $signature The webhook signature for verification
+     * @return array Processed webhook data
+     */
     public function handleWebhook(array $payload, string $signature): array
     {
         // Validate signature first — reject anything that doesn't match
@@ -129,7 +175,7 @@ class FlutterwaveProvider implements PaymentProviderInterface
             throw new \Exception('Invalid Flutterwave webhook payload: missing event or data');
         }
 
-        $reference = $data['tx_ref'] ?? null;
+        $reference = $data['id'] ?? $data['reference'] ?? null;
         $status    = $data['status'] ?? 'failed';
 
         Log::info('Flutterwave webhook received', [
@@ -146,48 +192,57 @@ class FlutterwaveProvider implements PaymentProviderInterface
         ];
     }
 
+    /**
+     * Refund a Flutterwave v4 charge.
+     *
+     * @param string $chargeId The original charge ID
+     * @param float|null $amount Amount to refund (null for full refund)
+     * @return array Refund transaction details
+     */
     public function refundPayment(string $reference, ?float $amount = null): array
     {
         $payload = [
-            'ref' => $reference,
+            'charge_id' => $reference,
+            'amount' => $amount,
+            'reason' => 'requested_by_customer',
         ];
 
-        if ($amount !== null) {
-            $payload['amount'] = $amount;
-        }
-
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->secretKey,
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
             'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/transactions/' . $reference . '/refund', $payload);
+            'X-Idempotency-Key' => str_replace('-', '', uniqid('', true)),
+        ])->post($this->baseUrl . '/refunds', $payload);
 
         $result = $response->json();
 
         if (!$response->successful()) {
             Log::error('Flutterwave refund failed', [
                 'response' => $result,
-                'reference' => $reference,
+                'charge_id' => $reference,
             ]);
-            throw new \Exception('Refund failed: ' . ($result['message'] ?? 'Unknown error'));
+            throw new \Exception('Refund failed: ' . ($result['error']['message'] ?? $result['message'] ?? 'Unknown error'));
         }
+
+        $refundData = $result['data'] ?? [];
 
         return [
             'success' => true,
-            'reference' => $result['data']['id'] ?? null,
-            'amount_refunded' => $result['data']['amount'] ?? null,
-            'status' => $result['data']['status'] ?? 'pending',
-            'data' => $result['data'],
+            'reference' => $refundData['id'] ?? null,
+            'amount_refunded' => $refundData['amount'] ?? null,
+            'status' => $refundData['status'] ?? 'pending',
+            'data' => $refundData,
         ];
     }
 
     /**
      * Attempt to collect payment for a finalized, frozen invoice.
      *
-     * Flutterwave can use tokenized card charging if a token is available.
+     * @param Invoice $invoice
+     * @param PaymentMethod $method
+     * @return PaymentResponseDTO
      */
     public function attemptInvoiceCollection(Invoice $invoice, PaymentMethod $method): PaymentResponseDTO
     {
-        // Check if payment method has a token for recurring charges
         $token = $method->metadata['token'] ?? null;
 
         if (empty($token)) {
@@ -216,7 +271,7 @@ class FlutterwaveProvider implements PaymentProviderInterface
         ]);
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->secretKey,
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
             'Content-Type' => 'application/json',
         ])->post($this->baseUrl . '/charges', $payload);
 
@@ -266,6 +321,56 @@ class FlutterwaveProvider implements PaymentProviderInterface
         return 'flutterwave';
     }
 
+    /**
+     * Obtain a valid OAuth 2.0 access token using client credentials.
+     *
+     * The token is cached in-memory and reused until it nears expiry
+     * (60-second buffer). Tokens have a 10-minute lifetime per Flutterwave docs.
+     *
+     * @return string The access token to use as a Bearer token.
+     * @throws \Exception If the token cannot be obtained.
+     */
+    private function getAccessToken(): string
+    {
+        // Return cached token if still valid (with refresh buffer)
+        if ($this->accessToken && $this->accessTokenExpiresAt && time() < $this->accessTokenExpiresAt - self::TOKEN_REFRESH_BUFFER_SECONDS) {
+            return $this->accessToken;
+        }
+
+        if (empty($this->clientId) || empty($this->clientSecret)) {
+            throw new \Exception('Flutterwave client credentials not configured. Set FLUTTERWAVE_CLIENT_ID and FLUTTERWAVE_CLIENT_SECRET.');
+        }
+
+        $response = Http::asForm()->post(self::TOKEN_URL, [
+            'client_id' => $this->clientId,
+            'client_secret' => $this->clientSecret,
+            'grant_type' => 'client_credentials',
+        ]);
+
+        if (!$response->successful()) {
+            Log::error('Flutterwave OAuth token fetch failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            throw new \Exception('Flutterwave authentication failed: unable to obtain access token (HTTP ' . $response->status() . ')');
+        }
+
+        $data = $response->json();
+        $this->accessToken = $data['access_token'] ?? null;
+        $expiresIn = (int) ($data['expires_in'] ?? 600);
+        $this->accessTokenExpiresAt = time() + $expiresIn;
+
+        if (!$this->accessToken) {
+            throw new \Exception('Flutterwave authentication failed: no access token in response');
+        }
+
+        Log::info('Flutterwave OAuth token obtained', [
+            'expires_in' => $expiresIn,
+        ]);
+
+        return $this->accessToken;
+    }
+
     public function validateWebhookSignature(array $payload, string $signature): bool
     {
         if (empty($this->webhookSecret)) {
@@ -276,6 +381,105 @@ class FlutterwaveProvider implements PaymentProviderInterface
         $computedSignature = hash_hmac('sha256', json_encode($payload), $this->webhookSecret);
 
         return hash_equals($computedSignature, $signature);
+    }
+
+    /**
+     * Get or create a Flutterwave customer by email.
+     *
+     * @param string|null $email
+     * @param string|null $name
+     * @param string|null $phone
+     * @return string Customer ID
+     * @throws \Exception
+     */
+    private function getOrCreateCustomer(?string $email, ?string $name = null, ?string $phone = null): string
+    {
+        if (empty($email)) {
+            throw new \Exception('Customer email is required for Flutterwave payment');
+        }
+
+        $headers = [
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+            'Content-Type' => 'application/json',
+        ];
+
+        // Try to find existing customer by email
+        $listResponse = Http::withHeaders($headers)
+            ->get($this->baseUrl . '/customers', ['email' => $email]);
+
+        if ($listResponse->successful()) {
+            $customers = $listResponse->json()['data'] ?? [];
+            foreach ($customers as $customer) {
+                if ($customer['email'] ?? '' === $email) {
+                    return $customer['id'];
+                }
+            }
+        }
+
+        // Create new customer
+        $headers['X-Idempotency-Key'] = str_replace('-', '', uniqid('', true));
+        $createResponse = Http::withHeaders($headers)->post($this->baseUrl . '/customers', [
+            'email' => $email,
+            'phone_number' => $phone,
+        ]);
+
+        if (!$createResponse->successful()) {
+            $result = $createResponse->json();
+            Log::error('Flutterwave customer creation failed', [
+                'response' => $result,
+                'email' => $email,
+            ]);
+            throw new \Exception('Failed to create Flutterwave customer: ' . ($result['error']['message'] ?? 'Unknown error'));
+        }
+
+        $customerData = $createResponse->json()['data'] ?? [];
+        $customerId = $customerData['id'] ?? null;
+
+        if (!$customerId) {
+            throw new \Exception('Failed to create Flutterwave customer: no customer ID in response');
+        }
+
+        return $customerId;
+    }
+
+    /**
+     * Create a payment method for a Flutterwave customer.
+     *
+     * @param string $customerId
+     * @return string Payment method ID
+     * @throws \Exception
+     */
+    private function createPaymentMethod(string $customerId): string
+    {
+        $headers = [
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+            'Content-Type' => 'application/json',
+            'X-Idempotency-Key' => str_replace('-', '', uniqid('', true)),
+        ];
+
+        $response = Http::withHeaders($headers)->post($this->baseUrl . '/payment-methods', [
+            'customer_id' => $customerId,
+            'type' => 'bank_account',
+            'details' => [],
+        ]);
+
+        if (!$response->successful()) {
+            $result = $response->json();
+            Log::error('Flutterwave payment method creation failed', [
+                'response' => $result,
+                'customer_id' => $customerId,
+            ]);
+            throw new \Exception('Failed to create Flutterwave payment method: ' . ($result['error']['message'] ?? 'Unknown error'));
+        }
+
+        $pmData = $response->json()['data'] ?? [];
+        $paymentMethodId = $pmData['id'] ?? null;
+
+        if (!$paymentMethodId) {
+            throw new \Exception('Failed to create Flutterwave payment method: no payment method ID in response');
+        }
+
+        return $paymentMethodId;
     }
 
     private function generateReference(): string

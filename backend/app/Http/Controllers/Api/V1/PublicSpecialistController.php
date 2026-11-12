@@ -45,6 +45,12 @@ class PublicSpecialistController extends Controller
             ->chronological()
             ->get()
             ->map(function ($event) {
+                $workplaceName = 'Unknown Workplace';
+                if ($event->assignment && $event->assignment->location) {
+                    $workplaceName = $event->assignment->location->name;
+                } elseif ($event->assignment && $event->assignment->provider) {
+                    $workplaceName = $event->assignment->provider->name;
+                }
                 return [
                     'id' => $event->id,
                     'type' => $event->type,
@@ -52,7 +58,7 @@ class PublicSpecialistController extends Controller
                     'description' => $event->description,
                     'date' => $event->date,
                     'icon' => $event->icon,
-                    'salon' => $event->salon?->name,
+                    'workplace' => $workplaceName,
                 ];
             });
 
@@ -103,8 +109,8 @@ class PublicSpecialistController extends Controller
         // Resolve through assignments - specialist can work at multiple salons
         // This endpoint should return available assignments for booking
         $activeAssignments = $specialist->assignments()
-            ->where('active', true)
-            ->with('salon')
+            ->where('status', 'ACTIVE')
+            ->with('location')
             ->get();
 
         return response()->json([
@@ -114,9 +120,8 @@ class PublicSpecialistController extends Controller
             'assignments' => $activeAssignments->map(function ($assignment) {
                 return [
                     'id' => $assignment->id,
-                    'salon_id' => $assignment->salon_id,
-                    'salon_name' => $assignment->salon?->name,
-                    'salon_slug' => $assignment->salon?->slug,
+                    'location_id' => $assignment->location_id,
+                    'location_name' => $assignment->location?->name,
                     'role' => $assignment->role,
                 ];
             }),
@@ -199,11 +204,18 @@ class PublicSpecialistController extends Controller
             'title' => 'required|string',
             'description' => 'nullable|string',
             'date' => 'required|date',
-            'salon_id' => 'nullable|uuid',
-            'assignment_id' => 'nullable|uuid',
+            'assignment_id' => 'nullable|uuid|exists:specialist_assignments,id',
             'icon' => 'nullable|string',
             'is_public' => 'boolean',
         ]);
+
+        // If assignment_id is provided, verify it belongs to the specialist
+        if (isset($validated['assignment_id'])) {
+            $assignment = \App\Models\SpecialistAssignment::find($validated['assignment_id']);
+            if (!$assignment || $assignment->specialist_id !== $specialist->id) {
+                return response()->json(['message' => 'Invalid assignment: must belong to the specialist'], 422);
+            }
+        }
 
         $event = $specialist->careerEvents()->create($validated);
 

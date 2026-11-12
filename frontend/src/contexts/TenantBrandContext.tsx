@@ -14,6 +14,7 @@ interface SalonInfo {
 interface BrandSettings {
   experience_family: string;
   logo: string | null;
+  logo_url: string | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;
@@ -79,7 +80,7 @@ interface TenantBrandProviderProps {
 export function TenantBrandProvider({ children, slug }: TenantBrandProviderProps) {
   const { data: brand, isLoading, error, refetch } = useQuery({
     queryKey: ['tenant-brand-experience', slug],
-    queryFn: () => apiClient.get(`/salons/${slug}/brand-experience`),
+    queryFn: () => apiClient.get(`/v1/providers/${slug}/brand-experience`),
     enabled: !!slug,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false,

@@ -7,8 +7,8 @@ interface RevenuePipelineProps {
   revenue: {
     gross: number;
     gateway_fees: number;
-    platform_fees: number;
-    refunds: number;
+    platform_fees: number | null;
+    refunds: number | null;
     net: number;
     settlement_pending: number;
     cash_in_hand: number;
@@ -16,14 +16,17 @@ interface RevenuePipelineProps {
   fees: {
     gross_pct: number;
     gateway_pct: number;
-    platform_pct: number;
-    refunds_pct: number;
+    platform_pct: number | null;
+    refunds_pct: number | null;
     net_pct: number;
   };
 }
 
 export default function RevenuePipeline({ revenue, fees }: RevenuePipelineProps) {
-  const formatAmt = (amt: number) => `UGX ${amt.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const formatAmt = (amt: number | null) => {
+    if (amt === null || amt === undefined) return 'N/A';
+    return `UGX ${amt.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  };
 
   const nodes = [
     { label: 'Gross Revenue', amount: revenue.gross, pct: fees.gross_pct, color: 'text-text-primary' },
@@ -74,7 +77,7 @@ export default function RevenuePipeline({ revenue, fees }: RevenuePipelineProps)
 
             <div className="text-right flex items-center gap-3">
               <span className={`text-sm font-medium ${node.color} tracking-tight`}>
-                {node.isDeduction && node.amount > 0 ? '-' : ''}{formatAmt(node.amount)}
+                {node.isDeduction && (node.amount || 0) > 0 ? '-' : ''}{formatAmt(node.amount || 0)}
               </span>
               {node.pct !== null && (
                 <span className="text-xs text-text-muted w-10 text-right opacity-60">

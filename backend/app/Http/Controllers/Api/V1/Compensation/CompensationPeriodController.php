@@ -12,12 +12,12 @@ class CompensationPeriodController extends CompensationController
     /**
      * List open and closed periods.
      */
-    public function index(string $salonSlug, Request $request): JsonResponse
+    public function index(string $providerIdentifier, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $query = CompensationPeriod::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $query = CompensationPeriod::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->with(['compensatable']);
 
         if ($request->has('status')) {
@@ -29,7 +29,7 @@ class CompensationPeriodController extends CompensationController
                   ->where('compensatable_id', $request->query('compensatable_id'));
         }
 
-        $periods = $query->orderBy('start_date', 'desc')->get();
+        $periods = $query->orderBy('period_start', 'desc')->get();
 
         return response()->json($periods);
     }
@@ -37,12 +37,12 @@ class CompensationPeriodController extends CompensationController
     /**
      * View detailed period.
      */
-    public function show(string $salonSlug, string $periodId): JsonResponse
+    public function show(string $providerIdentifier, string $periodId): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $period = CompensationPeriod::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $period = CompensationPeriod::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->where('id', $periodId)
             ->with(['compensatable', 'earnings', 'adjustments', 'policy'])
             ->firstOrFail();
@@ -53,12 +53,12 @@ class CompensationPeriodController extends CompensationController
     /**
      * Manually close a period.
      */
-    public function close(string $salonSlug, string $periodId, PeriodClosingService $closingService): JsonResponse
+    public function close(string $providerIdentifier, string $periodId, PeriodClosingService $closingService): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $period = CompensationPeriod::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $period = CompensationPeriod::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->where('id', $periodId)
             ->firstOrFail();
 

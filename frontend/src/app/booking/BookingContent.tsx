@@ -11,8 +11,10 @@ import TimePicker from '@/components/booking/TimePicker';
 import BookingSummary from '@/components/booking/BookingSummary';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRole } from '@/contexts/RoleContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { apiClient } from '@/lib/api-client';
-import { salonRoutes } from '@/lib/routes';
+import { providerRoutes } from '@/lib/routes';
+import { formatDateKey } from '@/lib/timezone';
 
 interface Service {
   id: string;
@@ -23,6 +25,7 @@ interface Service {
 
 export interface Stylist {
   id: string;
+  specialist_id?: string;
   name: string;
   specializations?: string[];
   image?: string;
@@ -35,13 +38,15 @@ export default function BookingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { salonId: authenticatedSalonId, salonSlug } = useRole();
-  const routes = salonRoutes(salonSlug);
-  
-  // Get salon from URL params for guest booking, or use authenticated salon
-  const salonId = searchParams.get('salonId') || authenticatedSalonId;
+  const { providerId: authenticatedProviderId, providerSlug } = useRole();
+  const { terminology } = useCategory();
+  const routes = providerRoutes(providerSlug);
+
+  // Get provider from URL params for guest booking, or use authenticated provider
+  const providerId = searchParams.get('providerId') || authenticatedProviderId;
   
   const [currentStep, setCurrentStep] = useState(0);
+  const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; name: string; phone: string; email: string } | null>(null);
   const [selectedService, setSelectedService] = useState<Service | undefined>();
   const [selectedStylist, setSelectedStylist] = useState<Stylist | undefined>();
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -50,15 +55,21 @@ export default function BookingContent() {
   const [estimatedWaitTime, setEstimatedWaitTime] = useState<string>('');
 
   const { data: servicesData = [], isLoading: servicesLoading } = useQuery({
-    queryKey: ['services', salonId],
-    queryFn: () => apiClient.getServices({ salon_id: salonId! }),
-    enabled: !!salonId,
+    queryKey: ['services', providerId],
+    queryFn: () => apiClient.getServices({ provider_id: providerId! }),
+    enabled: !!providerId && currentStep >= 1,
+  });
+
+  const { data: customersData = [], isLoading: customersLoading } = useQuery({
+    queryKey: ['customers', providerId],
+    queryFn: () => apiClient.getCustomers({}),
+    enabled: !!providerId && currentStep >= 0,
   });
 
   const { data: staffData = [], isLoading: staffLoading } = useQuery({
-    queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId! }),
-    enabled: !!salonId,
+    queryKey: ['staff', providerId],
+    queryFn: () => apiClient.getAssignableSpecialists(providerId!),
+    enabled: !!providerId,
   });
 
   const services: Service[] = useMemo(() => (servicesData as any[]).map((s: any) => ({
@@ -68,8 +79,9 @@ export default function BookingContent() {
     duration: s.duration,
   })), [servicesData]);
 
-  const stylists: Stylist[] = useMemo(() => (staffData as any[]).map((s: any) => ({
+  const stylists: Stylist[] = useMemo(() => (Array.isArray(staffData) ? staffData : []).map((s: any) => ({
     id: s.id,
+    specialist_id: s.specialist_id,
     name: s.name,
     specializations: s.specializations || [],
     available: s.active !== false && s.status !== 'off' && s.status !== 'leave',
@@ -98,8 +110,8 @@ export default function BookingContent() {
   };
 
   const handleContinue = () => {
-    if (currentStep < 3) {
-      if (currentStep === 1 && selectedStylist && !selectedStylist.available) {
+    if (currentStep < 4) {
+      if (currentStep === 2 && selectedStylist && !selectedStylist.available) {
         setQueuePosition(selectedStylist.queuePosition || null);
         setEstimatedWaitTime(selectedStylist.nextAvailable || '');
       }
@@ -110,6 +122,50 @@ export default function BookingContent() {
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
+        return (
+          <div className="space-y-3">
+            <h3 className="text-base lg:text-lg font-semibold text-text-primary">Select Customer</h3>
+            {customersLoading ? (
+              <div className="space-y-3">
+                {[1,2,3].map(i => (
+                  <div key={i} className="w-full h-16 rounded-xl bg-card border border-border-medium animate-pulse" />
+                ))}
+              </div>
+            ) : customersData.length === 0 ? (
+              <div className="text-center py-10 text-text-secondary">
+                <p className="text-sm">No customers yet. Add customers in the Customers module first.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {(Array.isArray(customersData) ? customersData : []).map((customer: any) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => setSelectedCustomer(customer)}
+                    className={`w-full p-3 lg:p-4 rounded-xl border-2 transition-all text-left ${
+                      selectedCustomer?.id === customer.id
+                        ? 'border-[#FFD700] bg-[#FFD700]/10'
+                        : 'border-border-light bg-card hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-primary font-semibold text-sm lg:text-base truncate">{customer.name}</p>
+                        <p className="text-text-secondary text-xs lg:text-sm mt-1">{customer.phone}</p>
+                      </div>
+                      {customer.lastVisit && (
+                        <span className="text-text-muted text-xs ml-2 flex-shrink-0">
+                          Last: {new Date(customer.lastVisit).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+      case 1:
         return (
           <div className="space-y-3">
             <h3 className="text-base lg:text-lg font-semibold text-text-primary">Select a Service</h3>
@@ -147,10 +203,15 @@ export default function BookingContent() {
           </div>
         );
 
-      case 1:
+      case 2:
         return (
           <div className="space-y-3">
-            <h3 className="text-base lg:text-lg font-semibold text-text-primary">Select a Stylist</h3>
+            <h3 className="text-base lg:text-lg font-semibold text-text-primary">Select a {terminology.specialist}</h3>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2 lg:p-3">
+              <p className="text-blue-400 text-[10px] lg:text-xs">
+                Only {terminology.specialistPlural.toLowerCase()} with active beauty practice assignments are bookable
+              </p>
+            </div>
             {staffLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[1,2].map(i => (
@@ -159,7 +220,7 @@ export default function BookingContent() {
               </div>
             ) : stylists.length === 0 ? (
               <div className="text-center py-10 text-text-secondary">
-                <p className="text-sm">No staff members yet. Add staff in the Team module first.</p>
+                <p className="text-sm">No {terminology.specialistPlural.toLowerCase()} yet. Add {terminology.specialistPlural.toLowerCase()} in the Team module first.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -205,7 +266,7 @@ export default function BookingContent() {
           </div>
         );
 
-      case 2:
+      case 3:
         return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
             <CalendarPicker selectedDate={selectedDate} onDateSelect={setSelectedDate} />
@@ -213,14 +274,30 @@ export default function BookingContent() {
               selectedTime={selectedTime}
               onTimeSelect={setSelectedTime}
               selectedStylist={selectedStylist}
+              selectedDate={selectedDate}
+              selectedService={selectedService}
             />
           </div>
         );
 
-      case 3:
+      case 4:
         return (
           <div className="space-y-3">
-            <h3 className="text-base lg:text-lg font-semibold text-text-primary">Confirm Your Details</h3>
+            <h3 className="text-base lg:text-lg font-semibold text-text-primary">Confirm Booking</h3>
+
+            {selectedCustomer && (
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-3 lg:p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                    <span className="text-green-400 text-lg">👋</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-green-400 font-semibold text-sm lg:text-base">Customer: {selectedCustomer.name}</p>
+                    <p className="text-text-secondary text-xs lg:text-sm">{selectedCustomer.phone}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {queuePosition && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 lg:p-4">
@@ -245,8 +322,7 @@ export default function BookingContent() {
             )}
 
             <div className="bg-card border border-border-light rounded-xl p-3 lg:p-4">
-              <p className="text-text-secondary text-xs lg:text-sm">Your booking is ready to be confirmed.</p>
-              <p className="text-text-primary mt-2 text-sm lg:text-base">Please review the summary below and click confirm to complete your booking.</p>
+              <p className="text-text-secondary text-xs lg:text-sm">Please review the booking summary and click confirm to complete your booking.</p>
             </div>
           </div>
         );
@@ -265,31 +341,30 @@ export default function BookingContent() {
       return await apiClient.createBooking(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', providerId] });
       router.push(routes.bookings);
     },
     onError: (error) => {
       console.error('Failed to create booking:', error);
-      alert('Failed to create booking. Please try again.');
+      alert(`Failed to create ${terminology.appointment.toLowerCase()}. Please try again.`);
     },
   });
 
   const handleConfirmBooking = () => {
-    if (!selectedService || !selectedStylist || !selectedDate || !selectedTime || !salonId) {
+    if (!selectedCustomer || !selectedService || !selectedStylist || !selectedDate || !selectedTime || !providerId) {
       return;
     }
 
-    // Combine date and time into a proper datetime string
-    const bookingDateTime = new Date(selectedDate);
-    const [hours, minutes] = selectedTime.split(':').map(Number);
-    bookingDateTime.setHours(hours, minutes, 0, 0);
-
     createBookingMutation.mutate({
-      salon_id: salonId,
-      service_id: selectedService.id,
-      staff_id: selectedStylist.id,
-      date: bookingDateTime.toISOString(),
+      provider_id: providerId,
+      location_id: locationId,
+      customer_id: selectedCustomer.id,
+      service_id: [selectedService.id],
+      specialist_id: selectedStylist.specialist_id,
+      date: formatDateKey(selectedDate),
+      time: selectedTime,
       status: 'confirmed',
+      internal_booking: true,
       notes: queuePosition ? `Queue position: ${queuePosition}` : undefined,
     });
   };
@@ -297,27 +372,27 @@ export default function BookingContent() {
   return (
     <DashboardLayout>
       <div className="h-full font-sans overflow-x-hidden">
-        {/* No salon selected state */}
-        {!salonId && (
+        {/* No provider selected state */}
+        {!providerId && (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-16 h-16 rounded-full bg-gold/10 flex items-center justify-center mb-4">
               <Calendar className="w-8 h-8 text-gold" />
             </div>
-            <h2 className="text-xl font-semibold text-text-primary mb-2">No Salon Selected</h2>
+            <h2 className="text-xl font-semibold text-text-primary mb-2">No Provider Selected</h2>
             <p className="text-text-secondary mb-6 max-w-md">
-              Please select a salon from the discovery page to continue with your booking.
+              Please select a provider from the discovery page to continue with your booking.
             </p>
             <button
               onClick={() => router.push('/')}
               className="px-6 py-2.5 bg-gold text-black rounded-xl font-medium hover:bg-gold/90 transition-colors"
             >
-              Discover Salons
+              Discover Providers
             </button>
           </div>
         )}
 
-        {/* Booking flow - only shown when salonId exists */}
-        {salonId && (
+        {/* Booking flow - only shown when providerId exists */}
+        {providerId && (
           <>
         <div className="mb-4 lg:mb-8">
           <h1 className="font-serif text-2xl lg:text-3xl font-bold text-text-primary tracking-tight">Book Your Appointment</h1>
@@ -348,15 +423,16 @@ export default function BookingContent() {
                 Back
               </button>
               <button
-                onClick={currentStep === 3 ? handleConfirmBooking : handleContinue}
+                onClick={currentStep === 4 ? handleConfirmBooking : handleContinue}
                 disabled={
-                  (currentStep === 0 && !selectedService) ||
-                  (currentStep === 1 && !selectedStylist) ||
-                  (currentStep === 2 && (!selectedDate || !selectedTime))
+                  (currentStep === 0 && !selectedCustomer) ||
+                  (currentStep === 1 && !selectedService) ||
+                  (currentStep === 2 && !selectedStylist) ||
+                  (currentStep === 3 && (!selectedDate || !selectedTime))
                 }
                 className="flex-1 sm:flex-none px-3 sm:px-4 lg:px-6 py-3 rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-[#FFD700] to-[#C9A227] text-obsidian hover:opacity-90 text-sm lg:text-base"
               >
-                {currentStep === 3 ? 'Confirm Booking' : 'Continue'}
+                {currentStep === 4 ? 'Confirm Booking' : 'Continue'}
               </button>
             </div>
           </div>

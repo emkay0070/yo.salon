@@ -18,7 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'auth.any' => \App\Http\Middleware\AuthenticateAnyActor::class,
-            'salon.context' => \App\Http\Middleware\ResolveSalonContext::class,
+            'provider.context' => \App\Http\Middleware\ResolveProviderContext::class,
+            'location.context' => \App\Http\Middleware\ResolveLocationContext::class,
             'portal.context' => \App\Http\Middleware\ResolvePortalContext::class,
             'track.views' => \App\Http\Middleware\TrackViewCount::class,
             'specialist.capability' => \App\Http\Middleware\SpecialistCapabilityMiddleware::class,

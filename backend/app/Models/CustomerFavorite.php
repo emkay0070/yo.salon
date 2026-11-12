@@ -12,7 +12,7 @@ class CustomerFavorite extends Model
 
     protected $fillable = [
         'customer_id',
-        'salon_id',
+        'location_id',
         'favoritable_type',
         'favoritable_id',
         'collection_id',
@@ -28,9 +28,9 @@ class CustomerFavorite extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function salon(): BelongsTo
+    public function location()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Location::class, 'location_id');
     }
 
     public function collection(): BelongsTo

@@ -12,7 +12,6 @@ class CustomerFavoriteService extends Model
 
     protected $fillable = [
         'customer_id',
-        'salon_id',
         'service_id',
         'added_at',
     ];
@@ -24,11 +23,6 @@ class CustomerFavoriteService extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
-    }
-
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
     }
 
     public function service(): BelongsTo

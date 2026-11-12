@@ -15,6 +15,7 @@ interface BookingStepsProps {
 }
 
 const steps = [
+  { id: 'customer', label: 'Customer' },
   { id: 'service', label: 'Service' },
   { id: 'stylist', label: 'Stylist' },
   { id: 'schedule', label: 'Schedule' },

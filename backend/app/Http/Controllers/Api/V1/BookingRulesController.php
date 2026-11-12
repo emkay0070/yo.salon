@@ -32,7 +32,8 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'date' => 'required|date',
             'time' => 'nullable|string',
             'customer_id' => 'nullable|uuid|exists:customers,id',
@@ -64,13 +65,15 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
         ]);
 
         try {
             $summary = $this->cancellationEngine->getCancellationPolicySummary(
                 $validated['service_id'],
-                $validated['salon_id']
+                $validated['provider_id'] ?? null,
+                $validated['location_id'] ?? null
             );
 
             return response()->json([
@@ -91,7 +94,8 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'booking_time' => 'required|date',
             'deposit_amount' => 'required|numeric|min:0',
         ]);
@@ -99,13 +103,15 @@ class BookingRulesController extends Controller
         try {
             $canCancel = $this->cancellationEngine->canCancel(
                 $validated['service_id'],
-                $validated['salon_id'],
+                $validated['provider_id'] ?? null,
+                $validated['location_id'] ?? null,
                 \Carbon\Carbon::parse($validated['booking_time'])
             );
 
             $fee = $this->cancellationEngine->calculateCancellationFee(
                 $validated['service_id'],
-                $validated['salon_id'],
+                $validated['provider_id'] ?? null,
+                $validated['location_id'] ?? null,
                 $validated['deposit_amount'],
                 \Carbon\Carbon::parse($validated['booking_time'])
             );
@@ -132,13 +138,15 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => 'required|uuid|exists:customers,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
         ]);
 
         try {
             $status = $this->cancellationEngine->checkNoShowStatus(
                 $validated['customer_id'],
-                $validated['salon_id']
+                $validated['provider_id'] ?? null,
+                $validated['location_id'] ?? null
             );
 
             return response()->json([
@@ -159,14 +167,16 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'booking_time' => 'required|date',
         ]);
 
         try {
             $canReschedule = $this->cancellationEngine->canReschedule(
                 $validated['service_id'],
-                $validated['salon_id'],
+                $validated['provider_id'] ?? null,
+                $validated['location_id'] ?? null,
                 \Carbon\Carbon::parse($validated['booking_time'])
             );
 
@@ -190,50 +200,61 @@ class BookingRulesController extends Controller
     {
         $validated = $request->validate([
             'service_id' => 'required|uuid|exists:services,id',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
         ]);
 
         try {
             $requirements = [
                 'requires_approval' => $this->rulesValidator->requiresApproval(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'requires_consultation' => $this->rulesValidator->requiresConsultation(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'requires_customer_profile' => $this->rulesValidator->requiresCustomerProfile(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'requires_phone_number' => $this->rulesValidator->requiresPhoneNumber(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'allows_walk_ins' => $this->rulesValidator->allowsWalkIns(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'allows_repeat_bookings' => $this->rulesValidator->allowsRepeatBookings(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'allows_double_booking' => $this->rulesValidator->allowsDoubleBooking(
                     $validated['service_id'],
-                    $validated['salon_id']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'buffer_minutes' => $this->rulesValidator->getBufferMinutes(
                     $validated['service_id'],
-                    $validated['salonId']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'specialist_assignment_strategy' => $this->rulesValidator->getSpecialistAssignmentStrategy(
                     $validated['service_id'],
-                    $validated['salonId']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
                 'allow_specialist_choice' => $this->rulesValidator->allowSpecialistChoice(
                     $validated['service_id'],
-                    $validated['salonId']
+                    $validated['provider_id'] ?? null,
+                    $validated['location_id'] ?? null
                 ),
             ];
 

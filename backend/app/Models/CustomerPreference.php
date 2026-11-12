@@ -12,8 +12,6 @@ class CustomerPreference extends Model
 
     protected $fillable = [
         'customer_id',
-        'customer_salon_id',
-        'salon_id',
         'preferred_staff_id',
         'notification_preferences',
         'booking_preferences',
@@ -27,16 +25,6 @@ class CustomerPreference extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
-    }
-
-    public function customerSalon(): BelongsTo
-    {
-        return $this->belongsTo(CustomerSalon::class);
-    }
-
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
     }
 
     public function preferredStaff(): BelongsTo

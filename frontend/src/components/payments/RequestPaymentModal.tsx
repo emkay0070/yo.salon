@@ -11,7 +11,7 @@ import { apiClient } from '@/lib/api-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ChannelId = 'flutterwave' | 'visa' | 'mtn' | 'airtel' | 'cash';
-type Step = 'details' | 'waiting' | 'success';
+type Step = 'details' | 'waiting' | 'success' | 'select-booking';
 
 interface RequestPaymentModalProps {
   isOpen: boolean;
@@ -229,11 +229,11 @@ export default function RequestPaymentModal({
     }
 
     if (method === 'cash' || method === 'visa') {
-      // Manual payment
+      // Manual payment - booking-linked only
       const payload = {
         booking_id: bookingId,
         customer_id: customerId,
-        salon_id: customerId ? undefined : bookingId, // Fallback logic
+        type: 'payment',
         amount: amount,
         payment_method: method,
         notes: method === 'cash' ? 'Cash payment recorded at front desk' : 'Card terminal payment recorded',
@@ -298,7 +298,7 @@ export default function RequestPaymentModal({
         return (
           <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/20">
             <p className="text-emerald-400 text-sm leading-relaxed">
-              Confirm that you have physically received the cash from the customer. This will mark the booking as paid and generate a receipt.
+              Confirm that you have physically received {formatCurrency(amount)} cash from {customerName || 'the customer'} for this booking. This will mark the payment as paid and update the booking's payment status.
             </p>
           </div>
         );
@@ -307,7 +307,7 @@ export default function RequestPaymentModal({
         return (
           <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/20">
             <p className="text-blue-400 text-sm leading-relaxed">
-              Confirm that the card terminal has shown a successful approval. This will mark the booking as paid and generate a receipt.
+              Confirm that the card terminal has shown a successful approval for {formatCurrency(amount)} from {customerName || 'the customer'} for this booking. This will mark the payment as paid and update the booking's payment status.
             </p>
           </div>
         );
@@ -370,6 +370,21 @@ export default function RequestPaymentModal({
             <div className="p-6 relative">
               <AnimatePresence mode="wait">
                 
+                {/* SELECT BOOKING STEP */}
+                {step === 'select-booking' && (
+                  <motion.div
+                    key="select-booking"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="text-center py-8 text-text-secondary">
+                      <p>Select booking functionality not yet implemented</p>
+                    </div>
+                  </motion.div>
+                )}
+
                 {/* DETAILS STEP */}
                 {step === 'details' && (
                   <motion.div

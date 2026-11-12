@@ -12,15 +12,15 @@ class LoyaltyService
     /**
      * Add points to a customer's balance
      */
-    public function addPoints(string $customerId, string $salonId, int $points, string $description, array $metadata = []): LoyaltyPoint
+    public function addPoints(string $customerId, string $providerId, int $points, string $description, array $metadata = []): LoyaltyPoint
     {
-        return DB::transaction(function () use ($customerId, $salonId, $points, $description, $metadata) {
-            $currentBalance = LoyaltyPoint::getCustomerBalance($customerId, $salonId);
+        return DB::transaction(function () use ($customerId, $providerId, $points, $description, $metadata) {
+            $currentBalance = LoyaltyPoint::getCustomerBalance($customerId, $providerId);
             $newBalance = $currentBalance + $points;
 
             $loyaltyPoint = LoyaltyPoint::create([
                 'customer_id' => $customerId,
-                'salon_id' => $salonId,
+                'provider_id' => $providerId,
                 'points_earned' => $points,
                 'points_redeemed' => 0,
                 'balance' => $newBalance,
@@ -37,10 +37,10 @@ class LoyaltyService
     /**
      * Redeem points from a customer's balance
      */
-    public function redeemPoints(string $customerId, string $salonId, int $points, string $description, array $metadata = []): LoyaltyPoint
+    public function redeemPoints(string $customerId, string $providerId, int $points, string $description, array $metadata = []): LoyaltyPoint
     {
-        return DB::transaction(function () use ($customerId, $salonId, $points, $description, $metadata) {
-            $currentBalance = LoyaltyPoint::getCustomerBalance($customerId, $salonId);
+        return DB::transaction(function () use ($customerId, $providerId, $points, $description, $metadata) {
+            $currentBalance = LoyaltyPoint::getCustomerBalance($customerId, $providerId);
 
             if ($currentBalance < $points) {
                 throw new \Exception('Insufficient points balance');
@@ -48,9 +48,13 @@ class LoyaltyService
 
             $newBalance = $currentBalance - $points;
 
+            if ($newBalance < 0) {
+                throw new \Exception('Balance cannot be negative');
+            }
+
             $loyaltyPoint = LoyaltyPoint::create([
                 'customer_id' => $customerId,
-                'salon_id' => $salonId,
+                'provider_id' => $providerId,
                 'points_earned' => 0,
                 'points_redeemed' => $points,
                 'balance' => $newBalance,
@@ -68,10 +72,10 @@ class LoyaltyService
     /**
      * Get customer's loyalty summary
      */
-    public function getCustomerSummary(string $customerId, string $salonId): array
+    public function getCustomerSummary(string $customerId, string $providerId): array
     {
-        $balance = LoyaltyPoint::getCustomerBalance($customerId, $salonId);
-        $tierProgress = LoyaltyPoint::getTierProgress($customerId, $salonId);
+        $balance = LoyaltyPoint::getCustomerBalance($customerId, $providerId);
+        $tierProgress = LoyaltyPoint::getTierProgress($customerId, $providerId);
 
         return [
             'balance' => $balance,
@@ -85,10 +89,10 @@ class LoyaltyService
     /**
      * Get customer's loyalty transaction history
      */
-    public function getCustomerHistory(string $customerId, string $salonId, int $limit = 20): array
+    public function getCustomerHistory(string $customerId, string $providerId, int $limit = 20): array
     {
         $transactions = LoyaltyPoint::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->orderBy('earned_at', 'desc')
             ->limit($limit)
             ->get();
@@ -112,18 +116,32 @@ class LoyaltyService
      */
     public function awardPointsForBooking(string $bookingId): void
     {
-        $booking = Booking::with(['service', 'customer'])->findOrFail($bookingId);
+        $booking = Booking::with(['service', 'customer'])->lockForUpdate()->findOrFail($bookingId);
 
         if ($booking->status !== 'completed') {
             throw new \Exception('Booking must be completed to award points');
         }
 
-        // Award 1 point per $1 spent
+        // Check if points already awarded for this booking
+        $alreadyAwarded = LoyaltyPoint::where('metadata->booking_id', $bookingId)->exists();
+        if ($alreadyAwarded) {
+            throw new \Exception('Points already awarded for this booking');
+        }
+
+        // Derive provider from booking's service
+        $providerId = $booking->service->provider_id;
+        if (!$providerId) {
+            throw new \Exception('Booking service must have a provider to award points');
+        }
+
+        // Award 1 point per unit of service price
+        // Note: This assumes service.price is in a consistent monetary unit
+        // The current implementation does not establish currency-aware calculation
         $pointsToAward = (int) $booking->service->price;
 
         $this->addPoints(
             $booking->customer_id,
-            $booking->salon_id,
+            $providerId,
             $pointsToAward,
             'Points earned for booking: ' . $booking->service->name,
             ['booking_id' => $bookingId]

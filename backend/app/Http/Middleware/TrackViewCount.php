@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Service;
 use App\Models\Specialist;
 
@@ -38,17 +38,17 @@ class TrackViewCount
 
         $uri = $request->path();
 
-        // Track salon views
-        if (preg_match('#^salons/([^/]+)$#', $uri, $matches)) {
-            $salon = Salon::where('slug', $matches[1])->first();
-            if ($salon) {
-                $salon->increment('view_count');
+        // Track provider views (via slug)
+        if (preg_match('#^providers/([^/]+)$#', $uri, $matches)) {
+            $provider = Provider::where('slug', $matches[1])->first();
+            if ($provider) {
+                $provider->increment('view_count');
             }
         }
 
         // Track service views
         if (preg_match('#^services/([^/]+)$#', $uri, $matches)) {
-            $service = \App\Models\Service::find($matches[1]);
+            $service = Service::find($matches[1]);
             if ($service) {
                 $service->increment('view_count');
             }

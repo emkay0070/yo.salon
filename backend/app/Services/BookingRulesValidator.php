@@ -22,37 +22,38 @@ class BookingRulesValidator
         $warnings = [];
 
         $serviceId = $data['service_id'];
-        $salonId = $data['salon_id'];
+        $locationId = $data['location_id'] ?? null;
+        $providerId = $data['provider_id'] ?? null;
         $bookingDate = Carbon::parse($data['date']);
         $bookingTime = $data['time'] ?? null;
 
         // Check advance booking limit
-        $advanceBookingError = $this->validateAdvanceBooking($serviceId, $salonId, $bookingDate);
+        $advanceBookingError = $this->validateAdvanceBooking($serviceId, $providerId, $locationId, $bookingDate);
         if ($advanceBookingError) {
             $errors[] = $advanceBookingError;
         }
 
         // Check minimum notice period
-        $noticeError = $this->validateMinimumNotice($serviceId, $salonId, $bookingDate, $bookingTime);
+        $noticeError = $this->validateMinimumNotice($serviceId, $providerId, $locationId, $bookingDate, $bookingTime);
         if ($noticeError) {
             $errors[] = $noticeError;
         }
 
         // Check if same-day booking is allowed
-        $sameDayWarning = $this->validateSameDayBooking($serviceId, $salonId, $bookingDate);
+        $sameDayWarning = $this->validateSameDayBooking($serviceId, $providerId, $locationId, $bookingDate);
         if ($sameDayWarning) {
             $warnings[] = $sameDayWarning;
         }
 
         // Check blackout dates
-        $blackoutError = $this->validateBlackoutDates($serviceId, $salonId, $bookingDate);
+        $blackoutError = $this->validateBlackoutDates($serviceId, $providerId, $locationId, $bookingDate);
         if ($blackoutError) {
             $errors[] = $blackoutError;
         }
 
         // Check customer booking limits
         if (isset($data['customer_id'])) {
-            $limitError = $this->validateCustomerBookingLimit($serviceId, $salonId, $data['customer_id'], $bookingDate);
+            $limitError = $this->validateCustomerBookingLimit($serviceId, $providerId, $locationId, $data['customer_id'], $bookingDate);
             if ($limitError) {
                 $errors[] = $limitError;
             }
@@ -60,7 +61,7 @@ class BookingRulesValidator
 
         // Check specialist requirements
         if (isset($data['specialist_id'])) {
-            $specialistError = $this->validateSpecialistAssignment($serviceId, $salonId, $data['specialist_id']);
+            $specialistError = $this->validateSpecialistAssignment($serviceId, $providerId, $locationId, $data['specialist_id']);
             if ($specialistError) {
                 $errors[] = $specialistError;
             }
@@ -76,9 +77,9 @@ class BookingRulesValidator
     /**
      * Validate advance booking limit
      */
-    protected function validateAdvanceBooking(string $serviceId, string $salonId, Carbon $bookingDate): ?string
+    protected function validateAdvanceBooking(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingDate): ?string
     {
-        $maxDays = $this->configService->getMaxAdvanceBookingDays($serviceId, $salonId);
+        $maxDays = $this->configService->getMaxAdvanceBookingDays($serviceId, $providerId, $locationId);
         $maxDate = Carbon::now()->addDays($maxDays);
 
         if ($bookingDate->gt($maxDate)) {
@@ -91,9 +92,9 @@ class BookingRulesValidator
     /**
      * Validate minimum notice period
      */
-    protected function validateMinimumNotice(string $serviceId, string $salonId, Carbon $bookingDate, ?string $bookingTime): ?string
+    protected function validateMinimumNotice(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingDate, ?string $bookingTime): ?string
     {
-        $minHours = $this->configService->getMinNoticeHours($serviceId, $salonId);
+        $minHours = $this->configService->getMinNoticeHours($serviceId, $providerId, $locationId);
         
         if (!$bookingTime) {
             return null; // Can't validate without time
@@ -112,9 +113,9 @@ class BookingRulesValidator
     /**
      * Validate same-day booking allowance
      */
-    protected function validateSameDayBooking(string $serviceId, string $salonId, Carbon $bookingDate): ?string
+    protected function validateSameDayBooking(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingDate): ?string
     {
-        $availabilityPolicy = $this->configService->getPolicy($serviceId, $salonId, 'availability_policy');
+        $availabilityPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'availability_policy');
         $allowSameDay = $availabilityPolicy['allow_same_day'] ?? true;
 
         if (!$allowSameDay && $bookingDate->isToday()) {
@@ -127,9 +128,9 @@ class BookingRulesValidator
     /**
      * Validate blackout dates
      */
-    protected function validateBlackoutDates(string $serviceId, string $salonId, Carbon $bookingDate): ?string
+    protected function validateBlackoutDates(string $serviceId, string $providerId, ?string $locationId = null, Carbon $bookingDate): ?string
     {
-        $availabilityPolicy = $this->configService->getPolicy($serviceId, $salonId, 'availability_policy');
+        $availabilityPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'availability_policy');
         $blackoutDates = $availabilityPolicy['blackout_dates'] ?? [];
 
         foreach ($blackoutDates as $blackout) {
@@ -145,14 +146,10 @@ class BookingRulesValidator
     /**
      * Validate customer booking limit per day
      */
-    protected function validateCustomerBookingLimit(string $serviceId, string $salonId, string $customerId, Carbon $bookingDate): ?string
+    protected function validateCustomerBookingLimit(string $serviceId, string $providerId, ?string $locationId = null, string $customerId, Carbon $bookingDate): ?string
     {
-        $bookingPolicy = $this->configService->getPolicy($serviceId, $salonId, 'booking_policy');
+        $bookingPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'booking_policy');
         $maxBookingsPerDay = $bookingPolicy['max_bookings_per_customer_per_day'] ?? 5;
-
-        // Get provider_id from salon
-        $salon = \App\Models\Salon::find($salonId);
-        $providerId = $salon ? $salon->provider_id : null;
 
         if (!$providerId) {
             return null;
@@ -174,35 +171,33 @@ class BookingRulesValidator
     /**
      * Validate specialist assignment
      */
-    protected function validateSpecialistAssignment(string $serviceId, string $salonId, string $specialistId): ?string
+    protected function validateSpecialistAssignment(string $serviceId, string $providerId, ?string $locationId = null, string $specialistId): ?string
     {
-        $serviceRequirements = $this->configService->getPolicy($serviceId, $salonId, 'service_requirements');
-        $allowedRoles = $serviceRequirements['allowed_specialist_roles'] ?? null;
+        // Note: allowed_specialist_roles in service requirements is deprecated
+        // SpecialistAssignment.role is no longer used for authorization
+        // Validation now only checks assignment existence, not role matching
 
-        if ($allowedRoles) {
-            $specialist = \App\Models\Specialist::find($specialistId);
-            if (!$specialist) {
-                return "Specialist not found.";
-            }
+        $specialist = \App\Models\Specialist::find($specialistId);
+        if (!$specialist) {
+            return "Specialist not found.";
+        }
 
-            // Check if specialist works at this salon
-            $salonSpecialist = \DB::table('salon_specialist')
-                ->where('specialist_id', $specialistId)
-                ->where('salon_id', $salonId)
-                ->where('active', true)
-                ->first();
+        // Check specialist is assigned to this provider (location-aware)
+        $assignmentQuery = \DB::table('specialist_assignments')
+            ->where('specialist_id', $specialistId)
+            ->where('provider_id', $providerId)
+            ->where('status', 'ACTIVE');
 
-            if (!$salonSpecialist) {
-                return "This specialist is not available at this salon.";
-            }
+        if ($locationId) {
+            $assignmentQuery->where(function ($q) use ($locationId) {
+                $q->where('location_id', $locationId)->orWhereNull('location_id');
+            });
+        }
 
-            // Check if specialist has required role
-            $specialistRoles = $salonSpecialist->roles ?? ['staff'];
-            $hasRequiredRole = !empty(array_intersect($specialistRoles, $allowedRoles));
+        $assignment = $assignmentQuery->first();
 
-            if (!$hasRequiredRole) {
-                return "This specialist does not have the required role for this service.";
-            }
+        if (!$assignment) {
+            return "This specialist is not available at this location.";
         }
 
         return null;
@@ -211,82 +206,79 @@ class BookingRulesValidator
     /**
      * Check if approval is required for this booking
      */
-    public function requiresApproval(string $serviceId, string $salonId): bool
+    public function requiresApproval(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        return $this->configService->requiresApproval($serviceId, $salonId);
+        return $this->configService->requiresApproval($serviceId, $providerId, $locationId);
     }
 
     /**
      * Check if consultation is required
      */
-    public function requiresConsultation(string $serviceId, string $salonId): bool
+    public function requiresConsultation(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        return $this->configService->requiresConsultation($serviceId, $salonId);
+        return $this->configService->requiresConsultation($serviceId, $providerId, $locationId);
     }
 
     /**
      * Check if customer profile is required
      */
-    public function requiresCustomerProfile(string $serviceId, string $salonId): bool
+    public function requiresCustomerProfile(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $bookingPolicy = $this->configService->getPolicy($serviceId, $salonId, 'booking_policy');
+        $bookingPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'booking_policy');
         return $bookingPolicy['require_customer_profile'] ?? false;
     }
 
     /**
      * Check if phone number is required
      */
-    public function requiresPhoneNumber(string $serviceId, string $salonId): bool
+    public function requiresPhoneNumber(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $bookingPolicy = $this->configService->getPolicy($serviceId, $salonId, 'booking_policy');
+        $bookingPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'booking_policy');
         return $bookingPolicy['require_phone_number'] ?? true;
     }
 
     /**
      * Check if walk-ins are allowed
      */
-    public function allowsWalkIns(string $serviceId, string $salonId): bool
+    public function allowsWalkIns(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $availabilityPolicy = $this->configService->getPolicy($serviceId, $salonId, 'availability_policy');
+        $availabilityPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'availability_policy');
         return $availabilityPolicy['allow_walk_ins'] ?? false;
     }
 
     /**
      * Get booking buffer time in minutes
      */
-    public function getBufferMinutes(string $serviceId, string $salonId): int
+    public function getBufferMinutes(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        $availabilityPolicy = $this->configService->getPolicy($serviceId, $salonId, 'availability_policy');
+        $availabilityPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'availability_policy');
         return $availabilityPolicy['buffer_minutes'] ?? 15;
     }
 
     /**
      * Check if repeat bookings are allowed
      */
-    public function allowsRepeatBookings(string $serviceId, string $salonId): bool
+    public function allowsRepeatBookings(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $bookingPolicy = $this->configService->getPolicy($serviceId, $salonId, 'booking_policy');
+        $bookingPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'booking_policy');
         return $bookingPolicy['allow_repeat_bookings'] ?? true;
     }
 
     /**
      * Check if double booking is allowed
      */
-    public function allowsDoubleBooking(string $serviceId, string $salonId): bool
+    public function allowsDoubleBooking(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $bookingPolicy = $this->configService->getPolicy($serviceId, $salonId, 'booking_policy');
+        $bookingPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'booking_policy');
         return $bookingPolicy['allow_double_booking'] ?? false;
     }
 
     /**
      * Check customer's no-show status for a salon
      */
-    public function checkNoShowStatus(string $customerId, string $salonId): array
+    public function checkNoShowStatus(string $customerId, string $providerId, ?string $locationId = null): array
     {
-        // Get provider_id from salon
-        $salon = \App\Models\Salon::find($salonId);
-        $providerId = $salon ? $salon->provider_id : null;
-
+        // providerId is the canonical tenant identity — no salon lookup needed
         if (!$providerId) {
             return [
                 'status' => 'good',
@@ -301,9 +293,9 @@ class BookingRulesValidator
             ->where('date', '>=', Carbon::now()->subDays(30))
             ->count();
 
-        // Get booking policy from salon config
-        $salonConfig = \App\Models\SalonBookingConfig::where('salon_id', $salonId)->first();
-        $bookingPolicy = $salonConfig ? $salonConfig->getOverride('booking_policy') : [];
+        // Get booking policy from location config
+        $locationConfig = \App\Models\LocationBookingConfig::where('location_id', $locationId)->first();
+        $bookingPolicy = $locationConfig ? $locationConfig->getOverride('booking_policy') : [];
         $maxNoShows = $bookingPolicy['max_no_shows_per_month'] ?? 2;
 
         if ($noShowBookings >= $maxNoShows) {

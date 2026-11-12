@@ -71,4 +71,30 @@ class ReferenceDataController extends Controller
             'data' => $data,
         ]);
     }
+
+    /**
+     * Get business categories for onboarding
+     */
+    public function getBusinessCategories(): JsonResponse
+    {
+        $data = ReferenceData::byCategory('business_category')
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('label')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'slug' => $item->key,
+                    'name' => $item->label,
+                    'short_name' => $item->value,
+                    'description' => $item->description,
+                    'icon' => $item->icon,
+                ];
+            });
+
+        return response()->json([
+            'data' => $data,
+        ]);
+    }
 }

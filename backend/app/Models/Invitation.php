@@ -14,12 +14,13 @@ class Invitation extends Model
 {
     use HasFactory, HasUuids;
 
-    public const ROLE_STAFF = 'STAFF';
-    public const ROLE_CUSTOMER = 'CUSTOMER';
-    public const ROLE_ADMIN = 'ADMIN';
+    public const ROLE_STAFF = 'staff';
+    public const ROLE_CUSTOMER = 'customer';
+    public const ROLE_ADMIN = 'admin';
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
+        'location_id',
         'email',
         'role',
         'target_id',
@@ -27,6 +28,8 @@ class Invitation extends Model
         'status',
         'expires_at',
         'accepted_at',
+        'created_by',
+        'accepted_user_id',
     ];
 
     protected $casts = [
@@ -139,19 +142,24 @@ class Invitation extends Model
 
     // ── Relationships ──────────────────────────────────────────────────
 
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
-    }
-
     public function provider(): BelongsTo
     {
         return $this->belongsTo(Provider::class);
     }
 
-    public function inviter(): BelongsTo
+    public function location(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'invited_by');
+        return $this->belongsTo(\App\Models\Location::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function acceptedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'accepted_user_id');
     }
 
 }

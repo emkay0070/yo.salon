@@ -76,9 +76,9 @@ class CustomerTimeline extends Model
         return null;
     }
 
-    public function salon(): BelongsTo
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class, 'salon_id');
     }
 
     public function booking(): BelongsTo

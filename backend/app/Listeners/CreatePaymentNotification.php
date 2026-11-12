@@ -11,9 +11,9 @@ class CreatePaymentNotification
     {
         $paymentMethod = $event->transaction->paymentMethod?->name ?? 'MTN MoMo';
 
-        // Create notification for salon
+        // Create notification for provider
         Notification::create([
-            'salon_id' => $event->salonId,
+            'provider_id' => $event->providerId,
             'type' => 'payment_confirmed',
             'category' => 'payment',
             'priority' => 'high',
@@ -46,8 +46,4 @@ class CreatePaymentNotification
         ]);
     }
 
-    public function __invoke(PaymentConfirmed $event)
-    {
-        return $this->handle($event);
-    }
 }

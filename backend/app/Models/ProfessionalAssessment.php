@@ -3,13 +3,16 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class ProfessionalAssessment extends Model
 {
+    use HasUuids;
     protected $fillable = [
         'customer_id',
         'specialist_id',
-        'salon_id',
+        'provider_id',
+        'location_id',
         'booking_id',
         'observed_hair_type',
         'hair_density',
@@ -53,9 +56,14 @@ class ProfessionalAssessment extends Model
         return $this->belongsTo(Specialist::class, 'specialist_id');
     }
 
-    public function salon()
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
+    }
+
+    public function location()
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function booking()
@@ -73,9 +81,14 @@ class ProfessionalAssessment extends Model
         return $query->where('specialist_id', $specialistId);
     }
 
-    public function scopeBySalon($query, string $salonId)
+    public function scopeByProvider($query, string $providerId)
     {
-        return $query->where('salon_id', $salonId);
+        return $query->where('provider_id', $providerId);
+    }
+
+    public function scopeByLocation($query, string $locationId)
+    {
+        return $query->where('location_id', $locationId);
     }
 
     public function scopePendingReview($query)

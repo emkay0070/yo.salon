@@ -11,7 +11,7 @@ class FeatureFlag extends Model
     use HasUuids;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'feature_key',
         'enabled',
         'enabled_at',
@@ -26,9 +26,9 @@ class FeatureFlag extends Model
         'metadata' => 'array',
     ];
 
-    public function salon(): BelongsTo
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class, 'provider_id');
     }
 
     public function enabledBy(): BelongsTo
@@ -37,24 +37,24 @@ class FeatureFlag extends Model
     }
 
     /**
-     * Check if feature is enabled for a salon
+     * Check if feature is enabled for a provider
      */
-    public static function isEnabledForSalon(string $salonId, string $featureKey): bool
+    public static function isEnabledForProvider(string $providerId, string $featureKey): bool
     {
-        return self::where('salon_id', $salonId)
+        return self::where('provider_id', $providerId)
             ->where('feature_key', $featureKey)
             ->where('enabled', true)
             ->exists();
     }
 
     /**
-     * Enable feature for salon
+     * Enable feature for provider
      */
-    public static function enableForSalon(string $salonId, string $featureKey, string $userId, string $reason = null): self
+    public static function enableForProvider(string $providerId, string $featureKey, string $userId, string $reason = null): self
     {
         return self::updateOrCreate(
             [
-                'salon_id' => $salonId,
+                'provider_id' => $providerId,
                 'feature_key' => $featureKey,
             ],
             [
@@ -67,11 +67,11 @@ class FeatureFlag extends Model
     }
 
     /**
-     * Disable feature for salon
+     * Disable feature for provider
      */
-    public static function disableForSalon(string $salonId, string $featureKey): void
+    public static function disableForProvider(string $providerId, string $featureKey): void
     {
-        self::where('salon_id', $salonId)
+        self::where('provider_id', $providerId)
             ->where('feature_key', $featureKey)
             ->update([
                 'enabled' => false,

@@ -11,7 +11,7 @@ class ProfileController extends Controller
 {
     public function index(): JsonResponse
     {
-        $profiles = Profile::with('salon')->get();
+        $profiles = Profile::with('provider')->get();
         return response()->json($profiles);
     }
 
@@ -21,16 +21,16 @@ class ProfileController extends Controller
             'email' => 'required|email|unique:profiles',
             'name' => 'nullable|string',
             'role' => 'sometimes|in:owner,staff,admin',
-            'salon_id' => 'required|uuid|exists:salons,id',
+            'location_id' => 'required|uuid|exists:locations,id',
         ]);
 
         $profile = Profile::create($validated);
-        return response()->json($profile->load('salon'), 201);
+        return response()->json($profile->load('location'), 201);
     }
 
     public function show(Profile $profile): JsonResponse
     {
-        return response()->json($profile->load('salon'));
+        return response()->json($profile->load('location'));
     }
 
     public function update(Request $request, Profile $profile): JsonResponse
@@ -39,11 +39,11 @@ class ProfileController extends Controller
             'email' => 'sometimes|email|unique:profiles,email,' . $profile->id,
             'name' => 'nullable|string',
             'role' => 'sometimes|in:owner,staff,admin',
-            'salon_id' => 'sometimes|uuid|exists:salons,id',
+            'location_id' => 'sometimes|uuid|exists:locations,id',
         ]);
 
         $profile->update($validated);
-        return response()->json($profile->load('salon'));
+        return response()->json($profile->load('location'));
     }
 
     public function destroy(Profile $profile): JsonResponse
@@ -52,9 +52,9 @@ class ProfileController extends Controller
         return response()->json(null, 204);
     }
 
-    public function bySalon(string $salon): JsonResponse
+    public function byLocation(string $location): JsonResponse
     {
-        $profiles = Profile::where('salon_id', $salon)->get();
+        $profiles = Profile::where('location_id', $location)->get();
         return response()->json($profiles);
     }
 }

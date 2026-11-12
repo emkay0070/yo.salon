@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payment_methods', function (Blueprint $table) {
-            $table->foreignId('payment_account_id')->nullable()->after('salon_id')->constrained()->nullOnDelete();
+            // Add payment_account_id after provider_id (salon_id no longer exists in fresh migrations)
+            $table->foreignId('payment_account_id')->nullable()->after('provider_id')->constrained()->nullOnDelete();
             $table->index('payment_account_id');
         });
     }

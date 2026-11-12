@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Database\Factories\MediaFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -11,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 
 class Media extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasUuids, SoftDeletes, HasFactory;
 
     // --- Visibility constants ---
     /** Served publicly — profile photos, service images, branding, portfolios */
@@ -35,9 +37,11 @@ class Media extends Model
         'alt_text',
         'metadata',
 
-        // Optional salon/provider context (for salon-owned assets)
-        'salon_id',
+        // Provider context (canonical business owner)
         'provider_id',
+        
+        // Optional location context (for physical-location scoped media)
+        'location_id',
 
         // Legacy uploader (bigint → users table). Kept for backward compatibility.
         // New code should use uploader_type/uploader_id instead.
@@ -47,7 +51,7 @@ class Media extends Model
         'uploader_type',
         'uploader_id',
 
-        // What entity does this media belong to? (polymorphic — Specialist, Salon, Service, Customer, etc.)
+        // What entity does this media belong to? (polymorphic — Specialist, Location, Service, Customer, etc.)
         'attachable_type',
         'attachable_id',
 
@@ -84,7 +88,7 @@ class Media extends Model
 
     /**
      * The domain entity this media is attached to / belongs to.
-     * Polymorphic: Specialist, Salon, Service, Customer, CustomerTimeline, Provider, etc.
+     * Polymorphic: Specialist, Location, Service, Customer, CustomerTimeline, Provider, etc.
      *
      * This is the authoritative ownership anchor used by MediaAuthorizationService.
      */
@@ -104,14 +108,14 @@ class Media extends Model
         return $this->belongsTo(User::class, 'uploaded_by');
     }
 
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
-    }
-
     public function provider(): BelongsTo
     {
         return $this->belongsTo(Provider::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     // --- Convenience helpers ---
@@ -153,9 +157,19 @@ class Media extends Model
         return $query->where('provider_id', $providerId);
     }
 
-    public function scopeForSalon($query, $salonId)
+    public function scopeForLocation($query, $locationId)
     {
-        return $query->where('salon_id', $salonId);
+        return $query->where('location_id', $locationId);
+    }
+
+    public function scopeProviderLevel($query)
+    {
+        return $query->whereNull('location_id');
+    }
+
+    public function scopeLocationScoped($query)
+    {
+        return $query->whereNotNull('location_id');
     }
 
     public function scopeImages($query)

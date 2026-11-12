@@ -31,18 +31,18 @@ class CopilotController extends Controller
 
         $message = strtolower(trim($request->input('message')));
         $context = $request->input('context');
-        $salonId = auth()->user()->currentSalon()?->id;
+        $providerId = auth()->user()->currentProvider()?->id;
 
         if ($context) {
             $response = $this->matchIntentWithContext($message, $context);
         } else {
             // Use canonical Intelligence Engine for business context
-            $salon = auth()->user()->currentSalon();
-            if (!$salon) {
-                return response()->json(['error' => 'Salon not found'], 404);
+            $provider = auth()->user()->currentProvider();
+            if (!$provider) {
+                return response()->json(['error' => 'Provider not found'], 404);
             }
-            
-            $intelligenceDto = $this->intelligenceEngine->generate($salon);
+
+            $intelligenceDto = $this->intelligenceEngine->generate($provider);
             $response = $this->matchIntent($message, $intelligenceDto);
         }
 

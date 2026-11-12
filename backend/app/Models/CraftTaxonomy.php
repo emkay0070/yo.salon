@@ -61,6 +61,12 @@ class CraftTaxonomy extends Model
         return $this->hasMany(CraftTaxonomy::class, 'parent_id')->orderBy('sort_order');
     }
 
+    public function professions(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Profession::class, 'craft_taxonomy_profession', 'craft_taxonomy_id', 'profession_id')
+            ->withTimestamps();
+    }
+
     public function scopeRoots($query)
     {
         return $query->whereNull('parent_id')->where('is_active', true)->orderBy('sort_order');

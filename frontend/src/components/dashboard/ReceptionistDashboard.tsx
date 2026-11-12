@@ -11,7 +11,7 @@ interface ReceptionistDashboardProps {
 }
 
 export default function ReceptionistDashboard({ userName }: ReceptionistDashboardProps) {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -21,15 +21,15 @@ export default function ReceptionistDashboard({ userName }: ReceptionistDashboar
 
   // Fetch real data from API
   const { data: bookings = [], isLoading: bookingsLoading } = useQuery({
-    queryKey: ['bookings', salonId, 'today'],
-    queryFn: () => apiClient.getBookings({ salon_id: salonId, date: 'today' }),
-    enabled: !!salonId,
+    queryKey: ['bookings', providerId, 'today'],
+    queryFn: () => apiClient.getBookings(),
+    enabled: !!providerId,
   });
 
   const { data: customers = [] } = useQuery({
-    queryKey: ['customers', salonId],
-    queryFn: () => apiClient.getCustomers({ salon_id: salonId }),
-    enabled: !!salonId,
+    queryKey: ['customers', providerId],
+    queryFn: () => apiClient.getCustomers({ provider_id: providerId }),
+    enabled: !!providerId,
   });
 
   // Calculate stats from real data

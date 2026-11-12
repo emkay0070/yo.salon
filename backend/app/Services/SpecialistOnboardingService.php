@@ -25,7 +25,6 @@ class SpecialistOnboardingService
             'craft' => $this->isCraftComplete($specialist),
             'professional' => $this->isProfessionalComplete($specialist),
             'verification' => $this->isVerificationSubmitted($specialist),
-            'work_preference' => $this->isWorkPreferenceComplete($specialist),
             'availability' => $this->isAvailabilityComplete($specialist),
         ];
 
@@ -37,7 +36,7 @@ class SpecialistOnboardingService
                 break;
             }
             if ($index === count($steps) - 1 && $isComplete) {
-                $currentStep = 7; // Launch Moment / Complete
+                $currentStep = 6; // Launch Moment / Complete
             }
         }
 
@@ -87,8 +86,11 @@ class SpecialistOnboardingService
 
         $assignment = $specialist->assignments()->where('is_primary', true)->first();
 
-        // If the assignment doesn't exist, we do not fallback to first() or create it here.
-        // It should have been created by the IndependentWorkspaceProvisioner.
+        // If the assignment doesn't exist yet, create it now (before step 6/complete)
+        if (!$assignment) {
+            $this->workspaceProvisioner->ensureIndependentWorkspace($specialist);
+            $assignment = $specialist->assignments()->where('is_primary', true)->first();
+        }
 
         if ($assignment) {
             $assignment->update(['schedule_mode' => 'CUSTOM']);
@@ -126,13 +128,18 @@ class SpecialistOnboardingService
     private function isCraftComplete(?Specialist $specialist): bool
     {
         if (!$specialist) return false;
-        return !empty($specialist->bio) && !empty($specialist->specialties);
+        // Accept either the new structured professions relationship OR the legacy specialties JSON.
+        $hasBio = !empty($specialist->bio);
+        $hasProfessions = $specialist->professions()->exists();
+        $hasLegacySpecialties = !empty($specialist->specialties);
+        return $hasBio && ($hasProfessions || $hasLegacySpecialties);
     }
 
     private function isProfessionalComplete(?Specialist $specialist): bool
     {
         if (!$specialist) return false;
-        return !empty($specialist->years_experience);
+        // years_experience can be 0 (just started), so check it's been explicitly set (not null).
+        return $specialist->years_experience !== null;
     }
 
     private function isVerificationSubmitted(?Specialist $specialist): bool
@@ -142,19 +149,13 @@ class SpecialistOnboardingService
         return $specialist->verification_status !== VerificationStatus::UNVERIFIED;
     }
 
-    private function isWorkPreferenceComplete(?Specialist $specialist): bool
-    {
-        if (!$specialist) return false;
-        return !empty($specialist->work_preference);
-    }
-
     private function isAvailabilityComplete(?Specialist $specialist): bool
     {
         if (!$specialist) return false;
 
-        // Check if the specialist has assignment schedules set up
+        // If no assignment exists, consider availability complete (specialist can join a provider later)
         $assignment = $specialist->assignments()->where('is_primary', true)->first();
-        if (!$assignment) return false;
+        if (!$assignment) return true;
 
         return \App\Models\AssignmentSchedule::where('assignment_id', $assignment->id)->exists();
     }

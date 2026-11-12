@@ -13,7 +13,7 @@ class BrandExperience extends Model
     protected $fillable = [
         'salon_id',
         'experience_family',
-        'logo',
+        // 'logo' - DEPRECATED: Brand Experience does not own identity assets. Use Provider.logo instead.
         'primary_color',
         'secondary_color',
         'accent_color',
@@ -33,15 +33,12 @@ class BrandExperience extends Model
         'background_image_url',
     ];
 
-    public function salon(): BelongsTo
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class, 'salon_id');
     }
 
-    public function logoMedia(): BelongsTo
-    {
-        return $this->belongsTo(Media::class, 'logo');
-    }
+    // logoMedia relationship removed - Brand Experience does not own identity assets
 
     public function backgroundImageMedia(): BelongsTo
     {
@@ -50,13 +47,9 @@ class BrandExperience extends Model
 
     public function getLogoUrlAttribute(): ?string
     {
-        if ($this->logo && \Illuminate\Support\Str::isUuid($this->logo)) {
-            return $this->logoMedia?->url;
-        }
-        if ($this->logo) {
-            return asset('storage/' . $this->logo);
-        }
-        return null;
+        // Delegate to Provider.logo_url (canonical source of truth)
+        // Brand Experience does not own identity assets
+        return $this->provider?->logo_url;
     }
 
     public function getBackgroundImageUrlAttribute(): ?string

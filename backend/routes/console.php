@@ -21,3 +21,18 @@ Schedule::job(new \App\Jobs\ProcessScheduledPayouts)->hourly();
 
 // Reconcile payouts stuck in processing state
 Schedule::job(new \App\Jobs\ReconcileProcessingPayouts)->hourly();
+
+// Auto-approve pending bookings that have passed the configured threshold.
+// Runs every 15 minutes — auto-approval windows are in hours, not seconds.
+Schedule::call(function () {
+    app(\App\Services\BookingService::class)->processAutoApprovals();
+})->everyFifteenMinutes()->name('booking.auto-approval')->withoutOverlapping();
+
+// Process booking operational time states based on scheduled appointment time.
+// Runs every minute for precise time-state tracking.
+Schedule::command('bookings:process-time-states')->everyMinute()->name('booking.time-states')->withoutOverlapping();
+
+// Expire pending payment requests that have passed their expiry time.
+// Runs every minute to promptly release booking holds when payments expire.
+Schedule::command('payments:expire-pending')->everyMinute()->name('payments.expire-pending')->withoutOverlapping();
+

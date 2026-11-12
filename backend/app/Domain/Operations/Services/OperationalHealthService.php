@@ -3,16 +3,16 @@
 namespace App\Domain\Operations\Services;
 
 use App\Models\Provider;
-use App\Models\Salon;
+
 use App\Models\Specialist;
 use App\Models\SpecialistAssignment;
 use App\Models\ProviderSchedule;
-use App\Models\SalonSchedule;
+use App\Models\LocationSchedule;
 use App\Models\AssignmentSchedule;
 use App\Models\Service;
 use App\Models\PaymentMethod;
 use App\Models\ProviderBookingConfig;
-use App\Models\SalonBookingConfig;
+use App\Models\LocationBookingConfig;
 use App\Models\Subscription;
 use App\Models\WebsiteConfiguration;
 use Carbon\CarbonImmutable;
@@ -82,7 +82,7 @@ class OperationalHealthService
 
         $hasPaymentMethods = $this->safeCheck('payments', function () use ($providerId) {
             return PaymentMethod::where('provider_id', $providerId)
-                ->where('active', true)
+                ->where('is_active', true)
                 ->exists();
         });
 
@@ -120,7 +120,10 @@ class OperationalHealthService
         });
 
         $websiteOk = $this->safeCheck('website', function () use ($providerId, $provider) {
-            $websiteConfigExists = WebsiteConfiguration::where('provider_id', $providerId)->exists();
+            // WebsiteConfiguration uses polymorphic configurable_id/configurable_type
+            $websiteConfigExists = WebsiteConfiguration::where('configurable_id', $providerId)
+                ->where('configurable_type', Provider::class)
+                ->exists();
             $hasName = (bool) ($provider->display_name ?? $provider->name ?? null);
             return $websiteConfigExists || $hasName;
         });
@@ -147,80 +150,71 @@ class OperationalHealthService
     }
 
     /**
-     * Branch-level (salon) health.
+     * Branch-level (Location) health.
      */
-    public function getBranchHealth(string $salonId): array
+    public function getBranchHealth(string $locationId): array
     {
-        $salon = Salon::find($salonId);
-        if (!$salon) {
+        $location = \App\Models\Location::find($locationId);
+        if (!$location) {
             return [
                 'status'      => 'incomplete',
                 'checks'      => [],
                 'score'       => 0,
-                'salon_id'    => $salonId,
+                'location_id' => $locationId,
                 'provider_id' => null,
                 'computed_at' => CarbonImmutable::now()->toIso8601String(),
             ];
         }
 
-        $providerHealth = $this->getProviderHealth($salon->provider_id);
+        $providerHealth = $this->getProviderHealth($location->provider_id);
 
-        $branchSchedulingOk = $this->safeCheck('scheduling', function () use ($salon, $salonId, $providerHealth) {
-            if (($salon->schedule_mode ?? 'INHERIT') === 'CUSTOM') {
-                return SalonSchedule::where('salon_id', $salonId)->exists();
+        $branchSchedulingOk = $this->safeCheck('scheduling', function () use ($location, $providerHealth) {
+            if (($location->schedule_mode ?? 'INHERIT') === 'CUSTOM') {
+                return LocationSchedule::where('location_id', $location->id)->exists();
             }
             return (bool) ($providerHealth['checks']['scheduling'] ?? false);
         });
 
         $paymentsOk = (bool) ($providerHealth['checks']['payments'] ?? false);
 
-        $staffOk = $this->safeCheck('staff', function () use ($salonId) {
-            return SpecialistAssignment::where('salon_id', $salonId)
-                ->where('active', true)
+        $staffOk = $this->safeCheck('staff', function () use ($location) {
+            return SpecialistAssignment::where('provider_id', $location->provider_id)
+                ->where('location_id', $location->id)
+                ->where('status', 'ACTIVE')
                 ->exists();
         });
 
-        $servicesOk = $this->safeCheck('services', function () use ($salonId, $providerHealth) {
-            // PostgreSQL-safe: is_available is BOOLEAN; compare against true only.
-            // NULL = inherit (not overridden). If the salon has ANY override rows with is_available=true,
-            // or NO rows at all (fallback to provider catalog), we consider services available.
-            $explicitlyAvailable = \DB::table('salon_service')
-                ->where('salon_id', $salonId)
+        $servicesOk = $this->safeCheck('services', function () use ($locationId, $providerHealth) {
+            $explicitlyAvailable = \DB::table('location_service')
+                ->where('location_id', $locationId)
                 ->where('is_available', true)
                 ->count();
-            $totalRows = \DB::table('salon_service')
-                ->where('salon_id', $salonId)
+            $totalRows = \DB::table('location_service')
+                ->where('location_id', $locationId)
                 ->count();
             if ($totalRows === 0) {
                 return (bool) ($providerHealth['checks']['services'] ?? false);
             }
-            // If at least one service is explicitly available, branch has a catalog.
             if ($explicitlyAvailable > 0) {
                 return true;
             }
-            // If all rows are FALSE (all services manually disabled), no services.
-            $allExplicitlyDisabled = \DB::table('salon_service')
-                ->where('salon_id', $salonId)
-                ->where(function ($q) {
-                    $q->where('is_available', false);
-                })
+            $allExplicitlyDisabled = \DB::table('location_service')
+                ->where('location_id', $locationId)
+                ->where('is_available', false)
                 ->count() === $totalRows;
             if ($allExplicitlyDisabled) {
                 return false;
             }
-            // Mix of NULL/inherit rows — fallback to provider check.
             return (bool) ($providerHealth['checks']['services'] ?? false);
         });
 
         $subscriptionOk = (bool) ($providerHealth['checks']['subscription'] ?? false);
 
-        $bookingOk = $this->safeCheck('booking', function () use ($salon, $salonId, $providerHealth) {
+        $bookingOk = $this->safeCheck('booking', function () use ($location, $locationId, $providerHealth) {
             $providerBookingOk = (bool) ($providerHealth['checks']['booking'] ?? false);
-            $branchAccepting = (bool) ($salon->accepting_online_bookings ?? true);
-            if (!$branchAccepting) {
-                return false;
-            }
-            $branchConfig = SalonBookingConfig::where('salon_id', $salonId)->first();
+            $branchAccepting   = (bool) ($location->accepting_online_bookings ?? true);
+            if (!$branchAccepting) return false;
+            $branchConfig = LocationBookingConfig::where('location_id', $location->id)->first();
             $branchConfigOk = $branchConfig === null || (
                 !empty($branchConfig->booking_policy_override) ||
                 !empty($branchConfig->availability_policy_override)
@@ -228,22 +222,23 @@ class OperationalHealthService
             return $providerBookingOk && $branchConfigOk;
         });
 
-        $websiteOk = $this->safeCheck('website', function () use ($salon, $salonId, $providerHealth) {
+        $websiteOk = $this->safeCheck('website', function () use ($location, $locationId, $providerHealth) {
             $providerWebsiteOk = (bool) ($providerHealth['checks']['website'] ?? false);
-            $hasBranchWebsiteConfig = WebsiteConfiguration::where('salon_id', $salonId)->exists();
-            $hasBranchName = (bool) ($salon->name ?? null);
+            $hasBranchWebsiteConfig = WebsiteConfiguration::where('configurable_id', $locationId)
+                ->where('configurable_type', \App\Models\Location::class)
+                ->exists();
+            $hasBranchName = (bool) ($location->name ?? null);
             return $providerWebsiteOk || $hasBranchWebsiteConfig || $hasBranchName;
         });
 
         $checks = [
-            'scheduling'   => $branchSchedulingOk,
-            'payments'     => $paymentsOk,
-            'staff'        => $staffOk,
-            'services'     => $servicesOk,
-            'subscription' => $subscriptionOk,
-            'booking'      => $bookingOk,
-            'website'      => $websiteOk,
-            // Backward-compat legacy keys for existing UI consumers
+            'scheduling'        => $branchSchedulingOk,
+            'payments'          => $paymentsOk,
+            'staff'             => $staffOk,
+            'services'          => $servicesOk,
+            'subscription'      => $subscriptionOk,
+            'booking'           => $bookingOk,
+            'website'           => $websiteOk,
             'provider_healthy'  => $providerHealth['status'] === 'configured',
             'branch_scheduling' => $branchSchedulingOk,
         ];
@@ -258,8 +253,8 @@ class OperationalHealthService
             'status'      => $isConfigured ? 'configured' : 'incomplete',
             'checks'      => $checks,
             'score'       => $this->calculateScore($scorable),
-            'salon_id'    => $salonId,
-            'provider_id' => $salon->provider_id,
+            'location_id' => $locationId,
+            'provider_id' => $location->provider_id,
             'computed_at' => CarbonImmutable::now()->toIso8601String(),
         ];
     }
@@ -278,7 +273,8 @@ class OperationalHealthService
             ];
         }
 
-        $branchHealth = $this->getBranchHealth($assignment->salon_id);
+        $locationId  = $assignment->location_id;
+        $branchHealth = $locationId ? $this->getBranchHealth($locationId) : ['status' => 'incomplete', 'checks' => []];
 
         // --- Scheduling (assignment layer) ---
         $assignmentSchedulingOk = true;
@@ -292,7 +288,7 @@ class OperationalHealthService
         $assignmentStaffOk = (bool) ($assignment->active ?? false);
 
         $checks = [
-            'branch_healthy'       => $branchHealth['status'] === 'configured',
+            'branch_healthy'        => $branchHealth['status'] === 'configured',
             'assignment_scheduling' => $assignmentSchedulingOk,
             'assignment_active'     => $assignmentStaffOk,
         ];
@@ -300,12 +296,12 @@ class OperationalHealthService
         $isConfigured = !in_array(false, array_values($checks), true);
 
         return [
-            'status'       => $isConfigured ? 'configured' : 'incomplete',
-            'checks'       => $checks,
-            'score'        => $this->calculateScore($checks),
+            'status'        => $isConfigured ? 'configured' : 'incomplete',
+            'checks'        => $checks,
+            'score'         => $this->calculateScore($checks),
             'assignment_id' => $assignmentId,
-            'salon_id'     => $assignment->salon_id,
-            'computed_at'  => CarbonImmutable::now()->toIso8601String(),
+            'location_id'   => $locationId,
+            'computed_at'   => CarbonImmutable::now()->toIso8601String(),
         ];
     }
 

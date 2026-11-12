@@ -3,7 +3,7 @@
 namespace Tests\Unit\Finance\Compensation;
 
 use App\Domain\Finance\Compensation\CompensationPolicy;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -30,15 +30,15 @@ class CompensationPolicyTest extends TestCase
 
     public function test_active_scope()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $specialist = Specialist::factory()->create();
 
         // Active
         CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $provider->id,
             'type' => 'commission',
             'rules' => [],
             'effective_from' => now()->subDay(),
@@ -49,8 +49,8 @@ class CompensationPolicyTest extends TestCase
         CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $provider->id,
             'type' => 'commission',
             'rules' => [],
             'effective_from' => now()->subDay(),
@@ -61,8 +61,8 @@ class CompensationPolicyTest extends TestCase
         CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $provider->id,
             'type' => 'commission',
             'rules' => [],
             'effective_from' => now()->addDay(),
@@ -73,8 +73,8 @@ class CompensationPolicyTest extends TestCase
         CompensationPolicy::create([
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $specialist->id,
-            'provider_type' => Salon::class,
-            'provider_id' => $salon->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $provider->id,
             'type' => 'commission',
             'rules' => [],
             'effective_from' => now()->subDays(10),

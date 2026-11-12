@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('customer_activities', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('customer_id');
-            $table->uuid('salon_id')->nullable();
+            $table->uuid('provider_id')->nullable();
             $table->string('type'); // specialist_work, promotion, points, review_reply, new_provider, package_expiry, booking_reminder
             $table->string('title');
             $table->text('description')->nullable();
@@ -22,7 +22,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
-            $table->foreign('salon_id')->references('id')->on('salons')->onDelete('cascade');
+            $table->foreign('provider_id')->references('id')->on('providers')->onDelete('cascade');
             
             $table->index(['customer_id', 'created_at']);
             $table->index(['customer_id', 'type']);

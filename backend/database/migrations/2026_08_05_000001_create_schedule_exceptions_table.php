@@ -23,9 +23,9 @@ return new class extends Migration
             $table->uuid('id')->primary();
 
             // ── Scope / hierarchy ──────────────────────────────────────────────
-            $table->enum('scope_level', ['provider', 'salon', 'assignment'])->default('salon');
+            $table->enum('scope_level', ['provider', 'location', 'assignment'])->default('location');
             $table->uuid('provider_id')->nullable()->index();
-            $table->uuid('salon_id')->nullable()->index();
+            $table->uuid('location_id')->nullable()->index();
             $table->uuid('assignment_id')->nullable()->index();
 
             // ── Exception details ─────────────────────────────────────────────

@@ -14,18 +14,18 @@ class PaymentRulesEngine
     /**
      * Get payment strategy for a booking
      */
-    public function getPaymentStrategy(string $serviceId, string $salonId): string
+    public function getPaymentStrategy(string $serviceId, string $providerId, ?string $locationId = null): string
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         return $paymentPolicy['strategy'] ?? 'no_payment';
     }
 
     /**
      * Calculate deposit amount for a booking
      */
-    public function calculateDeposit(string $serviceId, string $salonId, float $servicePrice): array
+    public function calculateDeposit(string $serviceId, string $providerId, ?string $locationId = null, float $servicePrice): array
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $strategy = $paymentPolicy['strategy'] ?? 'no_payment';
         $depositConfig = $paymentPolicy['deposit'] ?? [];
 
@@ -95,10 +95,10 @@ class PaymentRulesEngine
     /**
      * Calculate total booking amount
      */
-    public function calculateTotal(string $serviceId, string $salonId, float $servicePrice): array
+    public function calculateTotal(string $serviceId, string $providerId, ?string $locationId = null, float $servicePrice): array
     {
-        $deposit = $this->calculateDeposit($serviceId, $salonId, $servicePrice);
-        $strategy = $this->getPaymentStrategy($serviceId, $salonId);
+        $deposit = $this->calculateDeposit($serviceId, $providerId, $locationId, $servicePrice);
+        $strategy = $this->getPaymentStrategy($serviceId, $providerId, $locationId);
 
         if ($strategy === 'full_payment') {
             return [
@@ -142,9 +142,9 @@ class PaymentRulesEngine
     /**
      * Check if deposit is refundable
      */
-    public function isDepositRefundable(string $serviceId, string $salonId): bool
+    public function isDepositRefundable(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $depositConfig = $paymentPolicy['deposit'] ?? [];
         return $depositConfig['refundable'] ?? true;
     }
@@ -152,9 +152,9 @@ class PaymentRulesEngine
     /**
      * Get refund deadline in hours
      */
-    public function getRefundDeadlineHours(string $serviceId, string $salonId): int
+    public function getRefundDeadlineHours(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $depositConfig = $paymentPolicy['deposit'] ?? [];
         return $depositConfig['refund_deadline_hours'] ?? 24;
     }
@@ -162,9 +162,9 @@ class PaymentRulesEngine
     /**
      * Check if deposit is transferable
      */
-    public function isDepositTransferable(string $serviceId, string $salonId): bool
+    public function isDepositTransferable(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $depositConfig = $paymentPolicy['deposit'] ?? [];
         return $depositConfig['transferable'] ?? false;
     }
@@ -172,18 +172,18 @@ class PaymentRulesEngine
     /**
      * Check if membership covers the booking
      */
-    public function isMembershipIncluded(string $serviceId, string $salonId): bool
+    public function isMembershipIncluded(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         return $paymentPolicy['membership_included'] ?? false;
     }
 
     /**
      * Get consultation deposit configuration
      */
-    public function getConsultationDeposit(string $serviceId, string $salonId): array
+    public function getConsultationDeposit(string $serviceId, string $providerId, ?string $locationId = null): array
     {
-        $paymentPolicy = $this->configService->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->configService->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $consultationConfig = $paymentPolicy['consultation_deposit'] ?? [];
 
         return [
@@ -196,12 +196,12 @@ class PaymentRulesEngine
     /**
      * Generate payment instructions for customer
      */
-    public function generatePaymentInstructions(string $serviceId, string $salonId, float $servicePrice): \App\Domain\Payments\DTOs\PaymentInstruction
+    public function generatePaymentInstructions(string $serviceId, string $providerId, ?string $locationId = null, float $servicePrice): \App\Domain\Payments\DTOs\PaymentInstruction
     {
-        $strategy = $this->getPaymentStrategy($serviceId, $salonId);
-        $total = $this->calculateTotal($serviceId, $salonId, $servicePrice);
-        $deposit = $this->calculateDeposit($serviceId, $salonId, $servicePrice);
-        $cancellationHours = $this->configService->getFreeCancellationHours($serviceId, $salonId);
+        $strategy = $this->getPaymentStrategy($serviceId, $providerId, $locationId);
+        $total = $this->calculateTotal($serviceId, $providerId, $locationId, $servicePrice);
+        $deposit = $this->calculateDeposit($serviceId, $providerId, $locationId, $servicePrice);
+        $cancellationHours = $this->configService->getFreeCancellationHours($serviceId, $providerId, $locationId);
 
         $factory = new \App\Domain\Payments\Factories\PaymentInstructionFactory();
         return $factory->create($strategy, $total, $deposit, $cancellationHours);
@@ -210,11 +210,11 @@ class PaymentRulesEngine
     /**
      * Calculate refund amount for cancellation
      */
-    public function calculateRefundAmount(string $serviceId, string $salonId, float $depositAmount, \Carbon\Carbon $bookingTime): array
+    public function calculateRefundAmount(string $serviceId, string $providerId, ?string $locationId = null, float $depositAmount, \Carbon\Carbon $bookingTime): array
     {
-        $refundable = $this->isDepositRefundable($serviceId, $salonId);
-        $refundDeadlineHours = $this->getRefundDeadlineHours($serviceId, $salonId);
-        $freeCancellationHours = $this->configService->getFreeCancellationHours($serviceId, $salonId);
+        $refundable = $this->isDepositRefundable($serviceId, $providerId, $locationId);
+        $refundDeadlineHours = $this->getRefundDeadlineHours($serviceId, $providerId, $locationId);
+        $freeCancellationHours = $this->configService->getFreeCancellationHours($serviceId, $providerId, $locationId);
 
         $now = \Carbon::now();
         $hoursUntilBooking = $now->diffInHours($bookingTime, false);

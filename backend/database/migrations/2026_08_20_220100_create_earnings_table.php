@@ -23,7 +23,8 @@ return new class extends Migration
 
             // Policy snapshot — locked at time of earning creation.
             // Policy changes do NOT retroactively alter past earnings.
-            $table->uuid('compensation_policy_id');
+            // Nullable because earnings can exist without a policy (e.g. manual/reversal entries).
+            $table->uuid('compensation_policy_id')->nullable();
 
             // Set when this Earning is included in a period (period-based schedules)
             $table->uuid('compensation_period_id')->nullable();

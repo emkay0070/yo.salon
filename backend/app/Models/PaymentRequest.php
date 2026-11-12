@@ -4,14 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Traits\BelongsToSalon;
 
 class PaymentRequest extends Model
 {
-    use HasFactory, BelongsToSalon;
+    use HasFactory;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
+        'location_id',
         'booking_id',
         'customer_id',
         'payment_method_id',
@@ -31,6 +31,16 @@ class PaymentRequest extends Model
         'requested_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
+
+    public function provider()
+    {
+        return $this->belongsTo(Provider::class);
+    }
+
+    public function location()
+    {
+        return $this->belongsTo(Location::class);
+    }
 
     public function booking()
     {

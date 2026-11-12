@@ -6,14 +6,16 @@ use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\PaymentMethod;
 use App\Models\PaymentAccount;
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Transaction;
 use App\Models\PaymentRequest;
 use App\Models\Service;
 use App\Services\FeeEngine;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
+use App\Services\Payments\PaymentManager;
 use App\Services\Payments\PaymentRoutingService;
-use App\Services\Payments\SalonPaymentService;
+use App\Services\Payments\BookingPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Mockery;
@@ -22,27 +24,31 @@ class TransactionCreationTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected Salon $salon;
+    protected Provider $provider;
+    protected Location $location;
     protected Customer $customer;
     protected Booking $booking;
     protected PaymentMethod $paymentMethod;
-    protected SalonPaymentService $salonPaymentService;
+    protected BookingPaymentService $bookingPaymentService;
     protected $providerMock;
+    protected $paymentManagerMock;
 
     protected function setUp(): void
     {
         parent::setUp();
         
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
+        $this->location = Location::factory()->create(['provider_id' => $this->provider->id]);
         $this->customer = Customer::factory()->create();
         
         $service = Service::factory()->create([
-            'provider_id' => $this->salon->provider_id,
+            'provider_id' => $this->provider->id,
             'price' => 5000
         ]);
         
         $this->booking = Booking::factory()->create([
-            'salon_id' => $this->salon->id,
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
             'customer_id' => $this->customer->id,
             'payment_status' => 'unpaid'
         ]);
@@ -51,14 +57,14 @@ class TransactionCreationTest extends TestCase
         $this->booking->services()->attach($service->id);
         
         $this->paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'type' => 'card'
         ]);
         
         // Make sure there is a default account for routing
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -66,13 +72,19 @@ class TransactionCreationTest extends TestCase
             'verification_status' => 'verified',
         ]);
 
-        $this->providerMock = Mockery::mock(PaymentProviderInterface::class);
-        $this->app->instance(PaymentProviderInterface::class, $this->providerMock);
-        
-        $this->salonPaymentService = new SalonPaymentService(
-            $this->providerMock,
+        $this->providerMock = Mockery::mock(\App\Services\Payments\Contracts\PaymentProviderInterface::class);
+        $this->app->instance(\App\Services\Payments\Contracts\PaymentProviderInterface::class, $this->providerMock);
+
+        // Mock PaymentManager to return the provider mock when getProvider('flutterwave') is called
+        $this->paymentManagerMock = Mockery::mock(PaymentManager::class);
+        $this->paymentManagerMock->shouldReceive('getProvider')->with('flutterwave')->andReturn($this->providerMock);
+        $this->app->instance(PaymentManager::class, $this->paymentManagerMock);
+
+        $this->bookingPaymentService = new BookingPaymentService(
+            $this->paymentManagerMock,
             app(FeeEngine::class),
-            app(PaymentRoutingService::class)
+            app(PaymentRoutingService::class),
+            app(\App\Services\BookingConfigurationService::class)
         );
     }
 
@@ -86,7 +98,7 @@ class TransactionCreationTest extends TestCase
                 'payment_link' => 'https://link.com'
             ]);
 
-        $result = $this->salonPaymentService->initializeBookingPayment(
+        $result = $this->bookingPaymentService->initializeBookingPayment(
             $this->booking->id,
             $this->paymentMethod->id,
             $this->customer->email ?? 'test@example.com',
@@ -113,7 +125,8 @@ class TransactionCreationTest extends TestCase
     {
         // First create a pending payment request
         PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -134,7 +147,7 @@ class TransactionCreationTest extends TestCase
                 'fees' => 140 // Actual provider fee
             ]);
 
-        $result = $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-123');
 
         $this->assertTrue($result['success']);
         $this->assertEquals('completed', $result['status']);
@@ -166,7 +179,8 @@ class TransactionCreationTest extends TestCase
     {
         // Create an ALREADY paid request and transaction
         $paymentRequest = PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -177,7 +191,7 @@ class TransactionCreationTest extends TestCase
         ]);
         
         Transaction::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -200,7 +214,7 @@ class TransactionCreationTest extends TestCase
                 'status' => 'successful',
             ]);
 
-        $result = $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-123');
 
         $this->assertTrue($result['success']);
         $this->assertEquals('already_paid', $result['status']);
@@ -212,8 +226,8 @@ class TransactionCreationTest extends TestCase
     public function test_record_manual_payment(): void
     {
         // This doesn't call the provider mock at all
-        $result = $this->salonPaymentService->recordManualPayment([
-            'salon_id' => $this->salon->id,
+        $result = $this->bookingPaymentService->recordManualPayment([
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'amount' => 5000,
@@ -243,8 +257,8 @@ class TransactionCreationTest extends TestCase
     public function test_refund_manual_payment(): void
     {
         // First create manual transaction
-        $result = $this->salonPaymentService->recordManualPayment([
-            'salon_id' => $this->salon->id,
+        $result = $this->bookingPaymentService->recordManualPayment([
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'amount' => 5000,
@@ -254,7 +268,7 @@ class TransactionCreationTest extends TestCase
         $transaction = $result['transaction'];
         
         // Now refund it (no provider call expected)
-        $refundResult = $this->salonPaymentService->refundSalonPayment($transaction->id);
+        $refundResult = $this->bookingPaymentService->refundBookingPayment($transaction->id);
         
         $this->assertTrue($refundResult['success']);
         
@@ -266,5 +280,431 @@ class TransactionCreationTest extends TestCase
             'gateway_fee' => 0,
             'net_amount' => -5000
         ]);
+    }
+
+    public function test_successful_payment_confirms_booking_without_approval(): void
+    {
+        // Create booking in pending_payment status
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-123',
+            'requested_at' => now(),
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-123')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-123',
+                'fees' => 140
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-123');
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('completed', $result['status']);
+
+        // Booking should be confirmed since no approval is required by default
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'confirmed',
+            'payment_status' => 'paid'
+        ]);
+    }
+
+    public function test_successful_payment_moves_to_pending_with_manual_approval(): void
+    {
+        // Create service with manual approval requirement
+        $service = Service::factory()->create(['provider_id' => $this->provider->id]);
+
+        // Create booking in pending_payment status
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => $service->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-456',
+            'requested_at' => now(),
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-456')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-456',
+                'fees' => 140
+            ]);
+
+        // Mock config service to return manual approval requirement
+        $configMock = Mockery::mock(\App\Services\BookingConfigurationService::class);
+        $configMock->shouldReceive('requiresApproval')
+            ->once()
+            ->with($service->id, $this->provider->id, $this->location->id)
+            ->andReturn(true);
+        $this->app->instance(\App\Services\BookingConfigurationService::class, $configMock);
+
+        // Recreate service with mocked config
+        $this->bookingPaymentService = new BookingPaymentService(
+            $this->paymentManagerMock,
+            app(FeeEngine::class),
+            app(PaymentRoutingService::class),
+            $configMock
+        );
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-456');
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('completed', $result['status']);
+
+        // Booking should move to pending since approval is required
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'pending',
+            'payment_status' => 'paid'
+        ]);
+    }
+
+    public function test_idempotent_payment_verification(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-789',
+            'requested_at' => now(),
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->twice()
+            ->with('FLW-789')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-789',
+                'fees' => 140
+            ]);
+
+        // First verification
+        $result1 = $this->bookingPaymentService->verifyBookingPayment('FLW-789');
+        $this->assertTrue($result1['success']);
+
+        // Second verification (idempotent)
+        $result2 = $this->bookingPaymentService->verifyBookingPayment('FLW-789');
+        $this->assertTrue($result2['success']);
+        $this->assertEquals('already_paid', $result2['status']);
+
+        // Should only have one transaction
+        $transactionCount = Transaction::where('booking_id', $booking->id)->count();
+        $this->assertEquals(1, $transactionCount);
+
+        // Booking should still be confirmed
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'confirmed',
+            'payment_status' => 'paid'
+        ]);
+    }
+
+    public function test_failed_payment_does_not_confirm_booking(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-999',
+            'requested_at' => now(),
+            'expires_at' => now()->addMinutes(15),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-999')
+            ->andReturn([
+                'success' => false,
+                'status' => 'failed',
+                'provider_reference' => 'FLW-999',
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-999');
+
+        $this->assertFalse($result['success']);
+
+        // Booking should remain in pending_payment status
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid'
+        ]);
+
+        // No transaction should be created
+        $transactionCount = Transaction::where('booking_id', $booking->id)->count();
+        $this->assertEquals(0, $transactionCount);
+    }
+
+    public function test_payment_after_expiry_is_rejected(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-LATE',
+            'requested_at' => now()->subMinutes(20),
+            'expires_at' => now()->subMinutes(5), // Expired 5 minutes ago
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-LATE')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-LATE',
+                'fees' => 140
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-LATE');
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals('expired', $result['status']);
+
+        // Booking should remain in pending_payment status
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid'
+        ]);
+
+        // Payment request should be marked expired
+        $this->assertDatabaseHas('payment_requests', [
+            'provider_reference' => 'FLW-LATE',
+            'status' => 'expired',
+        ]);
+
+        // No transaction should be created
+        $transactionCount = Transaction::where('booking_id', $booking->id)->count();
+        $this->assertEquals(0, $transactionCount);
+    }
+
+    public function test_payment_for_cancelled_booking_is_rejected(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'cancelled', // Already cancelled
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-CANCELLED',
+            'requested_at' => now()->subMinutes(10),
+            'expires_at' => now()->addMinutes(5),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-CANCELLED')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-CANCELLED',
+                'fees' => 140
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-CANCELLED');
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals('booking_cancelled', $result['status']);
+
+        // Booking should remain cancelled
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'cancelled',
+            'payment_status' => 'unpaid'
+        ]);
+
+        // No transaction should be created
+        $transactionCount = Transaction::where('booking_id', $booking->id)->count();
+        $this->assertEquals(0, $transactionCount);
+    }
+
+    public function test_payment_before_expiry_succeeds(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'sent',
+            'provider_reference' => 'FLW-ONTIME',
+            'requested_at' => now()->subMinutes(5),
+            'expires_at' => now()->addMinutes(10), // Not expired yet
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-ONTIME')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-ONTIME',
+                'fees' => 140
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-ONTIME');
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals('completed', $result['status']);
+
+        // Booking should be confirmed
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'confirmed',
+            'payment_status' => 'paid'
+        ]);
+    }
+
+    public function test_payment_already_marked_expired_is_rejected(): void
+    {
+        $booking = Booking::factory()->create([
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
+            'customer_id' => $this->customer->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid',
+            'service_id' => Service::factory()->create(['provider_id' => $this->provider->id])->id,
+        ]);
+
+        PaymentRequest::create([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $this->paymentMethod->id,
+            'amount' => 5000,
+            'status' => 'expired', // Already marked expired
+            'provider_reference' => 'FLW-EXPIRED',
+            'requested_at' => now()->subMinutes(20),
+            'expires_at' => now()->subMinutes(10),
+            'completed_at' => now()->subMinutes(5),
+        ]);
+
+        $this->providerMock->shouldReceive('verifyPayment')
+            ->once()
+            ->with('FLW-EXPIRED')
+            ->andReturn([
+                'success' => true,
+                'status' => 'successful',
+                'provider_reference' => 'FLW-EXPIRED',
+                'fees' => 140
+            ]);
+
+        $result = $this->bookingPaymentService->verifyBookingPayment('FLW-EXPIRED');
+
+        $this->assertFalse($result['success']);
+        $this->assertEquals('expired', $result['status']);
+
+        // Booking should remain in pending_payment status
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'pending_payment',
+            'payment_status' => 'unpaid'
+        ]);
+
+        // No transaction should be created
+        $transactionCount = Transaction::where('booking_id', $booking->id)->count();
+        $this->assertEquals(0, $transactionCount);
     }
 }

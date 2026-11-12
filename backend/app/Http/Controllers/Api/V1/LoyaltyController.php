@@ -21,16 +21,16 @@ class LoyaltyController extends Controller
      */
     public function summary(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
-        if (!$salonId || !$customerId) {
+        if (!$providerId || !$customerId) {
             return response()->json([
                 'message' => 'Context not found',
             ], 400);
         }
 
-        $summary = $this->loyaltyService->getCustomerSummary($customerId, $salonId);
+        $summary = $this->loyaltyService->getCustomerSummary($customerId, $providerId);
         $benefits = $this->loyaltyService->getTierBenefits($summary['tier']);
 
         return response()->json([
@@ -40,21 +40,43 @@ class LoyaltyController extends Controller
     }
 
     /**
+     * Get customer's loyalty balance
+     */
+    public function getBalance(Request $request): JsonResponse
+    {
+        $providerId = $request->attributes->get('provider_id');
+        $customerId = $request->attributes->get('customer_id');
+
+        if (!$providerId || !$customerId) {
+            return response()->json([
+                'message' => 'Context not found',
+            ], 400);
+        }
+
+        $summary = $this->loyaltyService->getCustomerSummary($customerId, $providerId);
+
+        return response()->json([
+            'balance' => $summary['balance'],
+            'tier' => $summary['tier'],
+        ]);
+    }
+
+    /**
      * Get customer's loyalty transaction history
      */
     public function history(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
-        if (!$salonId || !$customerId) {
+        if (!$providerId || !$customerId) {
             return response()->json([
                 'message' => 'Context not found',
             ], 400);
         }
 
         $limit = $request->query('limit', 20);
-        $history = $this->loyaltyService->getCustomerHistory($customerId, $salonId, $limit);
+        $history = $this->loyaltyService->getCustomerHistory($customerId, $providerId, $limit);
 
         return response()->json([
             'history' => $history,
@@ -62,14 +84,22 @@ class LoyaltyController extends Controller
     }
 
     /**
+     * Get customer's loyalty transaction history (alias for history)
+     */
+    public function getHistory(Request $request): JsonResponse
+    {
+        return $this->history($request);
+    }
+
+    /**
      * Redeem points
      */
     public function redeem(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
-        if (!$salonId || !$customerId) {
+        if (!$providerId || !$customerId) {
             return response()->json([
                 'message' => 'Context not found',
             ], 400);
@@ -83,7 +113,7 @@ class LoyaltyController extends Controller
         try {
             $transaction = $this->loyaltyService->redeemPoints(
                 $customerId,
-                $salonId,
+                $providerId,
                 $validated['points'],
                 $validated['description']
             );

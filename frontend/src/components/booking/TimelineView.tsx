@@ -11,12 +11,23 @@ export interface Booking {
   staffName: string;
   time: string;
   date: string;
+  originalDate?: string; // YYYY-MM-DD for proper date comparisons
   endTime: string;
   duration: number;
-  status: string;
+  status: string; // Lifecycle status: pending, pending_payment, confirmed, arrived, waiting, in_progress, completed, cancelled, no_show, rescheduled
+  operational_state?: string; // Operational state: upcoming, due_soon, grace_period, needs_resolution, resolved
+  grace_period_started_at?: string | null;
+  grace_period_ends_at?: string | null;
   price: number;
   phone: string;
   notes?: string;
+  resolution?: {
+    outcome: string;
+    reason_code: string;
+    notes?: string;
+    follow_up_required: boolean;
+    follow_up_status?: string;
+  } | null;
 }
 
 interface Staff {
@@ -33,6 +44,65 @@ interface TimelineViewProps {
 }
 
 const hours = Array.from({ length: 12 }, (_, i) => i + 9); // 9 AM → 8 PM
+
+// Helper: Calculate minutes until appointment time
+function getMinutesUntil(bookingTime: string, bookingDate: string): number {
+  const now = new Date();
+  const [hours, minutes] = bookingTime.split(':').map(Number);
+  const [hSuffix] = bookingTime.split(' ');
+  
+  // Parse time (handle both "09:30" and "09:30 AM" formats)
+  let hour = hours;
+  if (bookingTime.includes('AM') || bookingTime.includes('PM')) {
+    const [h, m] = bookingTime.split(' ')[0].split(':').map(Number);
+    hour = h;
+    if (bookingTime.includes('PM') && hour !== 12) hour += 12;
+    if (bookingTime.includes('AM') && hour === 12) hour = 0;
+  }
+  
+  const bookingDateTime = new Date(now);
+  bookingDateTime.setHours(hour, minutes || 0, 0, 0);
+  
+  return Math.floor((bookingDateTime.getTime() - now.getTime()) / 60000);
+}
+
+// Helper: Get operational state display text
+function getOperationalStateDisplay(booking: Booking): { text: string; color: string } | null {
+  if (!booking.operational_state) return null;
+
+  switch (booking.operational_state) {
+    case 'upcoming':
+      const minsUntil = getMinutesUntil(booking.time, booking.date);
+      if (minsUntil > 15) {
+        return { text: `Starts in ${minsUntil} min`, color: 'text-text-secondary' };
+      } else if (minsUntil > 0) {
+        return { text: `Starts in ${minsUntil} min`, color: 'text-amber-400' };
+      }
+      return null;
+    case 'due_soon':
+      return { text: 'Due soon', color: 'text-amber-400' };
+    case 'grace_period':
+      if (booking.grace_period_ends_at) {
+        const now = new Date();
+        const endsAt = new Date(booking.grace_period_ends_at);
+        const minsRemaining = Math.floor((endsAt.getTime() - now.getTime()) / 60000);
+        if (minsRemaining > 0) {
+          return { text: `${minsRemaining} min remaining`, color: 'text-amber-400' };
+        }
+      }
+      return { text: 'Grace period', color: 'text-amber-400' };
+    case 'needs_resolution':
+      if (booking.grace_period_ends_at) {
+        const now = new Date();
+        const endsAt = new Date(booking.grace_period_ends_at);
+        const minsOverdue = Math.floor((now.getTime() - endsAt.getTime()) / 60000);
+        return { text: `${minsOverdue} min overdue`, color: 'text-red-400' };
+      }
+      return { text: 'Needs attention', color: 'text-red-400' };
+    default:
+      return null;
+  }
+}
 
 function getStatusStyle(status: string) {
   switch (status) {
@@ -58,7 +128,17 @@ function getStatusDot(status: string) {
 
 function getBookingForSlot(bookings: Booking[], staffName: string, hour: number) {
   return bookings.find(b => {
-    const bookingHour = parseInt(b.time.split(':')[0]);
+    // Parse time in "HH:MM AM/PM" format to 24-hour integer
+    let bookingHour = 0;
+    if (b.time.includes('AM') || b.time.includes('PM')) {
+      const [timePart, period] = b.time.split(' ');
+      const [hStr] = timePart.split(':');
+      bookingHour = parseInt(hStr, 10);
+      if (period === 'PM' && bookingHour !== 12) bookingHour += 12;
+      if (period === 'AM' && bookingHour === 12) bookingHour = 0;
+    } else {
+      bookingHour = parseInt(b.time.split(':')[0], 10);
+    }
     return b.staffName === staffName && bookingHour === hour;
   });
 }
@@ -161,22 +241,46 @@ function SingleColumnTimeline({
 
                 {/* Divider + slot */}
                 <div className="flex-1 relative">
-                  <div className={`absolute top-3 left-0 right-0 border-t ${isNow ? 'border-gold' : 'border-border-light/40'}`} />
+                  {isNow && (
+                    <div className="absolute top-3 left-0 right-0 z-20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                        <div className="flex-1 h-px bg-gradient-to-r from-gold via-gold/50 to-transparent" />
+                      </div>
+                    </div>
+                  )}
+                  <div className={`absolute top-3 left-0 right-0 border-t ${isNow ? 'border-transparent' : 'border-border-light/40'}`} />
                   {booking ? (
                     <motion.button
                       whileTap={{ scale: 0.97 }}
                       onClick={() => onBookingClick(booking)}
                       className={`relative z-10 w-full text-left p-3 rounded-xl border cursor-pointer transition-all shadow-sm ${getStatusStyle(booking.status)} ${isNow ? 'ring-2 ring-gold/50' : ''}`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
-                        <span className="text-text-primary font-semibold text-sm truncate">{booking.customerName}</span>
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
+                          <span className="text-text-primary font-semibold text-sm truncate">{booking.customerName}</span>
+                        </div>
+                        <span className="text-text-secondary text-[10px]">{booking.duration}min</span>
                       </div>
                       <p className="text-xs truncate pl-3.5 opacity-80">{booking.service}</p>
-                      <p className="text-xs pl-3.5 opacity-60 mt-0.5">{booking.time} · UGX {booking.price.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                      <p className="text-xs pl-3.5 opacity-60 mt-0.5">{booking.time} · {booking.staffName}</p>
+                      {(() => {
+                        const opState = getOperationalStateDisplay(booking);
+                        return opState ? (
+                          <p className={`text-[10px] pl-3.5 mt-1 ${opState.color}`}>{opState.text}</p>
+                        ) : null;
+                      })()}
                     </motion.button>
                   ) : (
-                    <div className={`relative z-10 w-full h-[48px] rounded-xl border border-dashed ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/15'} transition-colors`} />
+                    <div 
+                      className={`relative z-10 w-full h-[48px] rounded-xl border border-dashed flex items-center justify-center group cursor-pointer transition-all ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/30 hover:bg-gold/5'}`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-gold/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-2 h-0.5 bg-gold rounded-full" />
+                        <div className="w-0.5 h-2 bg-gold rounded-full absolute" />
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -185,20 +289,6 @@ function SingleColumnTimeline({
         </motion.div>
       </AnimatePresence>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-3 border-t border-border-light">
-        {[
-          { label: 'Confirmed', dot: 'bg-emerald-400' },
-          { label: 'In Service', dot: 'bg-gold' },
-          { label: 'Checked In', dot: 'bg-blue-400' },
-          { label: 'Cancelled', dot: 'bg-red-400' },
-        ].map(item => (
-          <div key={item.label} className="flex items-center gap-1.5">
-            <div className={`w-2 h-2 rounded-full ${item.dot}`} />
-            <span className="text-text-muted text-[10px]">{item.label}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -252,7 +342,12 @@ function MultiColumnTimeline({
                 const booking = getBookingForSlot(bookings, s.name, hour);
                 return (
                   <div key={s.id} className="flex-1 px-1 relative">
-                    <div className={`absolute top-3 left-1 right-1 border-t ${isNow ? 'border-gold' : 'border-border-light/40'}`} />
+                    {isNow && (
+                      <div className="absolute top-3 left-1 right-1 z-20">
+                        <div className="h-px bg-gradient-to-r from-transparent via-gold/50 to-gold" />
+                      </div>
+                    )}
+                    <div className={`absolute top-3 left-1 right-1 border-t ${isNow ? 'border-transparent' : 'border-border-light/40'}`} />
                     {booking ? (
                       <motion.button
                         whileHover={{ scale: 1.02 }}
@@ -260,15 +355,31 @@ function MultiColumnTimeline({
                         onClick={() => onBookingClick(booking)}
                         className={`relative z-10 w-full text-left p-2 rounded-xl border cursor-pointer transition-colors shadow-sm ${getStatusStyle(booking.status)} ${isNow ? 'ring-2 ring-gold/50' : ''}`}
                       >
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
-                          <p className="text-text-primary font-medium text-xs truncate">{booking.customerName}</p>
+                        <div className="flex items-start justify-between mb-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(booking.status)}`} />
+                            <p className="text-text-primary font-medium text-xs truncate">{booking.customerName}</p>
+                          </div>
+                          <span className="text-text-secondary text-[9px]">{booking.duration}min</span>
                         </div>
                         <p className="text-[10px] truncate pl-3 opacity-75">{booking.service}</p>
-                        <p className="text-[10px] pl-3 opacity-50 mt-0.5">{booking.time}</p>
+                        <p className="text-[10px] pl-3 opacity-50 mt-0.5">{booking.time} · {booking.staffName}</p>
+                        {(() => {
+                          const opState = getOperationalStateDisplay(booking);
+                          return opState ? (
+                            <p className={`text-[9px] pl-3 mt-0.5 ${opState.color}`}>{opState.text}</p>
+                          ) : null;
+                        })()}
                       </motion.button>
                     ) : (
-                      <div className={`relative z-10 h-[44px] rounded-xl border border-dashed ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/15'} transition-colors`} />
+                      <div 
+                        className={`relative z-10 h-[44px] rounded-xl border border-dashed flex items-center justify-center group cursor-pointer transition-all ${isNow ? 'border-gold/30 bg-gold/5' : 'border-border-medium hover:border-gold/30 hover:bg-gold/5'}`}
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gold/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="w-2 h-0.5 bg-gold rounded-full" />
+                          <div className="w-0.5 h-2 bg-gold rounded-full absolute" />
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
@@ -278,21 +389,6 @@ function MultiColumnTimeline({
         })}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center justify-center gap-4 mt-4 pt-4 border-t border-border-light">
-        {[
-          { label: 'Confirmed', dot: 'bg-emerald-400' },
-          { label: 'Checked In', dot: 'bg-blue-400' },
-          { label: 'In Service', dot: 'bg-gold' },
-          { label: 'Completed', dot: 'bg-text-secondary' },
-          { label: 'Cancelled', dot: 'bg-red-400' },
-        ].map(item => (
-          <div key={item.label} className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${item.dot}`} />
-            <span className="text-text-muted text-xs">{item.label}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

@@ -25,7 +25,7 @@ interface RescheduleModalProps {
 
 export default function RescheduleModal({ isOpen, onClose, booking, onSuccess }: RescheduleModalProps) {
   const queryClient = useQueryClient();
-  const { salonId } = useRole();
+  const { providerId, locationId } = useRole();
   const [selectedDate, setSelectedDate] = useState(new Date(booking.date || new Date()));
   const [selectedTime, setSelectedTime] = useState('');
 
@@ -34,7 +34,7 @@ export default function RescheduleModal({ isOpen, onClose, booking, onSuccess }:
       return await apiClient.updateBooking(booking.id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', providerId, locationId] });
       setSelectedDate(new Date());
       setSelectedTime('');
       onClose();

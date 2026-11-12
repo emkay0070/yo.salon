@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Transaction;
@@ -38,11 +39,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
     public function test_intelligence_engine_generates_dto_with_financial_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -52,13 +55,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -72,7 +75,7 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
         $this->journalPostingService->postForTransaction($transaction);
 
-        $dto = $this->intelligenceEngine->generate($salon);
+        $dto = $this->intelligenceEngine->generate($provider, $location);
 
         // Verify DTO structure
         $this->assertArrayHasKey('schema_version', $dto);
@@ -91,11 +94,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
     public function test_revenue_analyzer_uses_ledger_not_transactions()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -105,13 +110,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'mobile_money',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -127,7 +132,7 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
         $this->journalPostingService->postForTransaction($transaction);
 
-        $dto = $this->intelligenceEngine->generate($salon);
+        $dto = $this->intelligenceEngine->generate($provider, $location);
 
         // RevenueAnalyzer should use ledger (gross - gateway_fee)
         // NOT Transaction.net_amount (which includes platform_fee and tax)
@@ -138,11 +143,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
     public function test_forecast_analyzer_uses_ledger_trend_data()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -152,13 +159,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -172,7 +179,7 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
         $this->journalPostingService->postForTransaction($transaction);
 
-        $dto = $this->intelligenceEngine->generate($salon);
+        $dto = $this->intelligenceEngine->generate($provider, $location);
 
         // Verify ForecastService output exists
         $this->assertArrayHasKey('forecast', $dto);
@@ -184,11 +191,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
     public function test_intelligence_engine_generates_signals_from_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -198,13 +207,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -218,7 +227,7 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
         $this->journalPostingService->postForTransaction($transaction);
 
-        $dto = $this->intelligenceEngine->generate($salon);
+        $dto = $this->intelligenceEngine->generate($provider, $location);
 
         // Verify signals are generated
         $this->assertArrayHasKey('signals', $dto);
@@ -227,11 +236,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
     public function test_intelligence_engine_generates_briefing_from_facts()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -241,13 +252,13 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -261,7 +272,7 @@ class IntelligenceAnalyzersVerificationTest extends TestCase
 
         $this->journalPostingService->postForTransaction($transaction);
 
-        $dto = $this->intelligenceEngine->generate($salon);
+        $dto = $this->intelligenceEngine->generate($provider, $location);
 
         // Verify briefing is generated
         $this->assertArrayHasKey('briefing', $dto);

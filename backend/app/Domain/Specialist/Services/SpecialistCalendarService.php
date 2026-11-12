@@ -44,40 +44,61 @@ class SpecialistCalendarService
      *     bookings:   array,
      * }
      */
-    public function getWeekCalendar(Specialist $specialist, CarbonImmutable $weekStart): array
-    {
+    /**
+     * Build the weekly calendar read-model for a specialist.
+     *
+     * Two modes:
+     *   GLOBAL (no $workspaceAssignment): aggregates all bookings across every
+     *     active workplace. Schedule is resolved from the primary assignment.
+     *   WORKSPACE ($workspaceAssignment set): restricts schedule resolution AND
+     *     bookings to the specific provider of the verified assignment.
+     *
+     * @param  Specialist              $specialist
+     * @param  CarbonImmutable         $weekStart          Monday of the target week
+     * @param  SpecialistAssignment|null $workspaceAssignment  Null = global mode
+     * @return array
+     */
+    public function getWeekCalendar(
+        Specialist $specialist,
+        CarbonImmutable $weekStart,
+        ?SpecialistAssignment $workspaceAssignment = null
+    ): array {
         $weekEnd = $weekStart->addDays(6)->endOfDay();
 
-        // ── 1. Resolve the active assignment(s) ────────────────────────────
-        // A specialist may work at multiple salons. Fetch all active assignments
-        // so each booking can be associated to the correct salon context.
-        $assignments = SpecialistAssignment::where('specialist_id', $specialist->id)
-            ->with('salon')
-            ->get()
-            ->keyBy('id');
+        // ── 1. Pick which assignment drives schedule resolution ─────────────
+        // In workspace mode: use the verified assignment passed from the controller.
+        // In global mode: use the primary (or first) assignment.
+        if ($workspaceAssignment) {
+            // Workspace mode — one assignment only
+            $assignmentForSchedule = $workspaceAssignment;
+        } else {
+            // Global mode — derive primary
+            $allAssignments = SpecialistAssignment::where('specialist_id', $specialist->id)
+                ->with('location')
+                ->get()
+                ->keyBy('id');
 
-        // Use the primary (or first) assignment for schedule resolution.
-        // In a future multi-salon view this loop would be per-assignment.
-        $primaryAssignment = $assignments->firstWhere('is_primary', true)
-            ?? $assignments->first();
+            $assignmentForSchedule = $allAssignments->firstWhere('is_primary', true)
+                ?? $allAssignments->first();
+        }
 
         // ── 2. Resolve schedule per day via Scheduling Domain ───────────────
         $days = [];
-        if ($primaryAssignment) {
+        if ($assignmentForSchedule) {
             for ($i = 0; $i < 7; $i++) {
-                $date = $weekStart->addDays($i);
+                $date    = $weekStart->addDays($i);
                 $dayName = $date->format('l'); // Monday, Tuesday…
 
                 // Delegate entirely to AvailabilityContextBuilder.
                 // This handles: assignment schedule, overrides, exceptions,
                 // salon mode, provider mode — exactly as the booking engine does.
                 $context = $this->contextBuilder->build(
-                    (string) $primaryAssignment->id,
+                    (string) $assignmentForSchedule->id,
                     $date
                 );
 
-                $resolved    = $context->resolvedSchedule;
-                $hasTimeOff  = $context->timeOff->isNotEmpty();
+                $resolved   = $context->resolvedSchedule;
+                $hasTimeOff = $context->timeOff->isNotEmpty();
 
                 $days[] = [
                     'date'         => $date->toDateString(),
@@ -90,49 +111,55 @@ class SpecialistCalendarService
                     'break_start'  => $resolved?->breakStart,
                     'break_end'    => $resolved?->breakEnd,
                     'time_off'     => $context->timeOff->map(fn ($t) => [
-                        'id'     => $t->id,
-                        'reason' => $t->reason,
-                        'all_day'=> is_null($t->start_time),
+                        'id'      => $t->id,
+                        'reason'  => $t->reason,
+                        'all_day' => is_null($t->start_time),
                     ])->values(),
                     'has_override' => $context->scheduleOverride !== null,
-                    'salon'        => $primaryAssignment->salon
-                        ? ['id' => $primaryAssignment->salon->id, 'name' => $primaryAssignment->salon->name]
+                    'salon'        => $assignmentForSchedule->location
+                        ? ['id' => $assignmentForSchedule->location->salon->id ?? null, 'name' => $assignmentForSchedule->location->name]
                         : null,
                 ];
             }
         }
 
-        // ── 3. Fetch bookings — assignment-aware, with salon context ────────
-        // Filter by specialist_id to respect auth boundary.
-        // Include salon and service so the UI can show "where" and "what".
-        $bookings = Booking::where('specialist_id', $specialist->id)
+        // ── 3. Fetch bookings — provider-scoped in workspace mode ───────────
+        $bookingQuery = Booking::where('specialist_id', $specialist->id)
             ->whereBetween('date', [
                 $weekStart->toDateString(),
                 $weekEnd->toDateString(),
             ])
-            ->with(['customer', 'service', 'salon'])
+            ->with(['customer', 'service', 'location'])
             ->whereNotIn('status', ['cancelled', 'no_show'])
             ->orderBy('date')
-            ->orderBy('time')
-            ->get()
-            ->map(fn ($b) => [
-                'id'       => $b->id,
-                'date'     => $b->date->format('Y-m-d'),
-                'time'     => $b->time,
-                'status'   => $b->status,
-                'customer' => $b->customer?->name ?? 'Walk-in',
-                'service'  => $b->service?->name ?? 'Service',
-                // Salon context — essential for multi-salon specialists
-                'salon'    => $b->salon
-                    ? ['id' => $b->salon->id, 'name' => $b->salon->name]
-                    : null,
-            ]);
+            ->orderBy('time');
+
+        // In workspace mode: scope bookings to this provider only.
+        // In global mode: return all bookings across every workspace.
+        if ($workspaceAssignment) {
+            $bookingQuery->where('provider_id', $workspaceAssignment->provider_id);
+        }
+
+        $bookings = $bookingQuery->get()->map(fn ($b) => [
+            'id'       => $b->id,
+            'date'     => $b->date->format('Y-m-d'),
+            'time'     => $b->time,
+            'status'   => $b->status,
+            'customer' => $b->customer?->name ?? 'Walk-in',
+            'service'  => $b->service?->name ?? 'Service',
+            // Salon context — essential for multi-salon specialists in global mode
+            'salon'    => $b->location
+                ? ['id' => $b->location->salon->id ?? null, 'name' => $b->location->name]
+                : null,
+        ]);
 
         return [
             'week_start' => $weekStart->toDateString(),
             'week_end'   => $weekEnd->toDateString(),
             'days'       => $days,
             'bookings'   => $bookings,
+            'context'    => $workspaceAssignment ? 'workspace' : 'global',
+            'provider_id'=> $workspaceAssignment?->provider_id,
         ];
     }
 }

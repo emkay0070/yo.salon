@@ -53,14 +53,14 @@ class CustomerResolver
     }
 
     /**
-     * Resolve customer for a specific salon
-     * Returns customer only if they have a relationship with the salon
+     * Resolve customer for a specific provider
+     * Returns customer only if they have a relationship with the provider
      * 
      * @param string $contact Phone or email
-     * @param string $salonId
+     * @param string $providerId
      * @return Customer|null
      */
-    public function findByContactForSalon(string $contact, string $salonId): ?Customer
+    public function findByContactForProvider(string $contact, string $providerId): ?Customer
     {
         $customer = $this->findByContact($contact);
         
@@ -68,8 +68,8 @@ class CustomerResolver
             return null;
         }
 
-        // Check if customer has relationship with this salon
-        if (!$customer->salons()->where('salon_id', $salonId)->exists()) {
+        // Check if customer has relationship with this provider
+        if (!$customer->providers()->where('provider_id', $providerId)->exists()) {
             return null;
         }
 
@@ -83,14 +83,14 @@ class CustomerResolver
      * Never by authentication services alone.
      * 
      * @param array $data Customer data (name, phone, email)
-     * @param string $salonId The salon establishing the relationship
+     * @param string $providerId The provider establishing the relationship
      * @param bool $createIfNotFound Whether to create customer if not found
-     * @return array ['customer' => Customer, 'is_new' => bool, 'is_new_salon_relationship' => bool]
+     * @return array ['customer' => Customer, 'is_new' => bool, 'is_new_provider_relationship' => bool]
      * @throws \Exception if customer not found and createIfNotFound is false
      */
-    public function resolveOrCreateForSalon(array $data, string $salonId, bool $createIfNotFound = true): array
+    public function resolveOrCreateForProvider(array $data, string $providerId, bool $createIfNotFound = true): array
     {
-        return DB::transaction(function () use ($data, $salonId, $createIfNotFound) {
+        return DB::transaction(function () use ($data, $providerId, $createIfNotFound) {
             $phone = $data['phone'];
             $email = $data['email'] ?? null;
             
@@ -103,12 +103,12 @@ class CustomerResolver
             }
             
             if ($customer) {
-                // Customer exists, check salon relationship
-                $hasSalonRelationship = $customer->salons()->where('salon_id', $salonId)->exists();
+                // Customer exists, check provider relationship
+                $hasProviderRelationship = $customer->providers()->where('provider_id', $providerId)->exists();
                 
-                if (!$hasSalonRelationship) {
-                    // Create new salon relationship for existing customer
-                    $customer->salons()->attach($salonId, [
+                if (!$hasProviderRelationship) {
+                    // Create new provider relationship for existing customer
+                    $customer->providers()->attach($providerId, [
                         'id' => (string) Str::uuid(),
                         'visits' => 0,
                         'joined_at' => now(),
@@ -117,30 +117,30 @@ class CustomerResolver
                     return [
                         'customer' => $customer->fresh(),
                         'is_new' => false,
-                        'is_new_salon_relationship' => true,
+                        'is_new_provider_relationship' => true,
                     ];
                 }
                 
                 return [
                     'customer' => $customer,
                     'is_new' => false,
-                    'is_new_salon_relationship' => false,
+                    'is_new_provider_relationship' => false,
                 ];
             }
             
             // Customer doesn't exist
             if (!$createIfNotFound) {
-                throw new \Exception('Customer not found. Please complete a booking or visit the salon first.');
+                throw new \Exception('Customer not found. Please complete a booking or visit first.');
             }
             
-            // Create new customer with salon relationship
+            // Create new customer with provider relationship
             $customer = Customer::create([
                 'name' => $data['name'] ?? 'New Customer',
                 'phone' => $phone,
                 'email' => $email,
             ]);
             
-            $customer->salons()->attach($salonId, [
+            $customer->providers()->attach($providerId, [
                 'id' => (string) Str::uuid(),
                 'visits' => 0,
                 'joined_at' => now(),
@@ -149,7 +149,7 @@ class CustomerResolver
             return [
                 'customer' => $customer->fresh(),
                 'is_new' => true,
-                'is_new_salon_relationship' => true,
+                'is_new_provider_relationship' => true,
             ];
         });
     }
@@ -169,24 +169,22 @@ class CustomerResolver
             // Transfer bookings
             $duplicate->bookings()->update(['customer_id' => $primary->id]);
             
-            // Transfer salon relationships
-            foreach ($duplicate->salons as $salon) {
-                $pivot = $duplicate->salons()->where('salon_id', $salon->id)->first()->pivot;
+            // Transfer provider relationships
+            foreach ($duplicate->providers as $provider) {
+                $pivot = $duplicate->providers()->where('provider_id', $provider->id)->first()->pivot;
                 
-                // Check if primary already has this salon
-                if (!$primary->salons()->where('salon_id', $salon->id)->exists()) {
-                    $primary->salons()->attach($salon->id, [
+                // Check if primary already has this provider
+                if (!$primary->providers()->where('provider_id', $provider->id)->exists()) {
+                    $primary->providers()->attach($provider->id, [
                         'id' => (string) Str::uuid(),
                         'visits' => $pivot->visits,
-                        'notes' => $pivot->notes,
                         'joined_at' => $pivot->joined_at,
                     ]);
                 } else {
-                    // Merge visit counts and notes
-                    $existingPivot = $primary->salons()->where('salon_id', $salon->id)->first()->pivot;
-                    $primary->salons()->updateExistingPivot($salon->id, [
+                    // Merge visit counts
+                    $existingPivot = $primary->providers()->where('provider_id', $provider->id)->first()->pivot;
+                    $primary->providers()->updateExistingPivot($provider->id, [
                         'visits' => $existingPivot->visits + $pivot->visits,
-                        'notes' => trim(($existingPivot->notes ?? '') . "\n" . ($pivot->notes ?? '')),
                     ]);
                 }
             }

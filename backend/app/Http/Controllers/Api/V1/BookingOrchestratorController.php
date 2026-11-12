@@ -22,7 +22,7 @@ class BookingOrchestratorController extends Controller
     public function reserve(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|exists:salons,id',
+            'salon_id' => 'required|exists:locations,id',
             'service_id' => 'required|exists:services,id',
             'specialist_id' => 'nullable|exists:specialists,id',
             'date' => 'required|date',

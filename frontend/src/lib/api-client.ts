@@ -1,5 +1,10 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
+// Extend Axios config to include custom location context option
+interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
+  includeLocationContext?: boolean;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend/api';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,23 +46,46 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
 
     this.client.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
+      (config: CustomAxiosRequestConfig) => {
         let token = localStorage.getItem('auth_token');
+        const specialistToken = localStorage.getItem('specialist_auth_token');
         
         // If the request explicitly targets the specialist portal, use the specialist token instead
         if (config.url?.includes('/specialist-portal/')) {
-          token = localStorage.getItem('specialist_auth_token') || token;
+          token = specialistToken || token;
+        } else if (!token && specialistToken) {
+          // Fallback to specialist token if no main auth token exists (e.g., for media uploads during onboarding)
+          token = specialistToken;
         }
 
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+
+        // Add location context header only when explicitly requested
+        // X-Location-Id is a context signal, not an authorization mechanism
+        // Authorization is determined by the user's role and backend logic
+        // Location persistence is UI convenience, not automatic request context
+        if (config.includeLocationContext) {
+          const locationId = localStorage.getItem('location_id');
+          if (locationId) {
+            config.headers['X-Location-Id'] = locationId;
+            console.log('[ApiClient] Adding X-Location-Id header (explicit opt-in):', locationId);
+          } else {
+            console.log('[ApiClient] includeLocationContext=true but no location_id in localStorage');
+          }
+        }
+        
+        // Don't set Content-Type for FormData - let axios set it with boundary
+        if (config.data instanceof FormData) {
+          delete config.headers['Content-Type'];
+          console.log('[ApiClient] FormData detected for:', config.url);
+          console.log('[ApiClient] FormData entries:', Array.from((config.data as FormData).entries()));
+        }
+        
         const check = validateUrlPathSegments(config.url);
         if (!check.ok) {
           const err = new Error(check.reason);
@@ -113,7 +141,7 @@ class ApiClient {
   }) {
     const response = await this.client.post('/v1/auth/register', data);
     const { token } = response.data;
-    
+
     if (data.journey === 'specialist') {
       localStorage.setItem('specialist_auth_token', token);
     } else if (data.journey === 'customer') {
@@ -121,7 +149,7 @@ class ApiClient {
     } else {
       localStorage.setItem('auth_token', token);
     }
-    
+
     // Return full payload so callers can use next_route, status, etc.
     return response.data;
   }
@@ -139,32 +167,39 @@ class ApiClient {
     return response.data;
   }
 
+  // Business categories (public - for onboarding)
+  async getBusinessCategories(providerType?: string) {
+    const params = providerType ? { provider_type: providerType } : {};
+    const response = await this.client.get('/v1/business-categories', { params });
+    return response.data;
+  }
+
   // Returns { user, status, current_step, next_route }
   async getCurrentUser() {
     const response = await this.client.get('/v1/auth/user');
     return response.data;
   }
 
-  // Salon endpoints
-  async getSalons() {
-    const response = await this.client.get('/v1/salons');
+  // Provider endpoints
+  async getProviders() {
+    const response = await this.client.get('/v1/providers');
     return response.data;
   }
 
-  async getSalon(id: string) {
-    const response = await this.client.get(`/v1/salons/${id}`);
+  async getProvider(id: string) {
+    const response = await this.client.get(`/v1/providers/${id}`);
     return response.data;
   }
 
-  async getSalonBySlug(slug: string) {
-    const response = await this.client.get(`/v1/salons/${slug}`);
+  async getProviderBySlug(slug: string) {
+    const response = await this.client.get(`/v1/providers/${slug}`);
     return response.data;
   }
 
   async checkSlug(slug: string) {
     // Returns { available: boolean, slug: string, suggestions?: string[] }
     try {
-      const response = await this.client.get('/slug-availability', { params: { slug } });
+      const response = await this.client.get('/v1/slug-availability', { params: { slug } });
       return response.data;
     } catch (e: any) {
       // Swallow 404/405 during development (route not yet available)
@@ -175,53 +210,64 @@ class ApiClient {
     }
   }
 
-  async createSalon(data: any) {
-    const response = await this.client.post('/v1/salons', data);
+  async createProvider(data: any) {
+    const response = await this.client.post('/v1/providers', data);
     return response.data;
   }
 
-  async updateSalon(id: string, data: any) {
-    const response = await this.client.put(`/v1/salons/${id}`, data);
+  async updateProvider(id: string, data: any) {
+    const response = await this.client.put(`/v1/providers/${id}`, data);
     return response.data;
   }
 
-  async deleteSalon(id: string) {
-    await this.client.delete(`/v1/salons/${id}`);
+  async deleteProvider(id: string) {
+    await this.client.delete(`/v1/providers/${id}`);
   }
 
-  async getSalonServices(slug: string) {
-    const response = await this.client.get(`/v1/salons/${slug}/services`);
-    return response.data;
+  async getProviderServices(slug: string) {
+    const response = await this.client.get(`/v1/providers/${slug}/services`);
+    // The show endpoint returns the full provider object with services nested
+    return response.data?.services || response.data || [];
   }
 
-  async getSalonStaff(slug: string) {
-    const response = await this.client.get(`/v1/salons/${slug}/staff`);
-    return response.data;
+  async getProviderStaff(slug: string) {
+    const response = await this.client.get(`/v1/providers/${slug}/staff`);
+    // The show endpoint returns the full provider object with specialists nested
+    return response.data?.specialists || response.data || [];
   }
 
   // Customer endpoints
   async getCustomers(params?: Record<string, any>) {
-    const response = await this.client.get('/v1/customers', { params });
-    return response.data;
+    // Customers endpoint uses explicit query parameters for filtering
+    // No X-Location-Id header needed - controller validates location_id from query params
+    const config: CustomAxiosRequestConfig = { includeLocationContext: false } as any;
+    const response = await this.client.get('/v1/customers', { params, ...config });
+    // Response structure: { customers: [], metadata: {} }
+    // For backward compatibility, return customers array directly if metadata not present
+    return response.data?.customers || response.data;
   }
 
   async getCustomer(id: string) {
-    const response = await this.client.get(`/v1/customers/${id}`);
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.get(`/v1/customers/${id}`, config);
     return response.data;
   }
 
   async createCustomer(data: any) {
-    const response = await this.client.post('/v1/customers', data);
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.post('/v1/customers', data, config);
     return response.data;
   }
 
   async updateCustomer(id: string, data: any) {
-    const response = await this.client.put(`/v1/customers/${id}`, data);
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.put(`/v1/customers/${id}`, data, config);
     return response.data;
   }
 
   async deleteCustomer(id: string) {
-    await this.client.delete(`/v1/customers/${id}`);
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    await this.client.delete(`/v1/customers/${id}`, config);
   }
 
   // Booking endpoints
@@ -254,8 +300,18 @@ class ApiClient {
     await this.client.delete(`/v1/bookings/${id}`);
   }
 
-  async getSalonBookings(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/bookings`);
+  async resolveBooking(id: string, data: any) {
+    const response = await this.client.post(`/v1/bookings/${id}/resolve`, data);
+    return response.data;
+  }
+
+  async getBookingsNeedingResolution(params?: Record<string, any>) {
+    const response = await this.client.get('/v1/bookings/needs-resolution', { params });
+    return response.data;
+  }
+
+  async getProviderBookings(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/bookings`);
     return response.data;
   }
 
@@ -305,8 +361,8 @@ class ApiClient {
     await this.client.delete(`/v1/services/${id}`);
   }
 
-  async getSalonServicesById(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/services`);
+  async getProviderServicesById(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/services`);
     return response.data;
   }
 
@@ -335,8 +391,8 @@ class ApiClient {
     await this.client.delete(`/v1/staff/${id}`);
   }
 
-  async getSalonStaffById(salonId: string) {
-    const response = await this.client.get(`/v1/staff/by-salon/${salonId}`);
+  async getProviderStaffById(providerId: string) {
+    const response = await this.client.get(`/v1/staff/by-provider/${providerId}`);
     return response.data;
   }
 
@@ -387,10 +443,10 @@ class ApiClient {
     return response.data;
   }
 
-  async uploadSalonLogo(salonId: string, file: File) {
+  async uploadProviderLogo(providerId: string, file: File) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await this.client.post(`/v1/salons/${salonId}/logo`, formData, {
+    const response = await this.client.post(`/v1/providers/${providerId}/logo`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -398,8 +454,49 @@ class ApiClient {
     return response.data;
   }
 
-  async removeSalonLogo(salonId: string) {
-    const response = await this.client.delete(`/v1/salons/${salonId}/logo`);
+  async removeProviderLogo(providerId: string) {
+    const response = await this.client.delete(`/v1/providers/${providerId}/logo`);
+    return response.data;
+  }
+
+  async uploadProviderCoverImage(providerId: string, file: File) {
+    const formData = new FormData();
+    formData.append('cover_image', file);
+    const response = await this.client.post(`/v1/providers/${providerId}/update`, formData);
+    return response.data;
+  }
+
+  async uploadBrandBackgroundImage(file: File) {
+    const formData = new FormData();
+    formData.append('background_image', file);
+    const response = await this.client.put('/v1/brand-experience', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async getGallery() {
+    const response = await this.client.get('/v1/gallery');
+    return response.data;
+  }
+
+  async uploadGalleryImage(file: File, altText?: string, caption?: string) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (altText) formData.append('alt_text', altText);
+    if (caption) formData.append('caption', caption);
+    const response = await this.client.post('/v1/gallery', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  async deleteGalleryImage(id: string) {
+    const response = await this.client.delete(`/v1/gallery/${id}`);
     return response.data;
   }
 
@@ -407,8 +504,8 @@ class ApiClient {
     await this.client.delete(`/v1/profiles/${id}`);
   }
 
-  async getSalonProfiles(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/profiles`);
+  async getProviderProfiles(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/profiles`);
     return response.data;
   }
 
@@ -444,7 +541,7 @@ class ApiClient {
   }
 
   async verifySalonPayment(reference: string) {
-    const response = await this.client.get(`/v1/payments/verify/${reference}`);
+    const response = await this.client.post('/v1/payments/salon/verify', { reference });
     return response.data;
   }
 
@@ -464,8 +561,8 @@ class ApiClient {
     return response.data;
   }
 
-  async getBranchHealth(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/health`);
+  async getLocationHealth(locationId: string) {
+    const response = await this.client.get(`/v1/locations/${locationId}/health`);
     return response.data;
   }
 
@@ -511,8 +608,10 @@ class ApiClient {
     return response.data;
   }
 
-  async getMembershipPlans() {
-    const response = await this.client.get('/v1/membership/plans');
+  async getMembershipPlans(providerType: string = 'provider') {
+    const response = await this.client.get('/v1/membership/plans', {
+      params: { provider_type: providerType }
+    });
     return response.data;
   }
 
@@ -562,7 +661,7 @@ class ApiClient {
   }
 
   // Portal account endpoints
-  async createPortalAccount(data: { email: string; password: string; phone: string; salon_id: string; name?: string }) {
+  async createPortalAccount(data: { email: string; password: string; phone: string; provider_id: string; name?: string }) {
     const response = await this.client.post('/v1/portal/create', data);
     return response.data;
   }
@@ -621,45 +720,24 @@ class ApiClient {
   }
 
   // Booking config endpoints
-  async getBookingConfig(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/booking-config`);
+  async getBookingConfig(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/booking-config`);
     return response.data;
   }
 
-  async updateBookingConfig(salonId: string, config: any) {
-    const response = await this.client.put(`/v1/salons/${salonId}/booking-config`, config);
+  async updateBookingConfig(providerId: string, config: any) {
+    const response = await this.client.put(`/v1/providers/${providerId}/booking-config`, config);
     return response.data;
   }
 
-  // Salon schedules endpoints
-  async getSalonSchedules(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/schedules`);
-    return response.data;
-  }
-
-  async getSalonWithProvider(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}`);
-    return response.data;
-  }
-
-  async updateSalonSchedules(salonId: string, scheduleMode: string, schedules?: any) {
-    const response = await this.client.put(`/v1/salons/${salonId}/schedules`, { schedule_mode: scheduleMode, schedules });
-    return response.data;
-  }
-
-  async publishSalonSchedules(salonId: string) {
-    const response = await this.client.post(`/v1/salons/${salonId}/schedules/publish`);
-    return response.data;
-  }
-
-  // Provider schedules endpoints (for single-location providers)
+  // Provider schedules endpoints
   async getProviderSchedules(providerId: string) {
     const response = await this.client.get(`/v1/providers/${providerId}/schedules`);
     return response.data;
   }
 
-  async updateProviderSchedules(providerId: string, schedules: any) {
-    const response = await this.client.put(`/v1/providers/${providerId}/schedules`, { schedules });
+  async updateProviderSchedules(providerId: string, scheduleMode: string, schedules?: any) {
+    const response = await this.client.put(`/v1/providers/${providerId}/schedules`, { schedule_mode: scheduleMode, schedules });
     return response.data;
   }
 
@@ -668,73 +746,86 @@ class ApiClient {
     return response.data;
   }
 
-  // Schedule exceptions endpoints
-  async getScheduleExceptions(salonId: string, scope?: string, assignmentId?: string) {
+  // Schedule exceptions endpoints (location-scoped)
+  async getScheduleExceptions(locationId: string, scope?: string, assignmentId?: string) {
     const params: any = {};
     if (scope) params.scope = scope;
     if (assignmentId) params.assignment_id = assignmentId;
-    const response = await this.client.get(`/v1/salons/${salonId}/schedule-exceptions`, { params });
+    const response = await this.client.get(`/v1/locations/${locationId}/schedule-exceptions`, { params });
     return response.data;
   }
 
-  async createScheduleException(salonId: string, payload: any) {
-    const response = await this.client.post(`/v1/salons/${salonId}/schedule-exceptions`, payload);
+  async createScheduleException(locationId: string, payload: any) {
+    const response = await this.client.post(`/v1/locations/${locationId}/schedule-exceptions`, payload);
     return response.data;
   }
 
-  async updateScheduleException(salonId: string, id: string, data: any) {
-    const response = await this.client.put(`/v1/salons/${salonId}/schedule-exceptions/${id}`, data);
+  async updateScheduleException(locationId: string, id: string, data: any) {
+    const response = await this.client.put(`/v1/locations/${locationId}/schedule-exceptions/${id}`, data);
     return response.data;
   }
 
-  async deleteScheduleException(salonId: string, id: string) {
-    await this.client.delete(`/v1/salons/${salonId}/schedule-exceptions/${id}`);
+  async deleteScheduleException(locationId: string, id: string) {
+    await this.client.delete(`/v1/locations/${locationId}/schedule-exceptions/${id}`);
   }
 
-  // Assignment schedule endpoints
-  async getAssignmentSchedule(salonId: string, specialistId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/specialists/${specialistId}/schedule`);
+  // Assignment schedule endpoints (location-scoped)
+  async getAssignmentSchedule(locationId: string, specialistId: string) {
+    const response = await this.client.get(`/v1/locations/${locationId}/specialists/${specialistId}/schedule`);
     return response.data;
   }
 
-  async updateAssignmentSchedule(salonId: string, specialistId: string, scheduleMode: string, schedules?: any) {
-    const response = await this.client.put(`/v1/salons/${salonId}/specialists/${specialistId}/schedule`, { schedule_mode: scheduleMode, schedules });
+  async updateAssignmentSchedule(locationId: string, specialistId: string, scheduleMode: string, schedules?: any) {
+    const response = await this.client.put(`/v1/locations/${locationId}/specialists/${specialistId}/schedule`, { schedule_mode: scheduleMode, schedules });
     return response.data;
   }
 
-  // Salon specialists endpoints
-  async getSalonById(salonId: string) {
-    const response = await this.client.get(`/v1/salons/id/${salonId}`);
+  // Provider specialists endpoints
+  async getProviderById(providerId: string) {
+    const response = await this.client.get(`/v1/providers/id/${providerId}`);
     return response.data;
   }
 
-  async getSalonSpecialists(salonId: string): Promise<any> {
-    // Use the authenticated route for salonId (UUID) - requires auth:sanctum
+  async getProviderSpecialists(providerId: string): Promise<any> {
+    // Use the authenticated route for providerId (UUID) - requires auth:sanctum
     try {
-      const response = await this.client.get(`/v1/salons/${salonId}/specialists`);
-      return response.data;
+      const response = await this.client.get(`/v1/providers/${providerId}/specialists`);
+      // The show endpoint returns the full provider object with specialists nested
+      return response.data?.specialists || response.data || [];
     } catch (error: any) {
-      console.warn('[getSalonSpecialists] UUID endpoint failed, this may be expected if salonId is invalid or endpoint requires salon context');
+      console.warn('[getProviderSpecialists] UUID endpoint failed, this may be expected if providerId is invalid or endpoint requires provider context');
       throw error;
     }
   }
 
-  async getSalonSpecialistsBySlug(slug: string): Promise<any> {
+  async getProviderSpecialistsBySlug(slug: string): Promise<any> {
     // Use the public route for slug - no auth required
-    const response = await this.client.get(`/v1/salons/${slug}/specialists`);
-    return response.data;
+    const response = await this.client.get(`/v1/providers/${slug}/specialists`);
+    // The show endpoint returns the full provider object with specialists nested
+    return response.data?.specialists || response.data || [];
   }
 
-  async getSalonSpecialistsWithFallback(salonId?: string, slug?: string | null | undefined): Promise<any> {
+  async getAssignableSpecialists(providerIdOrSlug: string, locationId?: string): Promise<any> {
+    // Get operationally assignable specialists (requires active SpecialistAssignment)
+    // This endpoint filters out dangling specialists without active assignments
+    const params: any = {};
+    if (locationId) {
+      params.location_id = locationId;
+    }
+    const response = await this.client.get(`/v1/providers/${providerIdOrSlug}/assignable-specialists`, { params });
+    return response.data || [];
+  }
+
+  async getProviderSpecialistsWithFallback(providerId?: string, slug?: string | null | undefined): Promise<any> {
     // Convert null to undefined for consistency
     const slugValue = slug === null ? undefined : slug;
     
-    // Try UUID endpoint first if salonId is available (authenticated, more data)
-    if (salonId) {
+    // Try UUID endpoint first if providerId is available (authenticated, more data)
+    if (providerId) {
       try {
-        return await this.getSalonSpecialists(salonId);
+        return await this.getProviderSpecialists(providerId);
       } catch (error: any) {
-        console.warn('[getSalonSpecialistsWithFallback] UUID endpoint failed, falling back to slug:', error.message);
+        console.warn('[getProviderSpecialistsWithFallback] UUID endpoint failed, falling back to slug:', error.message);
         // Continue to slug fallback
       }
     }
@@ -742,23 +833,23 @@ class ApiClient {
     // Fallback to slug endpoint if available
     if (slugValue) {
       try {
-        return await this.getSalonSpecialistsBySlug(slugValue);
+        return await this.getProviderSpecialistsBySlug(slugValue);
       } catch (error: any) {
-        console.error('[getSalonSpecialistsWithFallback] Slug endpoint also failed:', error.message);
+        console.error('[getProviderSpecialistsWithFallback] Slug endpoint also failed:', error.message);
         throw error;
       }
     }
     
-    throw new Error('Either salonId or slug must be provided');
+    throw new Error('Either providerId or slug must be provided');
   }
 
-  async updateSalonSpecialist(salonId: string, id: string, data: any) {
-    const response = await this.client.put(`/v1/salons/${salonId}/specialists/${id}`, data);
+  async updateProviderSpecialist(providerId: string, id: string, data: any) {
+    const response = await this.client.put(`/v1/providers/${providerId}/specialists/${id}`, data);
     return response.data;
   }
 
-  async removeSalonSpecialist(salonId: string, id: string) {
-    await this.client.delete(`/v1/salons/${salonId}/specialists/${id}`);
+  async removeProviderSpecialist(providerId: string, id: string) {
+    await this.client.delete(`/v1/providers/${providerId}/specialists/${id}`);
   }
 
   // Invitation endpoints
@@ -778,10 +869,19 @@ class ApiClient {
   }
 
   // Customer lookup
-  async lookupCustomer(phone: string, salonId?: string) {
+  async lookupCustomer(phone: string, providerId?: string) {
     const params: any = { phone };
-    if (salonId) params.salon_id = salonId;
+    if (providerId) params.provider_id = providerId;
     const response = await this.client.get('/v1/customers/lookup', { params });
+    return response.data;
+  }
+
+  // Find customer details for booking prefill (booking-safe data only)
+  async findCustomerDetails(phone: string, providerId?: string, locationId?: string) {
+    const params: any = { phone };
+    if (providerId) params.provider_id = providerId;
+    if (locationId) params.location_id = locationId;
+    const response = await this.client.post('/v1/customers/find-details', params);
     return response.data;
   }
 
@@ -802,9 +902,55 @@ class ApiClient {
     return response.data;
   }
 
-  // Salon availability
-  async getSalonAvailability(salonId: string, params?: Record<string, any>) {
-    const response = await this.client.get(`/v1/salons/${salonId}/availability`, { params });
+  // ── Floor operational endpoints ─────────────────────────────────────────────
+  // These map to FloorController which delegates to BookingService / SessionService.
+
+  /** GET /floor/snapshot — confirmed + arrived + waiting + in_progress for today */
+  async getFloorSnapshot() {
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.get('/v1/floor/snapshot', config);
+    return response.data;
+  }
+
+  /** POST /bookings/{id}/arrive — confirmed → arrived */
+  async bookingArrive(bookingId: string) {
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.post(`/v1/bookings/${bookingId}/arrive`, {}, config);
+    return response.data;
+  }
+
+  /** POST /bookings/{id}/wait — arrived → waiting */
+  async bookingWait(bookingId: string) {
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.post(`/v1/bookings/${bookingId}/wait`, {}, config);
+    return response.data;
+  }
+
+  /** POST /bookings/{id}/services/{bookingServiceId}/start — start service session */
+  async floorStartSession(bookingId: string, bookingServiceId: string) {
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.post(
+      `/v1/bookings/${bookingId}/services/${bookingServiceId}/start`,
+      {},
+      config
+    );
+    return response.data;
+  }
+
+  /** POST /bookings/{id}/services/{bookingServiceId}/complete — complete service session */
+  async floorCompleteSession(bookingId: string, bookingServiceId: string) {
+    const config: CustomAxiosRequestConfig = { includeLocationContext: true } as any;
+    const response = await this.client.post(
+      `/v1/bookings/${bookingId}/services/${bookingServiceId}/complete`,
+      {},
+      config
+    );
+    return response.data;
+  }
+
+  // Provider availability
+  async getProviderAvailability(providerId: string, params?: Record<string, any>) {
+    const response = await this.client.get(`/providers/${providerId}/availability`, { params });
     return response.data;
   }
 
@@ -814,8 +960,10 @@ class ApiClient {
     return response.data;
   }
 
-  async getSalonServicePaymentInstructions(salonId: string, serviceId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/services/${serviceId}/payment-instructions`);
+  async getProviderServicePaymentInstructions(providerId: string, serviceId: string) {
+    const response = await this.client.get('/v1/booking-context/payment', {
+      params: { provider_id: providerId, service_id: serviceId }
+    });
     return response.data;
   }
 
@@ -836,8 +984,8 @@ class ApiClient {
     return response.data;
   }
 
-  async put(url: string, data?: any) {
-    const response = await this.client.put(url, data);
+  async put(url: string, data?: any, params?: Record<string, any>) {
+    const response = await this.client.put(url, data, { params });
     return response.data;
   }
 
@@ -876,23 +1024,23 @@ class ApiClient {
   }
 
   // Capability endpoints
-  async getCapabilities(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/capabilities`);
+  async getCapabilities(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/capabilities`);
     return response.data;
   }
 
-  async checkFeature(salonId: string, featureCode: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/capabilities/feature/${featureCode}`);
+  async checkFeature(providerId: string, featureCode: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/capabilities/feature/${featureCode}`);
     return response.data;
   }
 
-  async getQuota(salonId: string, resourceCode: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/capabilities/quota/${resourceCode}`);
+  async getQuota(providerId: string, resourceCode: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/capabilities/quota/${resourceCode}`);
     return response.data;
   }
 
-  async getCredits(salonId: string, creditCode: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/capabilities/credits/${creditCode}`);
+  async getCredits(providerId: string, creditCode: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/capabilities/credits/${creditCode}`);
     return response.data;
   }
 
@@ -903,48 +1051,48 @@ class ApiClient {
   }
 
   // Compensation Management Endpoints
-  async getCompensationPolicies(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/policies`);
+  async getCompensationPolicies(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/policies`);
     return response.data;
   }
 
-  async createCompensationPolicy(salonId: string, data: any) {
-    const response = await this.client.post(`/v1/salons/${salonId}/compensation/policies`, data);
+  async createCompensationPolicy(providerId: string, data: any) {
+    const response = await this.client.post(`/v1/providers/${providerId}/compensation/policies`, data);
     return response.data;
   }
 
-  async getCompensationEarnings(salonId: string, params?: any) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/earnings`, { params });
+  async getCompensationEarnings(providerId: string, params?: any) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/earnings`, { params });
     return response.data;
   }
 
-  async getCompensationPeriods(salonId: string, params?: any) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/periods`, { params });
+  async getCompensationPeriods(providerId: string, params?: any) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/periods`, { params });
     return response.data;
   }
 
-  async getCompensationPeriod(salonId: string, periodId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/periods/${periodId}`);
+  async getCompensationPeriod(providerId: string, periodId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/periods/${periodId}`);
     return response.data;
   }
 
-  async closeCompensationPeriod(salonId: string, periodId: string) {
-    const response = await this.client.post(`/v1/salons/${salonId}/compensation/periods/${periodId}/close`);
+  async closeCompensationPeriod(providerId: string, periodId: string) {
+    const response = await this.client.post(`/v1/providers/${providerId}/compensation/periods/${periodId}/close`);
     return response.data;
   }
 
-  async addCompensationAdjustment(salonId: string, periodId: string, data: any) {
-    const response = await this.client.post(`/v1/salons/${salonId}/compensation/periods/${periodId}/adjustments`, data);
+  async addCompensationAdjustment(providerId: string, periodId: string, data: any) {
+    const response = await this.client.post(`/v1/providers/${providerId}/compensation/periods/${periodId}/adjustments`, data);
     return response.data;
   }
 
-  async getCompensationPayables(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/payables`);
+  async getCompensationPayables(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/payables`);
     return response.data;
   }
 
-  async initiateCompensationPayout(salonId: string, settlementId: string, data: any) {
-    const response = await this.client.post(`/v1/salons/${salonId}/compensation/settlements/${settlementId}/payout`, data);
+  async initiateCompensationPayout(providerId: string, settlementId: string, data: any) {
+    const response = await this.client.post(`/v1/providers/${providerId}/compensation/settlements/${settlementId}/payout`, data);
     return response.data;
   }
 
@@ -969,21 +1117,21 @@ class ApiClient {
   }
 
   // Payment Profiles & Payout Readiness (Manager)
-  async getTeamMemberPaymentProfile(salonId: string, memberId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/team/${memberId}/payment-profile`);
+  async getTeamMemberPaymentProfile(providerId: string, memberId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/team/${memberId}/payment-profile`);
     return response.data;
   }
 
-  async getPayoutReadiness(salonId: string, settlementId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/compensation/settlements/${settlementId}/payout-readiness`);
+  async getPayoutReadiness(providerId: string, settlementId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/compensation/settlements/${settlementId}/payout-readiness`);
     return response.data;
   }
 
   // ── Ledger ─────────────────────────────────────────────────────────────────
   // Financial truth: double-entry journal, LedgerEntry records.
   // NOT the same as getTransactions() — transactions are payment-rail events.
-  async getSalonLedger(salonId: string, params?: Record<string, any>) {
-    const response = await this.client.get(`/v1/salons/${salonId}/ledger`, { params });
+  async getProviderLedger(providerId: string, params?: Record<string, any>) {
+    const response = await this.client.get(`/v1/providers/${providerId}/ledger`, { params });
     return response.data;
   }
 
@@ -991,8 +1139,34 @@ class ApiClient {
   // Unified identity: Staff + employed specialists + independent specialists
   // Each member includes their active compensation policy and outstanding payable
   // sourced from the Settlement table — never from booking prices.
-  async getSalonTeam(salonId: string) {
-    const response = await this.client.get(`/v1/salons/${salonId}/team`);
+  async getProviderTeam(providerId: string) {
+    const response = await this.client.get(`/v1/providers/${providerId}/team`);
+    return response.data;
+  }
+
+  // Schedule Migration Endpoints
+  async checkScheduleMigration() {
+    const response = await this.client.get('/v1/schedule-migration/status');
+    return response.data;
+  }
+
+  async migrateSchedule() {
+    const response = await this.client.post('/v1/schedule-migration/migrate');
+    return response.data;
+  }
+  // ── Floor Operations (Break Management) ─────────────────────────────────────
+  async startSpecialistBreak(specialistId: string, durationMinutes: number, locationId?: string) {
+    const response = await this.client.post(`/v1/specialists/${specialistId}/breaks`, {
+      duration_minutes: durationMinutes,
+      location_id: locationId,
+    });
+    return response.data;
+  }
+
+  async endSpecialistBreak(specialistId: string, locationId?: string) {
+    const response = await this.client.post(`/v1/specialists/${specialistId}/breaks/end`, {
+      location_id: locationId,
+    });
     return response.data;
   }
 }

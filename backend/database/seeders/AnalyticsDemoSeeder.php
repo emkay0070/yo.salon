@@ -69,9 +69,10 @@ class AnalyticsDemoSeeder extends Seeder
         $staff = [];
         foreach ($staffData as $data) {
             $staff[] = Staff::firstOrCreate(
-                ['salon_id' => $salon->id, 'email' => $data['email']],
+                ['provider_id' => $salon->provider_id, 'location_id' => $salon->location_id, 'email' => $data['email']],
                 [
-                    'salon_id' => $salon->id,
+                    'provider_id' => $salon->provider_id,
+                    'location_id' => $salon->location_id,
                     'name' => $data['name'],
                     'email' => $data['email'],
                     'phone' => '+256 7' . rand(00000000, 99999999),

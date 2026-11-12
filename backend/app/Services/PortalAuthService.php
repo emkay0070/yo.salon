@@ -48,10 +48,23 @@ class PortalAuthService
     public function register(array $data): array
     {
         return DB::transaction(function () use ($data) {
-            $salonId = $data['salon_id'];
+            $locationId = $data['location_id'] ?? null;
+            $providerId = $data['provider_id'] ?? null;
             $email = $data['email'];
             $password = $data['password'];
             $phone = $data['phone'];
+
+            // Resolve provider_id from location_id if needed
+            if ($locationId && !$providerId) {
+                $location = \App\Models\Location::query()->whereKey($locationId)->firstOrFail();
+                $providerId = $location->provider_id;
+            }
+
+            if (!$providerId) {
+                throw ValidationException::withMessages([
+                    'provider_id' => ['Invalid provider or missing provider context.'],
+                ]);
+            }
 
             // Resolve existing customer by phone (primary identifier)
             $customer = $this->customerResolver->findByPhone($phone);
@@ -75,12 +88,12 @@ class PortalAuthService
                 ]);
             }
 
-            // Check if customer has relationship with this salon
-            $hasSalonRelationship = $customer->salons()->where('salon_id', $salonId)->exists();
+            // Check if customer has relationship with this provider
+            $hasProviderRelationship = $customer->providers()->where('provider_id', $providerId)->exists();
 
-            if (!$hasSalonRelationship) {
-                // Create new salon relationship for existing customer
-                $customer->salons()->attach($salonId, [
+            if (!$hasProviderRelationship) {
+                // Create new provider relationship for existing customer
+                $customer->providers()->attach($providerId, [
                     'id' => (string) Str::uuid(),
                     'visits' => 0,
                     'joined_at' => now(),
@@ -94,21 +107,19 @@ class PortalAuthService
                 'password' => Hash::make($password),
             ]);
 
-            $salon = $customer->salons()->where('salon_id', $salonId)->first();
-
             return [
                 'portal_account' => $portalAccount,
                 'customer' => $customer,
-                'salon' => $salon,
+                'location' => $locationId ? \App\Models\Location::find($locationId) : null,
                 'is_new_customer' => false,
-                'is_new_salon_relationship' => !$hasSalonRelationship,
+                'is_new_provider_relationship' => !$hasProviderRelationship,
             ];
         });
     }
 
     /**
      * Login to portal account
-     * Returns token and context. Salon context defaults to first salon if not provided.
+     * Returns token and context. Location context defaults to first location if not provided.
      */
     public function login(array $credentials): array
     {
@@ -124,16 +135,16 @@ class PortalAuthService
         $token = $portalAccount->createToken('portal-token')->plainTextToken;
 
         $customer = $portalAccount->customer;
-        $salons = $customer->salons;
+        $providers = $customer->providers;
         
-        $salonId = null;
-        if ($salons->isNotEmpty()) {
-            $salonId = $salons->first()->id;
+        $providerId = null;
+        if ($providers->isNotEmpty()) {
+            $providerId = $providers->first()->id;
         }
 
         $context = [];
-        if ($salonId) {
-            $context = $this->getContext($portalAccount, $salonId);
+        if ($providerId) {
+            $context = $this->getContext($portalAccount, $providerId);
         } else {
             // No salon relationship yet — return minimal context so the customer
             // isn't shown as "Guest". They can complete setup from the portal.
@@ -178,7 +189,7 @@ class PortalAuthService
     /**
      * Get operating context for portal
      */
-    public function getContext(PortalAccount $portalAccount, string $salonId): array
+    public function getContext(PortalAccount $portalAccount, ?string $providerId): array
     {
         // Load customer without relationships to avoid circular references
         $customer = \App\Models\Customer::select('id', 'name', 'phone', 'email')
@@ -189,41 +200,39 @@ class PortalAuthService
             throw new \Exception('Customer not found');
         }
 
-        // Get salon relationship with pivot data
-        $salonRelationship = \DB::table('customer_salon')
-            ->where('customer_id', $customer->id)
-            ->where('salon_id', $salonId)
-            ->first();
-
-        if (!$salonRelationship) {
-            throw new \Exception('Customer does not have a relationship with this salon');
+        // Get provider relationship with pivot data
+        $providerRelationship = null;
+        if ($providerId) {
+            $providerRelationship = \DB::table('customer_providers')
+                ->where('customer_id', $customer->id)
+                ->where('provider_id', $providerId)
+                ->first();
         }
 
-        $visits = $salonRelationship->visits ?? 0;
+        $visits = $providerRelationship->visits ?? 0;
 
-        // Get active salon data without loading relationships
-        $activeSalon = \App\Models\Salon::select('id', 'name', 'slug', 'logo', 'phone', 'email', 'address', 'opening_hours')
-            ->where('id', $salonId)
-            ->first();
-
-        if (!$activeSalon) {
-            throw new \Exception('Salon not found');
+        // Get active provider data
+        $activeProvider = null;
+        if ($providerId) {
+            $activeProvider = \App\Models\Provider::select('id', 'display_name as name', 'slug', 'logo', 'phone', 'email')
+                ->where('id', $providerId)
+                ->first();
         }
 
-        // All salons for the salon switcher - load from DB directly
-        $allSalons = \DB::table('customer_salon')
-            ->join('salons', 'customer_salon.salon_id', '=', 'salons.id')
-            ->where('customer_salon.customer_id', $customer->id)
-            ->select('salons.id', 'salons.name', 'salons.slug', 'salons.logo', 'customer_salon.visits')
+        // All providers for the switcher
+        $allProviders = \DB::table('customer_providers')
+            ->join('providers', 'customer_providers.provider_id', '=', 'providers.id')
+            ->where('customer_providers.customer_id', $customer->id)
+            ->select('providers.id', 'providers.display_name as name', 'providers.slug', 'providers.logo', 'customer_providers.visits')
             ->get()
-            ->map(function ($s) use ($salonId) {
+            ->map(function ($p) use ($providerId) {
                 return [
-                    'id' => $s->id,
-                    'name' => $s->name,
-                    'slug' => $s->slug,
-                    'logo' => $s->logo,
-                    'is_active' => $s->id === $salonId,
-                    'visits' => $s->visits ?? 0,
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'slug' => $p->slug,
+                    'logo' => $p->logo,
+                    'is_active' => $p->id === $providerId,
+                    'visits' => $p->visits ?? 0,
                 ];
             })
             ->values();
@@ -260,17 +269,17 @@ class PortalAuthService
                 'email' => $customer->email,
                 'visits' => $visits,
             ],
-            'active_salon' => [
-                'id' => $activeSalon->id,
-                'name' => $activeSalon->name,
-                'slug' => $activeSalon->slug,
-                'logo' => $activeSalon->logo,
-                'phone' => $activeSalon->phone,
-                'email' => $activeSalon->email,
-                'address' => $activeSalon->address,
-                'opening_hours' => $activeSalon->opening_hours,
-            ],
-            'salons' => $allSalons,
+            'active_provider' => $activeProvider ? [
+                'id' => $activeProvider->id,
+                'name' => $activeProvider->name,
+                'slug' => $activeProvider->slug,
+                'logo' => $activeProvider->logo,
+                'phone' => $activeProvider->phone,
+                'email' => $activeProvider->email,
+                'address' => null, // Providers don't have direct addresses, locations do
+                'opening_hours' => null,
+            ] : null,
+            'providers' => $allProviders,
             'capabilities' => $capabilities,
             'wallet_summary' => [
                 'balance' => 0,
@@ -291,7 +300,7 @@ class PortalAuthService
     /**
      * Get dynamic home data for portal
      */
-    public function getHomeData(PortalAccount $portalAccount, string $salonId): array
+    public function getHomeData(PortalAccount $portalAccount, ?string $locationId): array
     {
         try {
             $customer = $portalAccount->customer;
@@ -300,40 +309,43 @@ class PortalAuthService
                 throw new \Exception('Customer not found for portal account');
             }
 
-            // Get salon to find its provider_id
-            $salon = \App\Models\Salon::find($salonId);
-            $providerId = $salon ? $salon->provider_id : null;
-
-            // Get upcoming booking for this salon (via provider_id)
-            $upcomingBooking = Booking::where('customer_id', $customer->id)
-                ->where('provider_id', $providerId)
+            // Get upcoming booking (globally if no locationId)
+            $upcomingQuery = Booking::where('customer_id', $customer->id)
                 ->where('date', '>=', now()->toDateString())
                 ->where('status', '!=', 'cancelled')
-                ->with(['staff', 'service'])
-                ->orderBy('date')
-                ->orderBy('time')
-                ->first();
+                ->with(['staff', 'service', 'location']);
+                
+            if ($locationId) {
+                $location = \App\Models\Location::find($locationId);
+                if ($location) {
+                    $upcomingQuery->where('location_id', $location->id);
+                }
+            }
+            
+            $upcomingBooking = $upcomingQuery->orderBy('date')->orderBy('time')->first();
 
-            // Get recommended services for this salon
-            $recommendedServices = $this->recommendationService->getRecommendedServices($customer, $salonId, 4);
+            $providerId = isset($location) && $location ? $location->provider_id : null;
 
-            // Get recent visits
-            $recentVisits = $this->customerPortalService->getRecentVisits($customer, $salonId, 5);
+            // Get recommended services for this provider (empty if no provider context)
+            $recommendedServices = $providerId ? $this->recommendationService->getRecommendedServices($customer, $providerId, 4) : [];
+
+            // Get recent visits (empty if no provider context)
+            $recentVisits = $providerId ? $this->customerPortalService->getRecentVisits($customer, $locationId, 5) : [];
 
             // Get last booking
-            $lastBooking = $this->customerPortalService->getLastBooking($customer, $salonId);
+            $lastBooking = $providerId ? $this->customerPortalService->getLastBooking($customer, $locationId) : null;
 
             // Get favorite stylist
-            $favoriteStylist = $this->customerPortalService->getFavoriteStylist($customer, $salonId);
+            $favoriteStylist = $providerId ? $this->customerPortalService->getFavoriteStylist($customer, $locationId) : null;
 
-            // Get wallet summary
+            // Get wallet summary (placeholder, will be refactored to global later)
             $walletSummary = [
                 'balance' => 0,
                 'packages' => 0,
                 'gift_cards' => 0,
             ];
 
-            // Get loyalty summary
+            // Get loyalty summary (placeholder)
             $loyaltySummary = [
                 'tier' => 'bronze',
                 'points' => 0,
@@ -377,7 +389,7 @@ class PortalAuthService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'portal_account_id' => $portalAccount->id,
-                'salon_id' => $salonId,
+                'location_id' => $locationId,
             ]);
 
             // Return safe default data instead of throwing

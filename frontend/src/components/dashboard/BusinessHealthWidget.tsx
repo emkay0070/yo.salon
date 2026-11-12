@@ -10,7 +10,7 @@ import {
   CreditCard, Users, Scissors, Crown, CalendarCheck, Globe,
 } from 'lucide-react';
 import Link from 'next/link';
-import { salonRoutes } from '@/lib/routes';
+import { providerRoutes } from '@/lib/routes';
 
 interface CheckResult {
   key: string;
@@ -109,15 +109,15 @@ const CHECK_META: Record<string, { label: string; settingsPath: string; icon: Re
 };
 
 export default function BusinessHealthWidget() {
-  const { salonId, isLoading: roleLoading, salonSlug } = useRole();
-  const routes = salonRoutes(salonSlug);
+  const { providerId, isLoading: roleLoading, providerSlug } = useRole();
+  const routes = providerRoutes(providerSlug);
 
-  const validSalonId = salonId && salonId !== 'null' && salonId !== 'undefined' ? salonId : null;
+  const validProviderId = providerId && providerId !== 'null' && providerId !== 'undefined' ? providerId : null;
 
   const { data, isLoading, isError, failureCount, refetch } = useQuery({
-    queryKey: ['branch-health', validSalonId],
-    queryFn: () => apiClient.getBranchHealth(validSalonId!),
-    enabled: !!validSalonId && !roleLoading,
+    queryKey: ['branch-health', validProviderId],
+    queryFn: () => apiClient.getLocationHealth(validProviderId!),
+    enabled: !!validProviderId && !roleLoading,
     staleTime: 60_000,
     retry: 1,
   });
@@ -131,7 +131,7 @@ export default function BusinessHealthWidget() {
     );
   }
 
-  if (!validSalonId) return null;
+  if (!validProviderId) return null;
 
   if (isError || !data?.data) {
     // Silent fallback — never break the dashboard over a transient health failure.

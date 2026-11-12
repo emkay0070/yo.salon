@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Str;
 
 class Customer extends Model
 {
@@ -18,7 +19,37 @@ class Customer extends Model
         'name',
         'phone',
         'email',
+        // Guest identity
+        'is_guest',
+        'guest_token',
+        'guest_provider_id',
     ];
+
+    protected $casts = [
+        'is_guest' => 'boolean',
+    ];
+
+    /**
+     * Create an anonymous walk-in guest, scoped to a specific provider.
+     *
+     * A guest is a real Customer row (bookings, sessions and payments point to it)
+     * but has no phone/email and is isolated per-provider. Two walk-ins at two
+     * different salons produce two independent guest records, never merged.
+     *
+     * The guest can be promoted to a real customer later by a deliberate staff
+     * action (adding their phone/email).
+     */
+    public static function createGuest(string $providerId, string $displayName = 'Walk-in Guest'): self
+    {
+        return self::create([
+            'name'              => $displayName,
+            'phone'             => null,
+            'email'             => null,
+            'is_guest'          => true,
+            'guest_token'       => Str::random(16),
+            'guest_provider_id' => $providerId,
+        ]);
+    }
 
     public function bookings(): HasMany
     {
@@ -30,18 +61,6 @@ class Customer extends Model
         return $this->hasOne(PortalAccount::class);
     }
 
-    public function salonRelationships(): HasMany
-    {
-        return $this->hasMany(CustomerSalon::class);
-    }
-
-    public function salons(): BelongsToMany
-    {
-        return $this->belongsToMany(Salon::class, 'customer_salon')
-            ->withPivot('visits', 'notes', 'joined_at', 'loyalty_tier', 'wallet_balance', 'preferred_staff_id', 'is_blocked', 'block_reason')
-            ->withTimestamps();
-    }
-
     public function preference(): HasOne
     {
         return $this->hasOne(CustomerPreference::class);
@@ -50,6 +69,13 @@ class Customer extends Model
     public function favoriteServices(): HasMany
     {
         return $this->hasMany(CustomerFavoriteService::class);
+    }
+
+    public function providers(): BelongsToMany
+    {
+        return $this->belongsToMany(Provider::class, 'customer_providers')
+            ->withPivot('id', 'visits', 'joined_at')
+            ->withTimestamps();
     }
 
     /**
@@ -70,11 +96,4 @@ class Customer extends Model
         return $this->portalAccount !== null;
     }
 
-    /**
-     * Get customer's relationship with a specific salon
-     */
-    public function getSalonRelationship(string $salonId): ?CustomerSalon
-    {
-        return $this->salonRelationships()->where('salon_id', $salonId)->first();
-    }
 }

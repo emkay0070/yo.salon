@@ -184,7 +184,11 @@ class CustomerWorkspaceInvitationService
      */
     public function expireOldInvitations(): int
     {
-        $expired = CustomerWorkspaceInvitation::pending()
+        $expired = CustomerWorkspaceInvitation::whereIn('status', [
+                CustomerWorkspaceInvitation::STATUS_SENT,
+                CustomerWorkspaceInvitation::STATUS_OPENED,
+            ])
+            ->whereNotNull('expires_at')
             ->where('expires_at', '<', now())
             ->get();
 

@@ -20,7 +20,7 @@ class ProviderFactory extends Factory
     public function definition(): array
     {
         return [
-            'type' => $this->faker->randomElement([Provider::TYPE_SALON, Provider::TYPE_SPECIALIST]),
+            'type' => Provider::TYPE_SALON,
             'status' => 'active',
             'display_name' => $this->faker->company(),
             'slug' => $this->faker->unique()->slug(),
@@ -29,5 +29,37 @@ class ProviderFactory extends Factory
             'email' => $this->faker->unique()->companyEmail(),
             'active' => true,
         ];
+    }
+
+    /**
+     * Indicate that the provider is an independent specialist.
+     */
+    public function independentSpecialist(): self
+    {
+        return $this->state(fn () => ['type' => Provider::TYPE_SPECIALIST]);
+    }
+
+    /**
+     * Indicate that the provider is a spa.
+     */
+    public function spa(): self
+    {
+        return $this->state(fn () => ['type' => Provider::TYPE_SPA]);
+    }
+
+    /**
+     * Indicate that the provider is a beauty school.
+     */
+    public function beautySchool(): self
+    {
+        return $this->state(fn () => ['type' => Provider::TYPE_BEAUTY_SCHOOL]);
+    }
+
+    /**
+     * Indicate that the provider is a mobile team.
+     */
+    public function mobileTeam(): self
+    {
+        return $this->state(fn () => ['type' => Provider::TYPE_MOBILE_TEAM]);
     }
 }

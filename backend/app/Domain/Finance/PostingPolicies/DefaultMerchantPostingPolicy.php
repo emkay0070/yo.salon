@@ -8,7 +8,7 @@ class DefaultMerchantPostingPolicy implements PostingPolicyInterface
 {
     public function gatewayFeeBearer(Transaction $transaction): string
     {
-        return 'salon'; // Salon bears the gateway fee for merchant/manual custody
+        return 'provider'; // Provider bears the gateway fee for merchant/manual custody
     }
 
     public function assetAccountType(Transaction $transaction): string

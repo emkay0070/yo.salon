@@ -16,7 +16,7 @@ class SpecialistAssignmentFactory extends Factory
         return [
             'specialist_id' => Specialist::factory(),
             'provider_id' => Provider::factory(),
-            'salon_id' => null,
+            'location_id' => null,
             'role' => 'SPECIALIST',
             'employment_type' => 'EMPLOYEE',
             'is_primary' => true,

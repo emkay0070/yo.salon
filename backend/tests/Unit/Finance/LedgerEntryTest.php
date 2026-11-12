@@ -5,7 +5,7 @@ namespace Tests\Unit\Finance;
 use Tests\TestCase;
 use App\Domain\Finance\Ledger\LedgerEntry;
 use App\Domain\Finance\Ledger\LedgerAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class LedgerEntryTest extends TestCase
@@ -14,10 +14,10 @@ class LedgerEntryTest extends TestCase
 
     public function test_ledger_entry_is_immutable()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,
@@ -40,10 +40,10 @@ class LedgerEntryTest extends TestCase
 
     public function test_ledger_entry_cannot_be_deleted()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,
@@ -66,10 +66,10 @@ class LedgerEntryTest extends TestCase
 
     public function test_ledger_entry_belongs_to_account()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,
@@ -89,10 +89,10 @@ class LedgerEntryTest extends TestCase
 
     public function test_ledger_entry_scopes()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
         $account = LedgerAccount::create([
-            'owner_type' => Salon::class,
-            'owner_id' => $salon->id,
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
             'account_type' => 'revenue',
             'currency' => 'UGX',
             'balance' => 1000,

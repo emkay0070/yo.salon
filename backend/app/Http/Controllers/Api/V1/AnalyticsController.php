@@ -23,25 +23,43 @@ class AnalyticsController extends Controller
 
     public function intelligence(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) {
-            return response()->json(['error' => 'Salon not found'], 404);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) {
+            return response()->json(['error' => 'Provider not found'], 404);
         }
-        
-        $dto = $this->newIntelligenceEngine->generate($salon);
-        
+
+        $locationId = $request->attributes->get('location_id');
+        $locationScope = $request->attributes->get('location_scope', 'all');
+
+        // Pass location context to intelligence engine for location-scoped analytics
+        // If location_scope is 'specific', filter by location_id
+        // If location_scope is 'all', provide Provider-wide analytics
+        $location = null;
+        if ($locationScope === 'specific' && $locationId) {
+            $location = \App\Models\Location::find($locationId);
+        }
+        $dto = $this->newIntelligenceEngine->generate($provider, $location);
+
         return response()->json($dto);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) {
-            return response()->json(['error' => 'Salon not found'], 404);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) {
+            return response()->json(['error' => 'Provider not found'], 404);
         }
 
+        $locationId = $request->attributes->get('location_id');
+        $locationScope = $request->attributes->get('location_scope', 'all');
+
         // Use the projection service to compose canonical facts
-        $analytics = $this->analyticsProjectionService->compose($salon);
+        // Pass location context for location-scoped analytics
+        $location = null;
+        if ($locationScope === 'specific' && $locationId) {
+            $location = \App\Models\Location::find($locationId);
+        }
+        $analytics = $this->analyticsProjectionService->compose($provider, $location);
 
         return response()->json($analytics);
     }

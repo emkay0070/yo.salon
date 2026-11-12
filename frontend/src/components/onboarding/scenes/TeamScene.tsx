@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, User, Phone, Briefcase, Upload } from 'lucide-react';
 import SceneLayout from './SceneLayout';
@@ -10,6 +11,7 @@ const roles = ['Owner', 'Manager', 'Stylist', 'Barber', 'Beautician', 'Nail Tech
 
 export default function TeamScene() {
   const { staff, setStaff } = useOnboarding();
+  const { terminology } = useCategory();
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState({ name: '', role: '', phone: '', photo: '' });
 

@@ -10,6 +10,7 @@ use App\Models\ReferenceData;
 use App\Models\Review;
 use App\Models\Staff;
 use App\Models\Specialist;
+use App\Models\Invitation;
 use App\Services\PortalAuthService;
 use App\Services\CustomerPortalService;
 use Illuminate\Http\Request;
@@ -35,7 +36,7 @@ class PortalAccountController extends Controller
      * Principle: A Portal Account must always be attached to a Customer.
      * Customer records are created by business interactions, not authentication.
      * 
-     * This endpoint requires salon context and links to an existing customer.
+     * This endpoint requires provider context and links to an existing customer.
      * If no customer exists with the provided phone/email, registration fails.
      */
     public function store(Request $request): JsonResponse
@@ -44,7 +45,7 @@ class PortalAccountController extends Controller
             'email' => 'required|email|unique:portal_accounts,email',
             'password' => 'required|string|min:8',
             'phone' => 'required|string',
-            'salon_id' => 'required|exists:salons,id',
+            'location_id' => 'required|uuid|exists:locations,id',
         ]);
 
         try {
@@ -53,10 +54,13 @@ class PortalAccountController extends Controller
             return response()->json([
                 'message' => 'Account linked to existing customer',
                 'customer' => $result['customer'],
-                'salon' => $result['salon'],
+                'provider' => $result['location'] ? [
+                    'id' => $result['location']->provider_id,
+                    'location_id' => $result['location']->id,
+                ] : null,
                 'portal_account' => $result['portal_account'],
                 'is_new_customer' => false, // Always false - auth never creates customers
-                'is_new_salon_relationship' => $result['is_new_salon_relationship'],
+                'is_new_provider_relationship' => $result['is_new_provider_relationship'],
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -94,14 +98,14 @@ class PortalAccountController extends Controller
     /**
      * Get operating context for portal
      * Returns everything needed for session state
-     * salonId is provided by middleware
+     * provider/location context is provided by middleware
      */
     public function context(Request $request): JsonResponse
     {
         $portalAccount = auth('portal')->user();
-        $salonId = $request->attributes->get('salon_id');
-        
-        $contextData = $this->portalAuthService->getContext($portalAccount, $salonId);
+        $locationId = $request->attributes->get('location_id');
+
+        $contextData = $this->portalAuthService->getContext($portalAccount, $locationId);
 
         return response()->json($contextData);
     }
@@ -113,9 +117,9 @@ class PortalAccountController extends Controller
     public function me(Request $request): JsonResponse
     {
         $portalAccount = auth('portal')->user();
-        $salonId = $request->attributes->get('salon_id');
-        
-        $userData = $this->portalAuthService->getContext($portalAccount, $salonId);
+        $locationId = $request->attributes->get('location_id');
+
+        $userData = $this->portalAuthService->getContext($portalAccount, $locationId);
 
         return response()->json($userData);
     }
@@ -123,36 +127,45 @@ class PortalAccountController extends Controller
     /**
      * Get portal home data
      * Returns dynamic content for the home page
-     * salonId is provided by middleware
+     * provider/location context is provided by middleware
      */
     public function home(Request $request): JsonResponse
     {
         try {
             $portalAccount = auth('portal')->user();
-            $salonId = $request->attributes->get('salon_id');
+            $locationId = $request->attributes->get('location_id');
 
             if (!$portalAccount) {
                 return response()->json(['message' => 'Portal account not found'], 401);
             }
 
-            if (!$salonId) {
-                return response()->json(['message' => 'Salon context not found'], 400);
+            // Brand-new customer — no location history yet. Return an empty home state
+            // so the frontend can show the discovery/booking flow.
+            if (!$locationId) {
+                return response()->json([
+                    'upcoming_bookings' => [],
+                    'past_bookings'     => [],
+                    'recent_visits'     => [],
+                    'last_booking'      => null,
+                    'active_location'   => null,
+                    'is_new_customer'   => true,
+                ]);
             }
 
-            $homeData = $this->portalAuthService->getHomeData($portalAccount, $salonId);
+            $homeData = $this->portalAuthService->getHomeData($portalAccount, $locationId);
 
             return response()->json($homeData);
         } catch (\Exception $e) {
             \Log::error('Portal home data error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'salon_id' => $request->attributes->get('salon_id'),
+                'error'             => $e->getMessage(),
+                'trace'             => $e->getTraceAsString(),
+                'location_id'       => $request->attributes->get('location_id'),
                 'portal_account_id' => auth('portal')->user()?->id,
             ]);
 
             return response()->json([
                 'message' => 'Unable to load home data',
-                'error' => $e->getMessage(),
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -173,6 +186,7 @@ class PortalAccountController extends Controller
 
     /**
      * Send invitation to customer
+     * Uses existing Invitation model for customer portal invitations
      */
     public function sendInvitation(Request $request): JsonResponse
     {
@@ -188,30 +202,56 @@ class PortalAccountController extends Controller
             ], 409);
         }
 
-        // Generate invitation token
-        $invitationToken = bin2hex(random_bytes(32));
+        // Get provider context from auth or request
+        $providerId = auth()->user()?->currentProvider()?->id
+            ?? $request->attributes->get('provider_id');
         
-        // Store invitation token - in production, use a separate invitations table
-        // For now, we'll store it in the first salon relationship's notes
-        $salonRelationship = $customer->salons()->first();
-        if ($salonRelationship) {
-            $currentNotes = $salonRelationship->pivot->notes ?? '';
-            $customer->salons()->updateExistingPivot($salonRelationship->id, [
-                'notes' => $currentNotes . "\ninvitation_token:" . $invitationToken,
-            ]);
+        if (!$providerId) {
+            return response()->json([
+                'message' => 'No active provider context',
+            ], 403);
         }
 
-        // In production, send email/SMS with invitation link
-        // For now, return the token for testing
+        // Check if there's already a pending invitation
+        $pendingInvitation = Invitation::where('provider_id', $providerId)
+            ->where('target_id', $customer->id)
+            ->where('role', 'customer')
+            ->where('status', 'pending')
+            ->first();
+
+        if ($pendingInvitation) {
+            return response()->json([
+                'message' => 'Invitation already pending for this customer',
+            ], 409);
+        }
+
+        // Create invitation using existing Invitation model
+        $issueData = Invitation::issue([
+            'provider_id' => $providerId,
+            'role' => 'customer',
+            'email' => $customer->email,
+            'target_id' => $customer->id,
+            'status' => 'pending',
+        ], now()->addDays(7));
+
+        $invitation = $issueData['invitation'];
+        $rawToken = $issueData['rawToken'];
+        
+        // TODO: Send email/SMS with invitation link
+        $joinUrl = $invitation->publicJoinUrl($rawToken);
+
         return response()->json([
             'message' => 'Invitation sent',
-            'invitation_token' => $invitationToken,
+            'invitation_id' => $invitation->id,
+            'join_url' => $joinUrl,
             'customer' => $customer,
         ]);
     }
 
     /**
      * Accept invitation and create account
+     * This endpoint is deprecated - use InvitationController::accept() instead
+     * Kept for backward compatibility
      */
     public function acceptInvitation(Request $request): JsonResponse
     {
@@ -221,43 +261,24 @@ class PortalAccountController extends Controller
             'password' => 'required|string|min:8',
         ]);
 
-        // Find customer by invitation token (simplified)
-        $customer = Customer::where('notes', 'like', '%' . $validated['invitation_token'] . '%')->first();
+        // Find invitation by token
+        $invitation = Invitation::findByToken($validated['invitation_token']);
 
-        if (!$customer) {
+        if (!$invitation || !$invitation->isValid()) {
             return response()->json([
-                'message' => 'Invalid invitation token',
+                'message' => 'Invalid or expired invitation token',
             ], 404);
         }
 
-        if ($customer->hasPortalAccount()) {
+        if ($invitation->role !== 'customer') {
             return response()->json([
-                'message' => 'Customer already has a portal account',
-            ], 409);
+                'message' => 'This invitation is not for a customer portal account',
+            ], 400);
         }
 
-        $portalAccount = PortalAccount::create([
-            'customer_id' => $customer->id,
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-        ]);
-
-        // Clear invitation token from salon notes
-        $salonRelationship = $customer->salons()->first();
-        if ($salonRelationship) {
-            $currentNotes = $salonRelationship->pivot->notes ?? '';
-            $newNotes = str_replace("\ninvitation_token:" . $validated['invitation_token'], '', $currentNotes);
-            $customer->salons()->updateExistingPivot($salonRelationship->id, [
-                'notes' => $newNotes,
-            ]);
-        }
-
-        return response()->json([
-            'message' => 'Account created successfully',
-            'customer' => $customer,
-            'salons' => $customer->salons,
-            'portal_account' => $portalAccount,
-        ], 201);
+        // Delegate to InvitationController for actual acceptance logic
+        $invitationController = new InvitationController();
+        return $invitationController->accept($request, $validated['invitation_token']);
     }
 
     /**
@@ -267,10 +288,10 @@ class PortalAccountController extends Controller
     {
         $portalAccount = auth('portal')->user();
         $customer = $portalAccount->customer;
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
         $limit = $request->query('limit', 5);
 
-        $visits = $this->customerPortalService->getRecentVisits($customer, $salonId, $limit);
+        $visits = $this->customerPortalService->getRecentVisits($customer, $locationId, $limit);
 
         return response()->json([
             'visits' => $visits,
@@ -284,9 +305,9 @@ class PortalAccountController extends Controller
     {
         $portalAccount = auth('portal')->user();
         $customer = $portalAccount->customer;
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
 
-        $lastBooking = $this->customerPortalService->getLastBooking($customer, $salonId);
+        $lastBooking = $this->customerPortalService->getLastBooking($customer, $locationId);
 
         return response()->json([
             'last_booking' => $lastBooking,
@@ -294,16 +315,23 @@ class PortalAccountController extends Controller
     }
 
     /**
-     * Get reviews for a specialist
+     * Get reviews for a specific specialist
      */
     public function specialistReviews(Request $request, string $specialistId): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $portalAccount = auth('portal')->user();
+        $customer = $portalAccount->customer;
+        $locationId = $request->attributes->get('location_id');
+        $providerId = $request->attributes->get('provider_id');
 
         $specialist = Specialist::where('id', $specialistId)
             ->where('active', true)
-            ->whereHas('salons', function ($q) use ($salonId) {
-                $q->where('salon_id', $salonId)->where('salon_specialist.active', true);
+            ->whereHas('assignments', function ($q) use ($providerId, $locationId) {
+                $q->where('provider_id', $providerId);
+                if ($locationId) {
+                    $q->where('location_id', $locationId);
+                }
+                $q->where('active', true);
             })
             ->first();
 
@@ -336,12 +364,12 @@ class PortalAccountController extends Controller
 
         $portalAccount = auth('portal')->user();
         $customer = $portalAccount->customer;
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
 
         // Check if booking belongs to customer
         $booking = \App\Models\Booking::where('id', $validated['booking_id'])
             ->where('customer_id', $customer->id)
-            ->where('salon_id', $salonId)
+            ->where('location_id', $locationId)
             ->first();
 
         if (!$booking) {
@@ -361,6 +389,9 @@ class PortalAccountController extends Controller
             'customer_id' => $customer->id,
             'rating' => $validated['rating'],
             'comment' => $validated['comment'],
+            'subject_type' => 'specialist',
+            'subject_id' => $validated['specialist_id'],
+            'status' => 'pending',
         ]);
 
         // Update specialist rating
@@ -387,11 +418,13 @@ class PortalAccountController extends Controller
     {
         $portalAccount = auth('portal')->user();
         $customer = $portalAccount->customer;
-        $salonId = $request->attributes->get('salon_id');
+        $locationId = $request->attributes->get('location_id');
 
         $reviews = Review::where('customer_id', $customer->id)
-            ->whereHas('booking', function ($query) use ($salonId) {
-                $query->where('salon_id', $salonId);
+            ->whereHas('booking', function ($query) use ($locationId) {
+                if ($locationId) {
+                    $query->where('location_id', $locationId);
+                }
             })
             ->with(['staff:id,name,photo_url', 'booking:id,date,time'])
             ->orderBy('created_at', 'desc')

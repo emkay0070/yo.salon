@@ -3,9 +3,10 @@
 import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
 import { apiClient } from '@/lib/api-client';
 
-interface SalonData {
+interface ProviderData {
   name: string;
   logo?: string;
+  logo_url?: string;
   phone: string;
   email: string;
   address: string;
@@ -14,7 +15,8 @@ interface SalonData {
   timezone: string;
   currency: string;
   description: string;
-  category: string;
+  providerType: string; // 'salon', 'spa', 'independent_specialist', etc.
+  category: string; // Now stores category slug instead of category name
   vibe: string;
   businessType: string;
   teamSize: string;
@@ -47,12 +49,13 @@ interface WorkspaceData {
   paymentMethods: string[];
 }
 
-// All 10 flat scenes in order
+// All 11 flat scenes in order
 export const SCENES = [
   'welcome',
-  'salon-identity',
-  'salon-story',
-  'salon-contact',
+  'category',
+  'provider-identity',
+  'provider-story',
+  'provider-contact',
   'services',
   'team',
   'workspace',
@@ -65,9 +68,10 @@ export type Scene = typeof SCENES[number];
 
 // Which backend step each scene belongs to (for draft saving)
 const SCENE_TO_DRAFT_STEP: Partial<Record<Scene, string>> = {
-  'salon-identity': 'salon',
-  'salon-story': 'salon',
-  'salon-contact': 'salon',
+  'category': 'salon',
+  'provider-identity': 'salon',
+  'provider-story': 'salon',
+  'provider-contact': 'salon',
   'services': 'services',
   'team': 'team',
   'workspace': 'wallet',
@@ -77,16 +81,17 @@ const SCENE_TO_DRAFT_STEP: Partial<Record<Scene, string>> = {
 
 // Scene metadata for progress header
 export const SCENE_META: Record<Scene, { label: string; group: string }> = {
-  'welcome':        { label: 'Welcome',      group: 'Start' },
-  'salon-identity': { label: 'Your brand',   group: 'Salon' },
-  'salon-story':    { label: 'Your story',   group: 'Salon' },
-  'salon-contact':  { label: 'Contact',      group: 'Salon' },
-  'services':       { label: 'Services',     group: 'Services' },
-  'team':           { label: 'Your team',    group: 'Team' },
-  'workspace':      { label: 'Workspace',    group: 'Workspace' },
-  'launch-preview': { label: 'Preview',      group: 'Launch' },
-  'membership':     { label: 'Plan',         group: 'Plan' },
-  'celebration':    { label: 'Done!',        group: 'Done' },
+  'welcome':           { label: 'Welcome',      group: 'Start' },
+  'provider-identity': { label: 'Your brand',   group: 'Space' },
+  'category':          { label: 'Category',     group: 'Space' },
+  'provider-story':    { label: 'Your story',   group: 'Space' },
+  'provider-contact':  { label: 'Contact',      group: 'Space' },
+  'services':          { label: 'Services',     group: 'Services' },
+  'team':              { label: 'Your team',    group: 'Team' },
+  'workspace':         { label: 'Workspace',    group: 'Workspace' },
+  'launch-preview':    { label: 'Preview',      group: 'Launch' },
+  'membership':        { label: 'Plan',         group: 'Plan' },
+  'celebration':       { label: 'Done!',        group: 'Done' },
 };
 
 interface OnboardingContextType {
@@ -94,7 +99,7 @@ interface OnboardingContextType {
   sceneIndex: number;
   totalScenes: number;
   progress: number;
-  salonData: SalonData;
+  providerData: ProviderData;
   staff: StaffMember[];
   services: Service[];
   workspaceData: WorkspaceData;
@@ -105,7 +110,7 @@ interface OnboardingContextType {
   goPrev: () => void;
   nextStep: () => void;
   prevStep: () => void;
-  setSalonData: (data: SalonData) => void;
+  setProviderData: (data: ProviderData) => void;
   setStaff: (staff: StaffMember[]) => void;
   setServices: (services: Service[]) => void;
   setWorkspaceData: (data: WorkspaceData) => void;
@@ -119,7 +124,7 @@ interface OnboardingContextType {
 
 const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
-const defaultSalonData: SalonData = {
+const defaultProviderData: ProviderData = {
   name: '',
   phone: '',
   email: '',
@@ -127,6 +132,7 @@ const defaultSalonData: SalonData = {
   timezone: 'Africa/Kampala',
   currency: 'UGX',
   description: '',
+  providerType: 'salon',
   category: '',
   vibe: '',
   businessType: '',
@@ -153,7 +159,7 @@ const defaultWorkspaceData: WorkspaceData = {
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [sceneIndex, setSceneIndex] = useState(0);
-  const [salonData, setSalonDataState] = useState<SalonData>(defaultSalonData);
+  const [providerData, setProviderDataState] = useState<ProviderData>(defaultProviderData);
   const [staff, setStaffState] = useState<StaffMember[]>([]);
   const [services, setServicesState] = useState<Service[]>([]);
   const [workspaceData, setWorkspaceDataState] = useState<WorkspaceData>(defaultWorkspaceData);
@@ -189,21 +195,21 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Setters with autosave built in
-  const setSalonData = useCallback((data: SalonData) => {
+  const setProviderData = useCallback((data: ProviderData) => {
     let nextData = { ...data };
     
     // Check if name changed to derive slug
-    if (nextData.name !== salonData.name) {
+    if (nextData.name !== providerData.name) {
       const derivedSlug = nextData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
       nextData.draftSlug = derivedSlug;
       nextData.slugAvailable = null;
       
       if (slugTimer.current) clearTimeout(slugTimer.current);
-      if (derivedSlug) {
+      if (derivedSlug && derivedSlug.length >= 3) {
         slugTimer.current = setTimeout(async () => {
           try {
             const res = await apiClient.checkSlug(derivedSlug);
-            setSalonDataState(prev => ({
+            setProviderDataState(prev => ({
               ...prev,
               slugAvailable: res.available,
               draftSlug: res.available ? derivedSlug : (res.suggestions?.[0] || derivedSlug + '-1')
@@ -215,9 +221,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
       }
     }
     
-    setSalonDataState(nextData);
+    setProviderDataState(nextData);
     autoSave('salon', nextData);
-  }, [autoSave, salonData.name]);
+  }, [autoSave, providerData.name]);
 
   const setStaff = useCallback((newStaff: StaffMember[]) => {
     setStaffState(newStaff);
@@ -244,7 +250,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   const resetOnboarding = useCallback(() => {
     setSceneIndex(0);
-    setSalonDataState(defaultSalonData);
+    setProviderDataState(defaultProviderData);
     setStaffState([]);
     setServicesState([]);
     setWorkspaceDataState(defaultWorkspaceData);
@@ -270,7 +276,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         sceneIndex,
         totalScenes,
         progress,
-        salonData,
+        providerData,
         staff,
         services,
         workspaceData,
@@ -281,7 +287,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
         goPrev,
         nextStep: goNext,
         prevStep: goPrev,
-        setSalonData,
+        setProviderData,
         setStaff,
         setServices,
         setWorkspaceData,

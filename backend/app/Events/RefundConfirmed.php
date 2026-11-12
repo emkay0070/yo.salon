@@ -23,7 +23,7 @@ class RefundConfirmed
     public $refundTransaction;
     public $booking;
     public $customerId;
-    public $salonId;
+    public $providerId;
     public $refundAmount;
     public $currency;
 
@@ -39,7 +39,7 @@ class RefundConfirmed
         $this->refundTransaction = $refundTransaction;
         $this->booking = $booking;
         $this->customerId = $customerId;
-        $this->salonId = $booking->salon_id;
+        $this->providerId = $refundTransaction->provider_id;
         $this->refundAmount = $refundAmount;
         $this->currency = $currency;
     }

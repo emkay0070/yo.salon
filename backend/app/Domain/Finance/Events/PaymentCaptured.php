@@ -20,7 +20,7 @@ class PaymentCaptured
     public function __construct(
         public readonly string $transactionId,
         public readonly string $bookingId,
-        public readonly string $salonId,
+        public readonly string $providerId,
         public readonly float $amount,
         public readonly string $currency,
         public readonly array $metadata = []

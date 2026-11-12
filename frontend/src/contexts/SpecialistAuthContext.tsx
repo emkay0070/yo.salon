@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface Specialist {
   id: string;
@@ -27,8 +28,9 @@ export interface Workplace {
   provider_type: string;
   provider_slug: string | null;
   provider_logo: string | null;
-  salon_id: string | null;
-  salon_name: string | null;
+  location_id: string | null;
+  location_name: string | null;
+  location_slug: string | null;
   role: string;             // 'OWNER' | 'MANAGER' | 'SPECIALIST' | 'TRAINEE' | etc.
   employment_type: string;  // 'EMPLOYEE' | 'FREELANCER' | 'CONTRACTOR'
   is_primary: boolean;
@@ -75,25 +77,17 @@ export function SpecialistAuthProvider({ children, providerSlug }: { children: R
     const token = localStorage.getItem('specialist_auth_token');
     if (token) {
       try {
-        const url = providerSlug 
-          ? `${process.env.NEXT_PUBLIC_API_URL}/v1/specialist-portal/context?provider_slug=${providerSlug}`
-          : `${process.env.NEXT_PUBLIC_API_URL}/v1/specialist-portal/context`;
+        const params = providerSlug ? { provider_slug: providerSlug } : undefined;
+        const data = await apiClient.get('/v1/specialist-portal/context', params);
         
-        const response = await fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setSpecialistAccount(data.specialist_account);
-          setSpecialist(data.specialist);
-          // Multi-provider: consume workplaces from the new context API
-          setWorkplaces(data.workplaces ?? []);
-          setPrimaryWorkplace(data.primary_workplace ?? null);
-          setCurrentWorkplace(data.current_workplace ?? null);
-        } else if (response.status === 403) {
+        setSpecialistAccount(data.specialist_account);
+        setSpecialist(data.specialist);
+        // Multi-provider: consume workplaces from the new context API
+        setWorkplaces(data.workplaces ?? []);
+        setPrimaryWorkplace(data.primary_workplace ?? null);
+        setCurrentWorkplace(data.current_workplace ?? null);
+        } catch (error: any) {
+        if (error.response?.status === 403) {
           // Specialist doesn't have access to this workplace
           localStorage.removeItem('specialist_auth_token');
           setSpecialistAccount(null);
@@ -101,13 +95,18 @@ export function SpecialistAuthProvider({ children, providerSlug }: { children: R
           setWorkplaces([]);
           setPrimaryWorkplace(null);
           setCurrentWorkplace(null);
+          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/specialist-portal/login')) {
+            window.location.href = '/specialist-portal/login';
+          }
         } else {
           // Token invalid, clear it
           localStorage.removeItem('specialist_auth_token');
           setSpecialistAccount(null);
           setSpecialist(null);
+          if (error.response?.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/specialist-portal/login')) {
+            window.location.href = '/specialist-portal/login';
+          }
         }
-      } catch (error) {
         console.error('Failed to load specialist context:', error);
       }
     }
@@ -119,20 +118,7 @@ export function SpecialistAuthProvider({ children, providerSlug }: { children: R
   }, [refresh]);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/specialist-portal/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Login failed');
-    }
-
-    const data = await response.json();
+    const data = await apiClient.post('/v1/specialist-portal/login', { email, password });
     localStorage.setItem('specialist_auth_token', data.token);
     setSpecialistAccount(data.account);
     setSpecialist(data.specialist);
@@ -144,12 +130,7 @@ export function SpecialistAuthProvider({ children, providerSlug }: { children: R
     const token = localStorage.getItem('specialist_auth_token');
     if (token) {
       try {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/specialist-portal/logout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
+        await apiClient.post('/v1/specialist-portal/logout');
       } catch (error) {
         console.error('Logout error:', error);
       }

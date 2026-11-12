@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
  * Products have polymorphic ownership:
  * - Platform (global catalog)
  * - Supplier (supplier products)
- * - Salon (private formulas)
+ * - Provider (private formulas)
  * 
  * Products know details but never know stock levels (that's Inventory domain).
  */
@@ -168,7 +168,7 @@ class Product extends Model
      * Check if product is owned by platform
      * 
      * Platform-owned products are in the global catalog
-     * and available to all salons by default.
+     * and available to all providers by default.
      * 
      * @return bool
      */
@@ -181,7 +181,7 @@ class Product extends Model
      * Check if product is owned by supplier
      * 
      * Supplier-owned products are uploaded by suppliers
-     * and can be browsed/ordered by salons.
+     * and can be browsed/ordered by providers.
      * 
      * @return bool
      */
@@ -192,15 +192,16 @@ class Product extends Model
     }
 
     /**
-     * Check if product is owned by salon
+     * Check if product is owned by a standard provider
      * 
-     * Salon-owned products are private formulas or custom products
-     * specific to that salon.
+     * Provider-owned products are private formulas or custom products
+     * specific to that business.
      * 
      * @return bool
      */
-    public function isSalonOwned(): bool
+    public function isProviderOwned(): bool
     {
-        return $this->owner_type === \App\Models\Salon::class;
+        return $this->owner_type === \App\Models\Provider::class
+            && $this->owner?->type !== \App\Models\Provider::TYPE_SUPPLIER;
     }
 }

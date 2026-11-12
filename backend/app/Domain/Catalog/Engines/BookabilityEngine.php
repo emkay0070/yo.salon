@@ -2,7 +2,7 @@
 
 namespace App\Domain\Catalog\Engines;
 
-use App\Models\Salon;
+use App\Models\Location;
 use App\Models\Service;
 use App\Domain\Availability\Engines\AvailabilityEngine;
 use Carbon\CarbonImmutable;
@@ -17,7 +17,7 @@ use Carbon\CarbonImmutable;
 class BookabilityEngine
 {
     public function __construct(
-        protected Salon $salon,
+        protected \App\Models\Location $location,
         protected Service $resolvedService
     ) {}
 
@@ -89,11 +89,11 @@ class BookabilityEngine
 
     /**
      * Can a customer book this service online at this branch?
-     * Resolution: Branch online flag → Salon-level online flag → true
+     * Resolution: Branch online flag → Location-level online flag → true
      */
     public function acceptsOnlineBooking(): bool
     {
-        if (!$this->salon->accepting_online_bookings) {
+        if (!$this->location->accepting_online_bookings) {
             return false;
         }
         if ($this->resolvedService->pivot_online_booking_enabled === 0) {
@@ -110,7 +110,8 @@ class BookabilityEngine
         AvailabilityEngine $availabilityEngine,
         string $assignmentId,
         string $date,
-        string $startTime
+        string $startTime,
+        ?string $serviceId = null
     ): array {
         // 1. Check lead time (min booking notice)
         $requestedStart = CarbonImmutable::parse("$date $startTime");
@@ -141,7 +142,8 @@ class BookabilityEngine
             $assignmentId,
             $date,
             $actualStartTime,
-            $totalDurationRequired
+            $totalDurationRequired,
+            $serviceId
         );
 
         if (!$isAvailable) {

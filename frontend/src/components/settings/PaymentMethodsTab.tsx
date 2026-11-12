@@ -7,7 +7,7 @@ import { Loader2, Settings, CreditCard } from 'lucide-react';
 import { useRole } from '@/contexts/RoleContext';
 
 export default function PaymentMethodsTab() {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
 
   const { data: paymentMethods, isLoading } = useQuery({
     queryKey: ['payment-methods'],

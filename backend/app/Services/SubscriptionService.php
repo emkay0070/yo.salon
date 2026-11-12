@@ -13,7 +13,7 @@ use Carbon\Carbon;
 /**
  * SubscriptionService - Provider-centric subscription management
  * 
- * This service manages subscriptions for all provider types (Salon, Specialist, etc.)
+ * This service manages subscriptions for all provider types (Provider, Specialist, etc.)
  * Subscriptions are provider-centric, not salon-centric.
  */
 class SubscriptionService
@@ -26,15 +26,6 @@ class SubscriptionService
         return Subscription::where('provider_id', $providerId)->first();
     }
 
-    public function getSubscriptionBySalon(string $salonId): ?Subscription
-    {
-        // Subscriptions are provider-centric, so we need to get the provider_id from the salon
-        $salon = \App\Models\Salon::find($salonId);
-        if (!$salon) {
-            return null;
-        }
-        return $this->getSubscriptionByProvider($salon->provider_id);
-    }
 
     public function createSubscription(array $data): Subscription
     {
@@ -109,11 +100,11 @@ class SubscriptionService
         return DB::transaction(function () use ($subscriptionId, $newPlanId) {
             $subscription = Subscription::findOrFail($subscriptionId);
             $oldPlanId = $subscription->plan_id;
-            $salon = $subscription->salon;
+            $provider = $subscription->provider;
 
             // Check for overage before changing plan
-            if ($salon) {
-                $overageDetected = $this->detectDowngradeOverage($subscription->id, $oldPlanId, $newPlanId, $salon->id);
+            if ($provider) {
+                $overageDetected = $this->detectDowngradeOverage($subscription->id, $oldPlanId, $newPlanId, $provider->id);
                 
                 if ($overageDetected['has_overage']) {
                     // Mark subscription as over limit and grandfathered
@@ -243,6 +234,15 @@ class SubscriptionService
                 'reason' => $reason,
             ]);
 
+            // Only dispatch the notification if a state transition actually occurred
+            if ($subscription->wasChanged('status')) {
+                event(new \App\Events\SubscriptionManualPaymentRequired(
+                    $subscription->provider_id,
+                    $subscription->id,
+                    null
+                ));
+            }
+
             return $subscription->fresh();
         });
     }
@@ -288,10 +288,10 @@ class SubscriptionService
      * @param string $subscriptionId - The subscription ID
      * @param string $oldPlanId - The current plan ID
      * @param string $newPlanId - The new plan ID
-     * @param string $salonId - The salon ID
+     * @param string $providerId - The salon ID
      * @return array - Information about overage detection
      */
-    private function detectDowngradeOverage(string $subscriptionId, string $oldPlanId, string $newPlanId, string $salonId): array
+    private function detectDowngradeOverage(string $subscriptionId, string $oldPlanId, string $newPlanId, string $providerId): array
     {
         $overageResources = [];
         
@@ -300,7 +300,7 @@ class SubscriptionService
         
         foreach ($quotaResources as $resourceCode) {
             // Get current usage
-            $currentUsage = $this->capabilityResolver->usage($salonId, $resourceCode);
+            $currentUsage = $this->capabilityResolver->usage($providerId, $resourceCode);
             
             // Get new plan limit (without add-ons for downgrade check)
             $newPlanLimit = $this->getPlanLimit($newPlanId, $resourceCode);

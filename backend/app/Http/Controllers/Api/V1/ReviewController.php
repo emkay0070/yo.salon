@@ -15,14 +15,15 @@ class ReviewController extends Controller
     public function index(Request $request): JsonResponse
     {
         $request->validate([
-            'subject_type' => 'required|in:service,specialist,salon,provider',
+            'subject_type' => 'required|in:service,specialist,provider',
             'subject_id' => 'required|string',
         ]);
 
         $subjectType = $request->input('subject_type');
         $subjectId = $request->input('subject_id');
 
-        $query = Review::with(['customer', 'booking']);
+        $query = Review::with(['customer', 'booking'])
+            ->where('status', 'approved');
 
         // Use the appropriate scope based on subject type
         switch ($subjectType) {
@@ -32,9 +33,6 @@ class ReviewController extends Controller
             case 'specialist':
                 $query->forSpecialist($subjectId);
                 break;
-            case 'salon':
-                $query->forSalon($subjectId);
-                break;
             case 'provider':
                 $query->forProvider($subjectId);
                 break;
@@ -42,17 +40,14 @@ class ReviewController extends Controller
 
         $reviews = $query->latest()->paginate(20);
 
-        // Calculate average rating and total count
-        $allReviews = Review::query();
+        // Calculate average rating and total count (approved only)
+        $allReviews = Review::query()->where('status', 'approved');
         switch ($subjectType) {
             case 'service':
                 $allReviews->forService($subjectId);
                 break;
             case 'specialist':
                 $allReviews->forSpecialist($subjectId);
-                break;
-            case 'salon':
-                $allReviews->forSalon($subjectId);
                 break;
             case 'provider':
                 $allReviews->forProvider($subjectId);
@@ -84,19 +79,42 @@ class ReviewController extends Controller
     {
         $request->validate([
             'booking_id' => 'required|string|exists:bookings,id',
-            'subject_type' => 'required|in:service,specialist,salon,provider',
+            'subject_type' => 'required|in:service,specialist,provider',
             'subject_id' => 'required|string',
             'rating' => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string|max:1000',
         ]);
 
+        $bookingId = $request->input('booking_id');
+
+        // Verify booking exists and is completed
+        $booking = \App\Models\Booking::where('id', $bookingId)->first();
+
+        if (!$booking) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
+        // Verify booking is completed
+        if (!in_array($booking->status, ['completed', 'no_show'])) {
+            return response()->json(['message' => 'Can only review completed bookings'], 422);
+        }
+
+        $customerId = $booking->customer_id;
+
+        // Check if review already exists for this booking
+        $existingReview = Review::where('booking_id', $bookingId)->first();
+        if ($existingReview) {
+            return response()->json(['message' => 'Review already exists for this booking'], 409);
+        }
+
         $review = Review::create([
-            'booking_id' => $request->input('booking_id'),
+            'booking_id' => $bookingId,
             'subject_type' => $request->input('subject_type'),
             'subject_id' => $request->input('subject_id'),
             'rating' => $request->input('rating'),
             'comment' => $request->input('comment'),
-            'customer_id' => auth()->id(),
+            'customer_id' => $customerId,
+            'status' => 'pending',
         ]);
 
         return response()->json($review, 201);
@@ -108,6 +126,30 @@ class ReviewController extends Controller
     public function show(string $id): JsonResponse
     {
         $review = Review::with(['customer', 'booking'])->findOrFail($id);
+
+        // Only show approved reviews publicly, or own reviews
+        if ($review->status !== 'approved' && auth()->id() !== $review->customer_id) {
+            return response()->json(['message' => 'Review not found'], 404);
+        }
+
+        return response()->json($review);
+    }
+
+    /**
+     * Update review status (moderation)
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $request->validate([
+            'status' => 'required|in:pending,approved,rejected,flagged',
+        ]);
+
+        $review = Review::findOrFail($id);
+        $this->authorize('update', $review);
+
+        $review->update([
+            'status' => $request->input('status'),
+        ]);
 
         return response()->json($review);
     }

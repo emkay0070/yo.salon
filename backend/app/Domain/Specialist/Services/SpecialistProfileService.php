@@ -13,11 +13,16 @@ class SpecialistProfileService
      */
     public function getProfile(Specialist $specialist): array
     {
-        // To resolve the location, we check if the specialist has an active salon/workspace
-        $activeSalon = $specialist->salons()->wherePivot('active', true)->first();
+        // To resolve the location, use the canonical specialist_assignments relationship
+        // For independent specialists, this resolves their own Provider via primary assignment
+        // For provider-linked specialists, this resolves their associated Provider(s)
+        $activeAssignment = $specialist->assignments()
+            ->whereIn('status', ['ACTIVE', 'active'])
+            ->with('provider')
+            ->first();
         $location = null;
-        if ($activeSalon) {
-            $location = $activeSalon->address ?? $activeSalon->city ?? $activeSalon->name;
+        if ($activeAssignment && $activeAssignment->provider) {
+            $location = $activeAssignment->provider->address ?? $activeAssignment->provider->city ?? $activeAssignment->provider->display_name;
         }
 
         // Get portfolio from Media attachable architecture with error handling

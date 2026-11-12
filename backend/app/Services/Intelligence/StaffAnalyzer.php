@@ -2,90 +2,107 @@
 
 namespace App\Services\Intelligence;
 
-use Illuminate\Support\Collection;
-
 class StaffAnalyzer implements AnalyzerInterface
 {
-    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts): array
     {
         $staffMembers = [];
-        // Use specialist_id instead of staff_id for the new architecture
-        $staffBookings = $bookings->whereNotNull('specialist_id')->groupBy('specialist_id');
 
-        // Fallback to staff_id if no specialist_id exists (for backward compatibility)
-        if ($staffBookings->isEmpty()) {
-            $staffBookings = $bookings->whereNotNull('staff_id')->groupBy('staff_id');
-        }
+        // Get staff bookings from operational facts
+        $bySpecialistOps = $operationalFacts['by_specialist'] ?? [];
 
         // Get revenue by specialist from financial facts
-        $bySpecialist = $financialFacts['by_specialist'];
+        $bySpecialistFinance = $financialFacts['by_specialist'] ?? [];
 
-        foreach ($staffBookings as $staffId => $bks) {
-            // Try to get specialist first, then fallback to staff
-            $staff = $bks->first()->specialist ?? $bks->first()->staff;
-            if (!$staff) continue;
+        // Merge operational and financial data by specialist_id
+        foreach ($bySpecialistOps as $specialistData) {
+            $specialistId = $specialistData['specialist_id'];
+            $financeData = $bySpecialistFinance[$specialistId] ?? null;
 
-            $bookingCount = $bks->count();
-            
-            // Use canonical financial facts for revenue (from Ledger)
-            $revenueGenerated = $bySpecialist[$staffId]['revenue'] ?? 0;
+            $bookingCount = $specialistData['booking_count'] ?? 0;
+            $revenueGenerated = $financeData['revenue'] ?? 0;
 
-            // Calculate Repeat Clients (placeholder logic: unique customers > 1 booking with this staff)
-            $customerBookings = $bks->groupBy('customer_id');
-            $repeatClientsCount = $customerBookings->filter(fn($cbs) => $cbs->count() > 1)->count();
-            $totalUniqueClients = $customerBookings->count();
+            // Calculate Repeat Clients from operational facts
+            $repeatClientsCount = 0;
+            $totalUniqueClients = $bookingCount; // Simplified: assume 1 client per booking for now
+            $repeatRate = 0;
+
+            // Get customer data from operational facts to calculate repeat rate
+            $byCustomer = $operationalFacts['by_customer'] ?? [];
+            foreach ($byCustomer as $customer) {
+                if ($customer['is_repeat_customer']) {
+                    $repeatClientsCount++;
+                }
+            }
+            $totalUniqueClients = count($byCustomer);
             $repeatRate = $totalUniqueClients > 0 ? ($repeatClientsCount / $totalUniqueClients) * 100 : 0;
 
-            // Upsells and Rating are placeholders for now
-            $upsellScore = 50; 
-            $ratingScore = 80;
+            // Upsells and Rating - insufficient data for now
+            $upsellScore = null;
+            $ratingScore = null;
 
-            // Intelligence Score: revenue 40%, repeats 25%, upsells 20%, rating 15%
-            // Normalize revenue score (assuming 1M is excellent for this demo, adjust dynamically later)
-            $revScore = min(100, ($revenueGenerated / max(1, 1000000)) * 100); 
+            // Intelligence Score: only calculate if we have sufficient data
+            $intelligenceScore = null;
+            $scoreBreakdown = null;
 
-            $intelligenceScore = round(
-                ($revScore * 0.40) +
-                ($repeatRate * 0.25) +
-                ($upsellScore * 0.20) +
-                ($ratingScore * 0.15)
-            );
+            if ($bookingCount >= 5) { // Minimum threshold for meaningful score
+                // Normalize revenue score (assuming 1M is excellent for this demo, adjust dynamically later)
+                $revScore = min(100, ($revenueGenerated / max(1, 1000000)) * 100);
 
-            $staffMembers[] = [
-                'id' => $staff->id,
-                'name' => $staff->name,
-                'intelligence_score' => $intelligenceScore,
-                'score_breakdown' => [
+                // Use actual values if available, otherwise null
+                $upsellScore = 50; // Placeholder until tracking is implemented
+                $ratingScore = 80; // Placeholder until rating system is implemented
+
+                $intelligenceScore = round(
+                    ($revScore * 0.40) +
+                    ($repeatRate * 0.25) +
+                    ($upsellScore * 0.20) +
+                    ($ratingScore * 0.15)
+                );
+
+                $scoreBreakdown = [
                     'revenue' => round($revScore),
                     'repeat_clients' => round($repeatRate),
                     'upsells' => $upsellScore,
                     'rating' => $ratingScore
-                ],
+                ];
+            }
+
+            $staffMembers[] = [
+                'id' => $specialistId,
+                'name' => $specialistData['specialist_name'] ?? 'Unknown',
+                'intelligence_score' => $intelligenceScore,
+                'score_breakdown' => $scoreBreakdown,
+                'confidence' => $bookingCount >= 5 ? 'medium' : 'insufficient_data',
+                'sample_size' => $bookingCount,
                 'bookings' => $bookingCount,
                 'revenue_generated' => $revenueGenerated
             ];
         }
 
-        // Sort by intelligence score descending
-        usort($staffMembers, fn($a, $b) => $b['intelligence_score'] <=> $a['intelligence_score']);
+        // Sort by intelligence score descending (nulls last)
+        usort($staffMembers, function($a, $b) {
+            if ($a['intelligence_score'] === null && $b['intelligence_score'] === null) {
+                return 0;
+            }
+            if ($a['intelligence_score'] === null) return 1;
+            if ($b['intelligence_score'] === null) return -1;
+            return $b['intelligence_score'] <=> $a['intelligence_score'];
+        });
 
         // Assign ranks
         foreach ($staffMembers as $index => &$sm) {
             $sm['rank'] = $index + 1;
         }
 
-        // Build bookings-by-day for the dashboard bar chart
-        $bookingsByDay = [];
-        foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] as $day) {
-            $bookingsByDay[$day] = $bookings->filter(
-                fn($b) => \Carbon\Carbon::parse($b->date ?? 'now')->format('l') === $day
-            )->count();
-        }
+        // Build bookings-by-day from operational facts
+        $temporal = $operationalFacts['temporal'] ?? [];
+        $weeklyBookings = $temporal['weekly_bookings'] ?? [];
 
         return [
             'analytics' => [
                 'staff' => $staffMembers,
-                'bookings_by_day' => $bookingsByDay,
+                'bookings_by_day' => $weeklyBookings,
             ]
         ];
     }

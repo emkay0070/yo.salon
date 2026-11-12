@@ -4,16 +4,18 @@ namespace Tests\Feature;
 
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\Location;
 use App\Models\PaymentMethod;
 use App\Models\PaymentAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Transaction;
 use App\Models\PaymentRequest;
 use App\Models\Service;
 use App\Services\FeeEngine;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
+use App\Services\Payments\PaymentManager;
 use App\Services\Payments\PaymentRoutingService;
-use App\Services\Payments\SalonPaymentService;
+use App\Services\Payments\BookingPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Mockery;
@@ -22,27 +24,31 @@ class PaymentToFinanceIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected Salon $salon;
+    protected Provider $provider;
+    protected Location $location;
     protected Customer $customer;
     protected Booking $booking;
     protected PaymentMethod $paymentMethod;
-    protected SalonPaymentService $salonPaymentService;
+    protected BookingPaymentService $bookingPaymentService;
     protected $providerMock;
+    protected $paymentManagerMock;
 
     protected function setUp(): void
     {
         parent::setUp();
         
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
+        $this->location = Location::factory()->create(['provider_id' => $this->provider->id]);
         $this->customer = Customer::factory()->create();
         
         $service = Service::factory()->create([
-            'provider_id' => $this->salon->provider_id,
+            'provider_id' => $this->provider->id,
             'price' => 3000
         ]);
         
         $this->booking = Booking::factory()->create([
-            'salon_id' => $this->salon->id,
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
             'customer_id' => $this->customer->id,
             'payment_status' => 'unpaid'
         ]);
@@ -50,13 +56,13 @@ class PaymentToFinanceIntegrationTest extends TestCase
         $this->booking->services()->attach($service->id);
         
         $this->paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'type' => 'card'
         ]);
         
         PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => true,
@@ -66,11 +72,17 @@ class PaymentToFinanceIntegrationTest extends TestCase
 
         $this->providerMock = Mockery::mock(PaymentProviderInterface::class);
         $this->app->instance(PaymentProviderInterface::class, $this->providerMock);
+
+        // Mock PaymentManager to return the provider mock when getProvider('flutterwave') is called
+        $this->paymentManagerMock = Mockery::mock(PaymentManager::class);
+        $this->paymentManagerMock->shouldReceive('getProvider')->with('flutterwave')->andReturn($this->providerMock);
+        $this->app->instance(PaymentManager::class, $this->paymentManagerMock);
         
-        $this->salonPaymentService = new SalonPaymentService(
-            $this->providerMock,
+        $this->bookingPaymentService = new BookingPaymentService(
+            $this->paymentManagerMock,
             app(FeeEngine::class),
-            app(PaymentRoutingService::class)
+            app(PaymentRoutingService::class),
+            app(\App\Services\BookingConfigurationService::class)
         );
     }
 
@@ -85,7 +97,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'payment_link' => 'https://link.com'
             ]);
 
-        $initResult = $this->salonPaymentService->initializeBookingPayment(
+        $initResult = $this->bookingPaymentService->initializeBookingPayment(
             $this->booking->id,
             $this->paymentMethod->id,
             $this->customer->email ?? 'test@example.com',
@@ -105,7 +117,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'fees' => 84 // 2.8% of 3000
             ]);
 
-        $verifyResult = $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $verifyResult = $this->bookingPaymentService->verifyBookingPayment('FLW-123');
 
         $this->assertTrue($verifyResult['success']);
         
@@ -132,8 +144,9 @@ class PaymentToFinanceIntegrationTest extends TestCase
     public function test_manual_payment_creates_transaction_with_correct_economics(): void
     {
         // Manual payment (no provider call)
-        $result = $this->salonPaymentService->recordManualPayment([
-            'salon_id' => $this->salon->id,
+        $result = $this->bookingPaymentService->recordManualPayment([
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'amount' => 3000,
@@ -157,7 +170,8 @@ class PaymentToFinanceIntegrationTest extends TestCase
     {
         // First create a payment
         PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -178,7 +192,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'fees' => 84
             ]);
 
-        $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $this->bookingPaymentService->verifyBookingPayment('FLW-123');
         
         $originalTransaction = Transaction::where('provider_reference', 'FLW-123')->first();
         
@@ -190,7 +204,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'reference' => 'REF-123'
             ]);
         
-        $refundResult = $this->salonPaymentService->refundSalonPayment($originalTransaction->id);
+        $refundResult = $this->bookingPaymentService->refundBookingPayment($originalTransaction->id);
         
         $this->assertTrue($refundResult['success']);
         
@@ -211,7 +225,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
     {
         // Create explicit payment account
         $paymentAccount = PaymentAccount::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'flutterwave',
             'account_type' => 'merchant',
             'is_default' => false,
@@ -222,7 +236,8 @@ class PaymentToFinanceIntegrationTest extends TestCase
         $this->paymentMethod->update(['payment_account_id' => $paymentAccount->id]);
 
         PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -242,7 +257,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'fees' => 84
             ]);
 
-        $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $this->bookingPaymentService->verifyBookingPayment('FLW-123');
         
         $transaction = Transaction::where('provider_reference', 'FLW-123')->first();
         
@@ -252,7 +267,8 @@ class PaymentToFinanceIntegrationTest extends TestCase
     public function test_zero_platform_fee_maintained_through_full_flow(): void
     {
         PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $this->location->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -272,7 +288,7 @@ class PaymentToFinanceIntegrationTest extends TestCase
                 'fees' => 1400 // 2.8% of 50000
             ]);
 
-        $this->salonPaymentService->verifySalonPayment('FLW-123');
+        $this->bookingPaymentService->verifyBookingPayment('FLW-123');
         
         $transaction = Transaction::where('provider_reference', 'FLW-123')->first();
         

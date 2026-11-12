@@ -27,12 +27,12 @@ class CompensationPayoutController extends CompensationController
      * The frontend NEVER decides whether automated payout is safe.
      * It calls this endpoint and renders only what is returned.
      */
-    public function readiness(string $salonSlug, string $settlementId): JsonResponse
+    public function readiness(string $providerIdentifier, string $settlementId): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $settlement = Settlement::where('payable_type', get_class($salon))
-            ->where('payable_id', $salon->id)
+        $settlement = Settlement::where('payable_type', get_class($provider))
+            ->where('payable_id', $provider->id)
             ->where('id', $settlementId)
             ->firstOrFail();
 
@@ -44,12 +44,12 @@ class CompensationPayoutController extends CompensationController
     /**
      * Execute or record a payout against an obligation.
      */
-    public function store(string $salonSlug, string $settlementId, Request $request): JsonResponse
+    public function store(string $providerIdentifier, string $settlementId, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $settlement = Settlement::where('payable_type', get_class($salon))
-            ->where('payable_id', $salon->id)
+        $settlement = Settlement::where('payable_type', get_class($provider))
+            ->where('payable_id', $provider->id)
             ->where('id', $settlementId)
             ->firstOrFail();
 

@@ -5,7 +5,6 @@ use App\Http\Controllers\Api\V1\ScheduleExceptionController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PaymentRequestController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\V1\SalonController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\BookingController;
 use App\Http\Controllers\Api\V1\ServiceController;
@@ -45,25 +44,25 @@ use App\Http\Controllers\Api\V1\BookingRulesController;
 use App\Http\Controllers\Api\V1\BookingOrchestratorController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Api\V1\PlatformPaymentController;
-use App\Http\Controllers\Api\V1\SalonPaymentController;
+use App\Http\Controllers\Api\V1\BookingPaymentController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\BookingActivityController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\ScheduleMigrationController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ActivityController;
 use App\Http\Controllers\Api\V1\FavoriteController;
 use App\Http\Controllers\Api\V1\CollectionController;
 use App\Http\Controllers\Api\V1\TimelineController;
 use App\Http\Controllers\Api\V1\DiscoverController;
-use App\Http\Controllers\SalonSpecialistController;
 use App\Http\Controllers\ProviderController;
-use App\Http\Controllers\Api\V1\SalonServiceController;
+use App\Http\Controllers\Api\V1\LocationServiceController;
 use App\Http\Controllers\Api\V1\AddOnPurchaseController;
 use App\Http\Controllers\Admin\PlatformPaymentController as AdminPlatformPaymentController;
 use App\Http\Controllers\Admin\SeederController;
 use App\Http\Controllers\Api\V1\BookingContextController;
 use App\Http\Controllers\Api\V1\TransactionController;
-use App\Http\Controllers\Api\V1\SalonScheduleController;
+// use App\Http\Controllers\Api\V1\SalonScheduleController; // Replaced with ProviderScheduleController
 use App\Http\Controllers\Api\V1\ProviderScheduleController;
 use App\Http\Controllers\Api\V1\AssignmentScheduleController;
 use App\Http\Controllers\Api\V1\OperationalHealthController;
@@ -71,12 +70,22 @@ use App\Http\Controllers\Api\V1\PublicSpecialistController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\GalleryController;
 use App\Http\Controllers\Api\V1\TestimonialController;
-use App\Http\Controllers\Api\V1\PublicSalonWebsiteController;
-use App\Http\Controllers\Api\V1\SalonCapabilityController;
+// use App\Http\Controllers\Api\V1\PublicSalonWebsiteController; // TODO: Controller does not exist
+// use App\Http\Controllers\Api\V1\SalonCapabilityController; // TODO: Controller does not exist
 use App\Http\Controllers\Api\V1\LedgerController;
 use App\Http\Controllers\Api\V1\TeamController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\ResourceController;
+use App\Http\Controllers\Api\V1\BusinessCategoryController;
+use App\Http\Controllers\Api\V1\ProfessionController;
 
+
+// Public availability routes (no version prefix for frontend compatibility)
+Route::get('/providers/{providerId}/availability', [AvailabilityController::class, 'index']);
+Route::get('/providers/{providerId}/availability/batch', [AvailabilityController::class, 'batch']);
+Route::get('/providers/{providerId}/availability/first-available', [AvailabilityController::class, 'firstAvailable']);
+Route::post('/providers/{providerId}/slots/lock', [AvailabilityController::class, 'lockSlot']);
+Route::delete('/providers/{providerId}/slots/lock/{lockId}', [AvailabilityController::class, 'releaseSlot']);
 
 Route::prefix('v1')->group(function () {
     // Public webhook routes (no authentication required)
@@ -89,21 +98,22 @@ Route::prefix('v1')->group(function () {
     Route::post('/webhooks/disbursement/mtn', [\App\Http\Controllers\Api\V1\Webhooks\DisbursementWebhookController::class, 'handleMtn']);
     Route::post('/webhooks/disbursement/airtel', [\App\Http\Controllers\Api\V1\Webhooks\DisbursementWebhookController::class, 'handleAirtel']);
 
-    // Public routes
-    Route::get('/salons', [SalonController::class, 'index']);
-    Route::get('/salons/{identifier}', [SalonController::class, 'showBySlug'])->middleware('track.views')->where('identifier', '[a-z0-9-]+');
-    Route::get('/salons/id/{id}', [SalonController::class, 'showById']);
-    Route::get('/salons/{slug}/services', [SalonController::class, 'services']);
-    Route::get('/salons/{slug}/specialists', [SalonController::class, 'specialists']);
+    // Public routes (deprecated /salons routes - use /providers instead)
+    Route::get('/salons', [ProviderController::class, 'index']);
+    Route::get('/salons/{identifier}', [ProviderController::class, 'show'])->middleware('track.views')->where('identifier', '[a-z0-9-]+');
+    Route::get('/salons/id/{id}', [ProviderController::class, 'show']);
+    // These routes are deprecated - use the provider show endpoint which includes specialists/services
+    Route::get('/salons/{slug}/services', [ProviderController::class, 'show']);
+    Route::get('/salons/{slug}/specialists', [ProviderController::class, 'show']);
     // @deprecated - Use /specialists instead
-    Route::get('/salons/{slug}/staff', [SalonController::class, 'staff']);
+    Route::get('/salons/{slug}/staff', [ProviderController::class, 'show']);
     Route::get('/salons/{slug}/brand-experience', [BrandExperienceController::class, 'showBySlug']);
 
     // Slug availability check (public, no auth required)
-    Route::get('/slug-availability', [SalonController::class, 'checkSlug']);
+    Route::get('/slug-availability', [ProviderController::class, 'checkSlug']);
 
     // Public: Resolved booking policy for a service at a specific branch
-    Route::get('/salons/{salon}/services/{service}/policy', [SalonServiceController::class, 'policy']);
+    Route::get('/providers/{provider}/services/{service}/policy', [LocationServiceController::class, 'policy']);
     
     // Public: Context-aware payment instructions (calculates dynamic pricing & constraints)
     Route::get('/booking-context/payment', [BookingContextController::class, 'paymentInstructions']);
@@ -114,6 +124,11 @@ Route::prefix('v1')->group(function () {
 
     // Public provider routes (marketplace search)
     Route::get('/providers', [ProviderController::class, 'index']);
+    // Provider sub-resources - must come BEFORE generic /providers/{id} route
+    Route::get('/providers/{provider}/assignable-specialists', [ProviderController::class, 'assignableSpecialists']);
+    Route::get('/providers/{slug}/specialists', [ProviderController::class, 'show']);
+    Route::get('/providers/{slug}/services', [ProviderController::class, 'show']);
+    // Generic provider show route (must come last)
     Route::get('/providers/{id}', [ProviderController::class, 'show']);
 
     // Public service routes (for portal/discover)
@@ -121,6 +136,7 @@ Route::prefix('v1')->group(function () {
 
     // Public review routes (scoped by subject)
     Route::get('/reviews', [ReviewController::class, 'index']);
+    Route::post('/reviews', [ReviewController::class, 'store']);
 
     // Specialist follow/favorite (authenticated - requires portal auth)
     Route::middleware(['auth:portal'])->group(function () {
@@ -137,6 +153,8 @@ Route::prefix('v1')->group(function () {
     Route::prefix('specialist-portal')->group(function () {
         Route::post('/login', [SpecialistPortalController::class, 'login']);
         Route::post('/register', [SpecialistPortalController::class, 'register']);
+        // Craft taxonomy for service categorization (public - used by both specialist and owner dashboards)
+        Route::get('/craft/taxonomy', [SpecialistPortalController::class, 'getCraftTaxonomy']);
     });
 
     // Protected specialist portal routes (require specialist auth)
@@ -180,6 +198,8 @@ Route::prefix('v1')->group(function () {
             Route::post('/goals/{goalId}/complete', [SpecialistPortalController::class, 'completeGoal']);
             // Invitation CRUD
             Route::post('/invitations', [SpecialistPortalController::class, 'createInvitation']);
+            // Get Provider services for Specialist to attach (Employee/Contractor flow)
+            Route::get('/craft/services/{providerSlug}', [SpecialistPortalController::class, 'getProviderServices']);
             // Attach an existing Provider service to the Specialist (Employee/Contractor flow)
             Route::post('/craft/services', [SpecialistPortalController::class, 'attachService']);
             // Create a brand new service under a Provider the Specialist controls (Owner/Manager flow)
@@ -190,8 +210,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/craft/expertise', [SpecialistPortalController::class, 'createExpertise']);
             Route::put('/craft/expertise/{expertiseId}', [SpecialistPortalController::class, 'updateExpertise']);
             Route::delete('/craft/expertise/{expertiseId}', [SpecialistPortalController::class, 'deleteExpertise']);
-            // Craft taxonomy for expertise suggestions
-            Route::get('/craft/taxonomy', [SpecialistPortalController::class, 'getCraftTaxonomy']);
             
             // Capabilities (subscription/plan features)
             Route::get('/capabilities', [SpecialistPortalController::class, 'capabilities']);
@@ -228,25 +246,43 @@ Route::prefix('v1')->group(function () {
 
             // Phase 3: Appointment status transitions
             Route::patch('/bookings/{bookingId}/status', [SpecialistPortalController::class, 'updateBookingStatus']);
+
+            // Live Session Management
+            Route::post('/sessions/{bookingServiceId}/start', [\App\Http\Controllers\SessionController::class, 'start']);
+            Route::post('/sessions/{bookingServiceId}/complete', [\App\Http\Controllers\SessionController::class, 'complete']);
+            Route::post('/sessions/{bookingServiceId}/cancel', [\App\Http\Controllers\SessionController::class, 'cancel']);
+
+            // No-show detection (polling endpoint)
+            Route::get('/appointments/attention', [SpecialistPortalController::class, 'appointmentsNeedingAttention']);
         });
     });
 
     // Public website configuration routes
     Route::get('/website-config/{type}/{id}', [WebsiteConfigurationController::class, 'show']);
 
-    // Authenticated route to get staff by salon ID (for assign staff modal)
-    Route::get('/staff/by-salon/{salonId}', [StaffController::class, 'bySalon'])->middleware('auth:sanctum');
+    // Authenticated route to get staff by provider ID (for assign staff modal)
+    Route::get('/staff/by-provider/{providerId}', [StaffController::class, 'byProvider'])->middleware('auth:sanctum');
 
-    // Public salon website (slug-based)
-    Route::get('/salons/{slug}/website', [PublicSalonWebsiteController::class, 'show'])->where('slug', '[a-z0-9-]+');
+    // Public provider website (slug-based)
+    // Route::get('/providers/{slug}/website', [PublicSalonWebsiteController::class, 'show'])->where('slug', '[a-z0-9-]+'); // TODO: Controller does not exist
 
     // Public testimonials
-    Route::get('/salons/{slug}/testimonials', [TestimonialController::class, 'publicIndex'])->where('slug', '[a-z0-9-]+');
+    Route::get('/providers/{slug}/testimonials', [TestimonialController::class, 'publicIndex'])->where('slug', '[a-z0-9-]+');
 
     // Reference data routes (public - for dropdowns, options, etc.)
     Route::get('/reference-data', [ReferenceDataController::class, 'index']);
     Route::get('/reference-data/{category}', [ReferenceDataController::class, 'getByCategory']);
     Route::post('/reference-data/categories', [ReferenceDataController::class, 'getCategories']);
+
+    // Business categories (public - for onboarding)
+    Route::get('/business-categories', [BusinessCategoryController::class, 'index']);
+    Route::get('/business-categories/{slug}', [BusinessCategoryController::class, 'show']);
+
+    // Professions (public - for onboarding)
+    Route::get('/professions', [ProfessionController::class, 'index']);
+
+    // Service templates (public - for onboarding)
+    Route::get('/service-templates', [\App\Http\Controllers\Api\V1\ServiceTemplateController::class, 'index']);
 
     // Add-ons (public - list available products)
     Route::get('/add-ons', [AddOnPurchaseController::class, 'index']);
@@ -263,21 +299,17 @@ Route::prefix('v1')->group(function () {
     Route::get('/discover/featured', [DiscoverController::class, 'featured']);
     Route::get('/discover/trending', [DiscoverController::class, 'trending']);
 
-    // Public availability routes
-    Route::get('/salons/{salonId}/availability', [AvailabilityController::class, 'index']);
-    Route::get('/salons/{salonId}/availability/batch', [AvailabilityController::class, 'batch']);
-    Route::get('/salons/{salonId}/availability/first-available', [AvailabilityController::class, 'firstAvailable']);
-    Route::post('/salons/{salonId}/slots/lock', [AvailabilityController::class, 'lockSlot']);
-    Route::delete('/salons/{salonId}/slots/lock/{lockId}', [AvailabilityController::class, 'releaseSlot']);
-
     // Public booking route (Journey 4: Booking + Create Account)
     Route::post('/bookings/with-account', [BookingController::class, 'storeWithAccount']);
     
     // Public customer lookup
     Route::post('/customers/lookup', [CustomerController::class, 'lookup']);
     
+    // Find booking-safe customer details (for "Find my details" booking convenience)
+    Route::post('/customers/find-details', [CustomerController::class, 'findDetails']);
+    
     // Public payment methods (no auth required - for booking flow)
-    Route::get('/salons/{slug}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
+    Route::get('/providers/{slug}/payment-methods', [PaymentMethodController::class, 'getPublicMethods']);
     
     // Authentication routes
     Route::post('/auth/register', [AuthController::class, 'register']);
@@ -410,6 +442,12 @@ Route::prefix('v1')->group(function () {
 
     // Protected routes (require authentication)
     Route::middleware(['auth:sanctum'])->group(function () {
+        // Schedule Migration
+        Route::prefix('schedule-migration')->group(function () {
+            Route::get('/status', [ScheduleMigrationController::class, 'checkStatus']);
+            Route::post('/migrate', [ScheduleMigrationController::class, 'migrate']);
+        });
+
         // Onboarding routes (for users in onboarding status)
         Route::prefix('onboarding')->group(function () {
             Route::get('/', [OnboardingController::class, 'show']);
@@ -427,30 +465,34 @@ Route::prefix('v1')->group(function () {
         Route::post('/me/profile-photo', [UserController::class, 'uploadProfilePhoto']);
         Route::delete('/me/profile-photo', [UserController::class, 'removeProfilePhoto']);
 
-        // Salon-Specialist relationships (no salon context required)
-        Route::get('/salons/{salonId}/specialists', [SalonSpecialistController::class, 'index']);
-        Route::get('/salons/{salonId}/specialists/{specialistId}', [SalonSpecialistController::class, 'show']);
+        // Resources (uses provider authorization, not salon context)
+        Route::apiResource('resources', ResourceController::class);
 
-        // Salon logo upload (no salon context required - uses route parameter)
-        Route::post('/salons/{salon}/logo', [SalonController::class, 'uploadLogo']);
-        Route::delete('/salons/{salon}/logo', [SalonController::class, 'removeLogo']);
+        // Provider-Specialist relationships - use TeamController instead
+        // Route::get('/providers/{providerId}/specialists', [TeamController::class, 'index']);
+        // Route::get('/providers/{providerId}/specialists/{specialistId}', [TeamController::class, 'show']);
 
-        // Protected routes requiring salon context
-        Route::middleware(['salon.context'])->group(function () {
+        // Provider logo upload (no provider context required - uses route parameter)
+        Route::post('/providers/{provider}/logo', [ProviderController::class, 'update']);
+        Route::delete('/providers/{provider}/logo', [ProviderController::class, 'update']);
+
+        // Protected routes requiring provider context
+        Route::middleware(['provider.context', 'location.context'])->group(function () {
         // Pulse Operational Center
         Route::get('/pulse', [PulseController::class, 'index']);
-        Route::apiResource('salons', SalonController::class)->except(['index']);
+        Route::apiResource('providers', ProviderController::class)->except(['index']);
         
-        // Salon Capabilities (plan features, quotas, credits)
-        Route::get('/salons/{salon}/capabilities', [SalonCapabilityController::class, 'show']);
-        Route::get('/salons/{salon}/capabilities/feature/{featureCode}', [SalonCapabilityController::class, 'checkFeature']);
-        Route::get('/salons/{salon}/capabilities/quota/{resourceCode}', [SalonCapabilityController::class, 'getQuota']);
-        Route::get('/salons/{salon}/capabilities/credits/{creditCode}', [SalonCapabilityController::class, 'getCredits']);
-        
-        // Salon Operating Hours
-        Route::get('/salons/{salon}/schedules', [SalonScheduleController::class, 'index']);
-        Route::put('/salons/{salon}/schedules', [SalonScheduleController::class, 'update']);
-        Route::post('/salons/{salon}/schedules/publish', [SalonScheduleController::class, 'publish']);
+        // Provider Capabilities (plan features, quotas, credits)
+        // Route::get('/providers/{provider}/capabilities', [SalonCapabilityController::class, 'show']); // TODO: Controller does not exist
+        // Route::get('/providers/{provider}/capabilities/feature/{featureCode}', [SalonCapabilityController::class, 'checkFeature']); // TODO: Controller does not exist
+        // Route::get('/providers/{provider}/capabilities/quota/{resourceCode}', [SalonCapabilityController::class, 'getQuota']); // TODO: Controller does not exist
+        // Route::get('/providers/{provider}/capabilities/credits/{creditCode}', [SalonCapabilityController::class, 'getCredits']); // TODO: Controller does not exist
+
+        // Note: assignable-specialists is in the public section for customer booking flow
+        // Provider Operating Hours
+        Route::get('/providers/{provider}/schedules', [ProviderScheduleController::class, 'index']);
+        Route::put('/providers/{provider}/schedules', [ProviderScheduleController::class, 'update']);
+        Route::post('/providers/{provider}/schedules/publish', [ProviderScheduleController::class, 'publish']);
 
         // Provider Business Hours (for single-location providers)
         Route::get('/providers/{provider}/schedules', [ProviderScheduleController::class, 'index']);
@@ -458,26 +500,26 @@ Route::prefix('v1')->group(function () {
         Route::post('/providers/{provider}/schedules/publish', [ProviderScheduleController::class, 'publish']);
 
         // Operational Health
-        Route::get('/salons/{salonId}/health', [OperationalHealthController::class, 'branchHealth']);
+        Route::get('/locations/{locationId}/health', [OperationalHealthController::class, 'branchHealth']);
         Route::get('/providers/{providerId}/health', [OperationalHealthController::class, 'providerHealth']);
 
         // Assignment Schedules (per-specialist hours)
-        Route::get('/salons/{salonId}/specialists/{specialistId}/schedule', [AssignmentScheduleController::class, 'index']);
-        Route::put('/salons/{salonId}/specialists/{specialistId}/schedule', [AssignmentScheduleController::class, 'update']);
-        Route::post('/salons/{salonId}/specialists/{specialistId}/schedule/publish', [AssignmentScheduleController::class, 'publish']);
+        Route::get('/locations/{locationId}/specialists/{specialistId}/schedule', [AssignmentScheduleController::class, 'index']);
+        Route::put('/locations/{locationId}/specialists/{specialistId}/schedule', [AssignmentScheduleController::class, 'update']);
+        Route::post('/locations/{locationId}/specialists/{specialistId}/schedule/publish', [AssignmentScheduleController::class, 'publish']);
 
         // Schedule Exceptions (Holidays, Vacations, Closures, Training…)
-        Route::get('/salons/{salonId}/schedule-exceptions',     [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'index']);
-        Route::post('/salons/{salonId}/schedule-exceptions',    [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'store']);
-        Route::put('/salons/{salonId}/schedule-exceptions/{id}',   [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'update']);
-        Route::delete('/salons/{salonId}/schedule-exceptions/{id}',[\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'destroy']);
+        Route::get('/locations/{locationId}/schedule-exceptions',     [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'index']);
+        Route::post('/locations/{locationId}/schedule-exceptions',    [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'store']);
+        Route::put('/locations/{locationId}/schedule-exceptions/{id}',   [\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'update']);
+        Route::delete('/locations/{locationId}/schedule-exceptions/{id}',[\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'destroy']);
         
-        // Team — unified identity for all salon payees (staff + employed specialists + independent specialists)
-        Route::get('/salons/{salon}/team', [TeamController::class, 'index']);
-        Route::get('/salons/{salon}/team/{memberId}/payment-profile', [\App\Http\Controllers\Api\V1\TeamPaymentProfileController::class, 'show']);
+        // Team — unified identity for all provider payees (staff + employed specialists + independent specialists)
+        Route::get('/providers/{provider}/team', [TeamController::class, 'index']);
+        Route::get('/providers/{provider}/team/{memberId}/payment-profile', [\App\Http\Controllers\Api\V1\TeamPaymentProfileController::class, 'show']);
 
         // Compensation Management (Manager access)
-        Route::prefix('salons/{salon}/compensation')->group(function () {
+        Route::prefix('providers/{provider}/compensation')->group(function () {
             Route::get('policies', [\App\Http\Controllers\Api\V1\Compensation\CompensationPolicyController::class, 'index']);
             Route::post('policies', [\App\Http\Controllers\Api\V1\Compensation\CompensationPolicyController::class, 'store']);
             
@@ -495,11 +537,6 @@ Route::prefix('v1')->group(function () {
         });
 
 
-        // Booking Configurations
-        Route::get('/salons/{salon}/booking-config', [BookingConfigurationController::class, 'getSalonConfig']);
-        Route::put('/salons/{salon}/booking-config', [BookingConfigurationController::class, 'updateSalonConfig']);
-        Route::delete('/salons/{salon}/booking-config', [BookingConfigurationController::class, 'resetSalonConfig']);
-        
         // Customers
         Route::apiResource('customers', CustomerController::class);
         
@@ -508,20 +545,35 @@ Route::prefix('v1')->group(function () {
         Route::get('/invitations', [InvitationController::class, 'index'])->name('invitations.index');
         
         // Bookings
+        Route::get('/bookings/needs-resolution', [BookingController::class, 'needsResolution']);
         Route::apiResource('bookings', BookingController::class);
-        Route::get('/salons/{salon}/bookings', [BookingController::class, 'bySalon']);
+        Route::post('/bookings/{booking}/resolve', [BookingController::class, 'resolve']);
+        Route::get('/providers/{provider}/bookings', [BookingController::class, 'byProvider']);
         Route::get('/customers/{customer}/bookings', [BookingController::class, 'byCustomer']);
+
+        // Operational Floor Lifecycle
+        Route::post('/bookings/{booking}/arrive', [\App\Http\Controllers\Api\V1\FloorController::class, 'arrive']);
+        Route::post('/bookings/{booking}/wait', [\App\Http\Controllers\Api\V1\FloorController::class, 'wait']);
+        Route::post('/bookings/{booking}/services/{bookingServiceId}/start', [\App\Http\Controllers\Api\V1\FloorController::class, 'startSession']);
+        Route::post('/bookings/{booking}/services/{bookingServiceId}/complete', [\App\Http\Controllers\Api\V1\FloorController::class, 'completeSession']);
+        
+        Route::post('/specialists/{specialist}/breaks', [\App\Http\Controllers\Api\V1\FloorController::class, 'startBreak']);
+        Route::post('/specialists/{specialist}/breaks/end', [\App\Http\Controllers\Api\V1\FloorController::class, 'endBreak']);
+        
+        Route::get('/floor/queue', [\App\Http\Controllers\Api\V1\FloorController::class, 'queue']);
+        Route::get('/floor/live', [\App\Http\Controllers\Api\V1\FloorController::class, 'live']);
+        Route::get('/floor/snapshot', [\App\Http\Controllers\Api\V1\FloorController::class, 'snapshot']);
         
         // Services
         Route::apiResource('services', ServiceController::class);
-        Route::get('/salons/{salon}/services', [ServiceController::class, 'bySalon']);
+        Route::get('/providers/{provider}/services', [ServiceController::class, 'byProvider']);
 
-        // Branch-level service management (salon_service pivot)
+        // Branch-level service management (location_service pivot)
         // Controls which services each branch offers and allows price/duration overrides
-        Route::get('/salons/{salon}/branch-services',                    [SalonServiceController::class, 'index']);
-        Route::post('/salons/{salon}/branch-services/{service}',         [SalonServiceController::class, 'attach']);
-        Route::patch('/salons/{salon}/branch-services/{service}',        [SalonServiceController::class, 'update']);
-        Route::delete('/salons/{salon}/branch-services/{service}',       [SalonServiceController::class, 'detach']);
+        Route::get('/locations/{location}/branch-services',                    [LocationServiceController::class, 'index']);
+        Route::post('/locations/{location}/branch-services/{service}',         [LocationServiceController::class, 'attach']);
+        Route::patch('/locations/{location}/branch-services/{service}',        [LocationServiceController::class, 'update']);
+        Route::delete('/locations/{location}/branch-services/{service}',       [LocationServiceController::class, 'detach']);
         
         // Staff
         Route::apiResource('staff', StaffController::class);
@@ -535,7 +587,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/specialists/discovery/{id}', [SpecialistDiscoveryController::class, 'show']);
         Route::post('/specialists/discovery/{id}/invite', [SpecialistDiscoveryController::class, 'invite']);
         Route::get('/specialists/discovery/{id}/invitations', [SpecialistDiscoveryController::class, 'invitations']);
-        Route::post('/specialists/discovery/{salonId}/respond', [SpecialistDiscoveryController::class, 'respondToInvitation']);
+        Route::post('/specialists/discovery/{invitationId}/respond', [SpecialistDiscoveryController::class, 'respondToInvitation']);
 
         // Providers (marketplace)
         Route::apiResource('providers', ProviderController::class);
@@ -545,9 +597,9 @@ Route::prefix('v1')->group(function () {
         Route::get('/providers/{id}/booking-config', [BookingConfigurationController::class, 'getProviderConfig']);
         Route::put('/providers/{id}/booking-config', [BookingConfigurationController::class, 'updateProviderConfig']);
         Route::post('/providers/{id}/booking-config/reset', [BookingConfigurationController::class, 'resetProviderConfig']);
-        Route::get('/salons/{id}/booking-config', [BookingConfigurationController::class, 'getSalonConfig']);
-        Route::put('/salons/{id}/booking-config', [BookingConfigurationController::class, 'updateSalonConfig']);
-        Route::post('/salons/{id}/booking-config/reset', [BookingConfigurationController::class, 'resetSalonConfig']);
+        Route::get('/locations/{id}/booking-config', [BookingConfigurationController::class, 'getLocationConfig']);
+        Route::put('/locations/{id}/booking-config', [BookingConfigurationController::class, 'updateLocationConfig']);
+        Route::post('/locations/{id}/booking-config/reset', [BookingConfigurationController::class, 'resetLocationConfig']);
         Route::get('/services/{id}/booking-config', [BookingConfigurationController::class, 'getServiceConfig']);
         Route::put('/services/{id}/booking-config', [BookingConfigurationController::class, 'updateServiceConfig']);
         Route::post('/services/{id}/booking-config/reset', [BookingConfigurationController::class, 'resetServiceConfig']);
@@ -588,7 +640,7 @@ Route::prefix('v1')->group(function () {
         
         // Profiles
         Route::apiResource('profiles', ProfileController::class);
-        Route::get('/salons/{salon}/profiles', [ProfileController::class, 'bySalon']);
+        Route::get('/locations/{location}/profiles', [ProfileController::class, 'byLocation']);
 
         // Payments — Methods
         Route::apiResource('payment-methods', PaymentMethodController::class)->middleware('throttle:30,1');
@@ -607,7 +659,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('transactions', TransactionController::class)->middleware('throttle:60,1');
 
         // Ledger — financial truth (double-entry journal, LedgerEntry records)
-        Route::get('/salons/{salon}/ledger', [LedgerController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('/providers/{provider}/ledger', [LedgerController::class, 'index'])->middleware('throttle:60,1');
 
         // Payments — Platform (B2B - Subscription Payments)
         Route::prefix('payments/platform')->group(function () {
@@ -644,11 +696,11 @@ Route::prefix('v1')->group(function () {
 
         // Payments — Salon (B2C - Customer Booking Payments)
         Route::prefix('payments/salon')->group(function () {
-            Route::post('/initialize', [SalonPaymentController::class, 'initializeBookingPayment']);
-            Route::post('/verify', [SalonPaymentController::class, 'verifySalonPayment']);
-            Route::post('/manual', [SalonPaymentController::class, 'recordManualPayment']);
-            Route::post('/refund', [SalonPaymentController::class, 'refundSalonPayment']);
-            Route::get('/bookings/{bookingId}/status', [SalonPaymentController::class, 'getBookingPaymentStatus']);
+            Route::post('/initialize', [BookingPaymentController::class, 'initializeBookingPayment']);
+            Route::post('/verify', [BookingPaymentController::class, 'verifySalonPayment']);
+            Route::post('/manual', [BookingPaymentController::class, 'recordManualPayment']);
+            Route::post('/refund', [BookingPaymentController::class, 'refundSalonPayment']);
+            Route::get('/bookings/{bookingId}/status', [BookingPaymentController::class, 'getBookingPaymentStatus']);
         });
 
 
@@ -724,6 +776,12 @@ Route::prefix('v1')->group(function () {
         // Discover admin endpoints
         Route::post('/discover/featured', [DiscoverController::class, 'setFeatured']);
         Route::post('/discover/refresh-trending', [DiscoverController::class, 'refreshTrendingScores']);
+
+        // Schedule Migration
+        Route::get('/schedule-migration/status', [ScheduleMigrationController::class, 'checkStatus']);
+        Route::post('/schedule-migration/migrate', [ScheduleMigrationController::class, 'migrate']);
+        Route::get('/admin/schedule-migration/providers', [ScheduleMigrationController::class, 'getProvidersNeedingMigration']);
+        Route::post('/admin/schedule-migration/notify', [ScheduleMigrationController::class, 'sendNotifications']);
         });
     });
     // Shared universal authenticated routes (accessible by salon admin, specialist, or portal customer)

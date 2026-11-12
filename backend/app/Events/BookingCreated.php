@@ -11,17 +11,17 @@ class BookingCreated
 
     public $bookingId;
     public $customerId;
-    public $salonId;
+    public $providerId;
     public $customerName;
     public $serviceNames;
     public $date;
     public $time;
 
-    public function __construct($bookingId, $customerId, $salonId, $customerName, $serviceNames, $date, $time)
+    public function __construct($bookingId, $customerId, $providerId, $customerName, $serviceNames, $date, $time)
     {
         $this->bookingId = $bookingId;
         $this->customerId = $customerId;
-        $this->salonId = $salonId;
+        $this->providerId = $providerId;
         $this->customerName = $customerName;
         $this->serviceNames = $serviceNames;
         $this->date = $date;

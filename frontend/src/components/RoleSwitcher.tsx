@@ -2,26 +2,46 @@
 
 import { useState } from 'react';
 import { useRole } from '@/contexts/RoleContext';
-import { Settings, ChevronDown } from 'lucide-react';
+import { useCategory } from '@/contexts/CategoryContext';
+import { Settings, ChevronDown, Building2, MapPin, User } from 'lucide-react';
 
 export default function RoleSwitcher() {
-  const { role, setRole, userName, setUserName } = useRole();
+  const { 
+    role, setRole, 
+    userName, setUserName,
+    activeProvider,
+    activeLocation,
+    setActiveLocation,
+    locationId,
+    providerId
+  } = useRole();
+  const { terminology } = useCategory();
   const [isOpen, setIsOpen] = useState(false);
 
-  const roles = [
-    { value: 'owner', label: 'Salon Owner' },
+  const providerRoles = [
+    { value: 'owner', label: `${terminology.business} Owner` },
     { value: 'manager', label: 'Manager' },
     { value: 'employee', label: 'Employee' },
     { value: 'receptionist', label: 'Receptionist' },
-    { value: 'platform_admin', label: 'Platform Admin' },
   ] as const;
 
-  const handleRoleChange = (newRole: typeof roles[number]['value']) => {
+  const handleLocationChange = (location: any) => {
+    setActiveLocation(location);
+    setIsOpen(false);
+  };
+
+  const handleRoleChange = (newRole: typeof providerRoles[number]['value']) => {
     setRole(newRole);
     setIsOpen(false);
   };
 
-  const currentRoleLabel = roles.find(r => r.value === role)?.label || 'Owner';
+  const handleProviderWide = () => {
+    setActiveLocation(null);
+    setIsOpen(false);
+  };
+
+  const currentRoleLabel = providerRoles.find(r => r.value === role)?.label || 'Owner';
+  const locations = activeProvider?.locations || [];
 
   return (
     <div className="relative">
@@ -40,9 +60,9 @@ export default function RoleSwitcher() {
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border-light rounded-xl shadow-xl z-20 overflow-hidden">
+          <div className="absolute right-0 top-full mt-2 w-80 bg-surface border border-border-light rounded-xl shadow-xl z-20 overflow-hidden">
             <div className="p-4 border-b border-border-light">
-              <p className="text-text-secondary text-xs mb-2">Switch Role (Testing)</p>
+              <p className="text-text-secondary text-xs mb-2">Switch Context (Testing)</p>
               <input
                 type="text"
                 value={userName}
@@ -51,20 +71,69 @@ export default function RoleSwitcher() {
                 className="w-full px-3 py-2 bg-background border border-border-light rounded-lg text-text-primary text-sm focus:outline-none focus:border-gold"
               />
             </div>
-            <div className="p-2">
-              {roles.map((r) => (
+
+            {/* Provider Section */}
+            <div className="p-3 border-b border-border-light">
+              <div className="flex items-center gap-2 mb-2">
+                <Building2 className="w-4 h-4 text-gold" />
+                <span className="text-sm font-medium text-text-primary">{activeProvider?.name || 'No Provider'}</span>
+              </div>
+            </div>
+
+            {/* Location Section */}
+            <div className="p-3 border-b border-border-light">
+              <div className="flex items-center gap-2 mb-2">
+                <MapPin className="w-4 h-4 text-gold" />
+                <span className="text-xs text-text-secondary">Location</span>
+              </div>
+              <div className="space-y-1">
                 <button
-                  key={r.value}
-                  onClick={() => handleRoleChange(r.value)}
+                  onClick={handleProviderWide}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                    role === r.value
+                    !locationId
                       ? 'bg-gold/20 text-gold font-medium'
                       : 'text-text-primary hover:bg-border-light'
                   }`}
                 >
-                  {r.label}
+                  All Locations (Provider-wide)
                 </button>
-              ))}
+                {locations.map((loc: any) => (
+                  <button
+                    key={loc.id}
+                    onClick={() => handleLocationChange(loc)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                      locationId === loc.id
+                        ? 'bg-gold/20 text-gold font-medium'
+                        : 'text-text-primary hover:bg-border-light'
+                  }`}
+                  >
+                    {loc.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Role Section */}
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <User className="w-4 h-4 text-gold" />
+                <span className="text-xs text-text-secondary">Role</span>
+              </div>
+              <div className="space-y-1">
+                {providerRoles.map((r) => (
+                  <button
+                    key={r.value}
+                    onClick={() => handleRoleChange(r.value)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                      role === r.value
+                        ? 'bg-gold/20 text-gold font-medium'
+                        : 'text-text-primary hover:bg-border-light'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </>

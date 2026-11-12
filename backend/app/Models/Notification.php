@@ -2,20 +2,27 @@
 
 namespace App\Models;
 
+use Database\Factories\NotificationFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Notification extends Model
 {
+    use HasFactory;
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'user_id',
         'customer_id',
         'staff_id',
         'type',
+        'category',
+        'priority',
+        'icon',
         'title',
         'message',
         'data',
+        'action_url',
         'read_at',
     ];
 
@@ -24,9 +31,9 @@ class Notification extends Model
         'read_at' => 'datetime',
     ];
 
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
     }
 
     public function user(): BelongsTo

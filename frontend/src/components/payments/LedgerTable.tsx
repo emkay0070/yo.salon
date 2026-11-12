@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { Download, Filter, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const formatCurrency = (amount: number) =>
+export const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-UG', { style: 'currency', currency: 'UGX', minimumFractionDigits: 0 }).format(Math.abs(amount));
 
 interface LedgerTableProps {

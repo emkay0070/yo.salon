@@ -114,9 +114,12 @@ class RevenueDistributionEngine
 
         $movements = [];
 
+        // Use provider_id from booking
+        $providerId = $booking->provider_id;
+        
         $revenueAllocationAccount = LedgerAccount::getOrCreateFor(
-            \App\Models\Salon::class,
-            $booking->salon_id,
+            \App\Models\Provider::class,
+            $providerId,
             'revenue_allocation', // contra-revenue, debit-normal
             'UGX'
         );
@@ -167,12 +170,22 @@ class RevenueDistributionEngine
             // We only emit EarningRecognized for parties that need to be paid out (specialists, suppliers).
             // The platform is billed differently, and the salon keeps its own share.
             if (in_array($distribution['party'], ['specialist', 'supplier'])) {
+                $compensationPolicyId = $distribution['compensation_policy_id'] ?? null;
+
+                if (!$compensationPolicyId) {
+                    Log::info('RevenueDistributionEngine: no compensation_policy_id on distribution, skipping EarningRecognized', [
+                        'party'      => $distribution['party'],
+                        'booking_id' => $booking->id,
+                    ]);
+                    continue;
+                }
+
                 event(new EarningRecognized(
                     compensatableType: $ownerType,
                     compensatableId:   $ownerId,
                     sourceType:        Booking::class,
                     sourceId:          $booking->id,
-                    policyId:          $policy->id,
+                    policyId:          $compensationPolicyId,
                     amount:            $amount,
                     currency:          'UGX',
                     metadata:          [
@@ -251,12 +264,14 @@ class RevenueDistributionEngine
             }
 
             $distributions[] = [
-                'party'      => $party,
-                'amount'     => $amount,
-                'percentage' => $rule['percentage'] ?? null,
-                'type'       => $rule['type'] ?? 'percentage',
-                'owner_type' => $rule['owner_type'] ?? null,
-                'owner_id'   => $ownerId,
+                'party'                  => $party,
+                'amount'                 => $amount,
+                'percentage'             => $rule['percentage'] ?? null,
+                'type'                   => $rule['type'] ?? 'percentage',
+                'owner_type'             => $rule['owner_type'] ?? null,
+                'owner_id'               => $ownerId,
+                // Forward the per-rule CompensationPolicy ID so RecordEarning can locate it
+                'compensation_policy_id' => $rule['compensation_policy_id'] ?? null,
             ];
         }
 
@@ -269,9 +284,16 @@ class RevenueDistributionEngine
 
     protected function getApplicablePolicy(Booking $booking, string $revenueType): ?RevenueDistributionPolicy
     {
+        // Use provider_id from booking
+        $providerId = $booking->provider_id;
+
+        if (!$providerId) {
+            return RevenueDistributionPolicy::getDefaultPolicy($revenueType);
+        }
+
         $policy = RevenueDistributionPolicy::getApplicablePolicy(
-            \App\Models\Salon::class,
-            $booking->salon_id,
+            \App\Models\Provider::class,
+            $providerId,
             $revenueType
         );
 

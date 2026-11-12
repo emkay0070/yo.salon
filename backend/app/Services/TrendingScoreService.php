@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Service;
 use App\Models\Specialist;
 use Illuminate\Support\Facades\DB;
@@ -10,33 +11,30 @@ use Illuminate\Support\Facades\DB;
 class TrendingScoreService
 {
     /**
-     * Calculate trending score for a salon
-     * Formula: (booking_count * 0.4) + (rating * 10 * 0.3) + (view_count * 0.2) + (recent_booking_weight * 0.1)
+     * Calculate trending score for a provider (via its primary location).
      */
-    public function calculateSalonScore(Salon $salon): float
+    public function calculateProviderScore(Provider $provider): float
     {
+        $locationId = $provider->location_id;
+
         $bookingCount = DB::table('bookings')
-            ->where('salon_id', $salon->id)
+            ->where('provider_id', $provider->id)
             ->where('status', '!=', 'cancelled')
             ->count();
 
         $recentBookings = DB::table('bookings')
-            ->where('salon_id', $salon->id)
+            ->where('provider_id', $provider->id)
             ->where('status', '!=', 'cancelled')
             ->where('created_at', '>=', now()->subDays(30))
             ->count();
 
-        $rating = $salon->rating ?? 0;
-        $viewCount = $salon->view_count ?? 0;
-        $reviewCount = $salon->review_count ?? 0;
-
-        // Time decay factor - recent activity gets more weight
+        $rating      = $provider->rating ?? 0;
+        $viewCount   = $provider->view_count ?? 0;
+        $reviewCount = $provider->review_count ?? 0;
         $recentWeight = $recentBookings * 2;
 
-        // Calculate score
         $score = ($bookingCount * 0.4) + ($rating * 10 * 0.3) + ($viewCount * 0.2) + ($recentWeight * 0.1);
 
-        // Bonus for having reviews
         if ($reviewCount > 0) {
             $score += min($reviewCount * 0.5, 10);
         }
@@ -60,10 +58,9 @@ class TrendingScoreService
             ->where('created_at', '>=', now()->subDays(30))
             ->count();
 
-        $rating = $service->rating ?? 0;
-        $viewCount = $service->view_count ?? 0;
+        $rating      = $service->rating ?? 0;
+        $viewCount   = $service->view_count ?? 0;
         $reviewCount = $service->review_count ?? 0;
-
         $recentWeight = $recentBookings * 2;
 
         $score = ($bookingCount * 0.4) + ($rating * 10 * 0.3) + ($viewCount * 0.2) + ($recentWeight * 0.1);
@@ -91,14 +88,11 @@ class TrendingScoreService
             ->where('created_at', '>=', now()->subDays(30))
             ->count();
 
-        $rating = $specialist->rating ?? 0;
-        $viewCount = $specialist->view_count ?? 0;
+        $rating        = $specialist->rating ?? 0;
+        $viewCount     = $specialist->view_count ?? 0;
         $followerCount = $specialist->follower_count ?? 0;
-        $reviewCount = $specialist->review_count ?? 0;
-
-        $recentWeight = $recentBookings * 2;
-
-        // Specialists get extra weight from followers
+        $reviewCount   = $specialist->review_count ?? 0;
+        $recentWeight  = $recentBookings * 2;
         $followerWeight = min($followerCount * 0.1, 20);
 
         $score = ($bookingCount * 0.35) + ($rating * 10 * 0.25) + ($viewCount * 0.15) + ($recentWeight * 0.15) + ($followerWeight * 0.1);
@@ -111,14 +105,14 @@ class TrendingScoreService
     }
 
     /**
-     * Refresh trending scores for all salons
+     * Refresh trending scores for all providers
      */
-    public function refreshAllSalonScores(): void
+    public function refreshAllProviderScores(): void
     {
-        Salon::where('active', true)->chunk(100, function ($salons) {
-            foreach ($salons as $salon) {
-                $salon->trending_score = $this->calculateSalonScore($salon);
-                $salon->saveQuietly();
+        Provider::where('active', true)->chunk(100, function ($providers) {
+            foreach ($providers as $provider) {
+                $provider->trending_score = $this->calculateProviderScore($provider);
+                $provider->saveQuietly();
             }
         });
     }
@@ -154,7 +148,7 @@ class TrendingScoreService
      */
     public function refreshAll(): void
     {
-        $this->refreshAllSalonScores();
+        $this->refreshAllProviderScores();
         $this->refreshAllServiceScores();
         $this->refreshAllSpecialistScores();
     }

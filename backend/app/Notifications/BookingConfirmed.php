@@ -3,7 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Booking;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Services\BrandEmailService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,13 +15,13 @@ class BookingConfirmed extends Notification implements ShouldQueue
     use Queueable;
 
     protected $booking;
-    protected $salon;
+    protected $provider;
     protected $brandEmailService;
 
-    public function __construct(Booking $booking, Salon $salon)
+    public function __construct(Booking $booking, Provider $provider)
     {
         $this->booking = $booking;
-        $this->salon = $salon;
+        $this->provider = $provider;
         $this->brandEmailService = new BrandEmailService();
     }
 
@@ -32,7 +32,7 @@ class BookingConfirmed extends Notification implements ShouldQueue
 
     public function toMail($notifiable)
     {
-        $styles = $this->brandEmailService->generateEmailStyles($this->salon);
+        $styles = $this->brandEmailService->generateEmailStyles($this->provider);
         
         $content = $this->brandEmailService->getCard(
             sprintf(
@@ -47,7 +47,7 @@ class BookingConfirmed extends Notification implements ShouldQueue
                 '<p style="color: %s;">%s</p>',
                 $styles['primary_color'],
                 $styles['text_primary'],
-                $this->salon->name,
+                $this->provider->display_name,
                 $styles['border_color'],
                 $styles['border_color'],
                 $this->booking->service->name,
@@ -61,21 +61,21 @@ class BookingConfirmed extends Notification implements ShouldQueue
                 $styles['text_secondary'],
                 'Please arrive 10 minutes before your appointment time.'
             ),
-            $this->salon
+            $this->provider
         );
 
         $button = $this->brandEmailService->getButton(
             'View Booking Details',
             url('/portal/bookings'),
-            $this->salon
+            $this->provider
         );
 
         $fullContent = $content . '<div style="text-align: center; margin: 20px 0;">' . $button . '</div>';
 
-        $html = $this->brandEmailService->getEmailTemplate($fullContent, $this->salon);
+        $html = $this->brandEmailService->getEmailTemplate($fullContent, $this->provider);
 
         return (new MailMessage)
-            ->subject("Booking Confirmed - {$this->salon->name}")
+            ->subject("Booking Confirmed - {$this->provider->display_name}")
             ->html($html);
     }
 }

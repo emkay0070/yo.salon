@@ -27,11 +27,11 @@ class PaymentRequestController extends Controller
     }
     public function index(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $query = PaymentRequest::with(['booking', 'customer', 'paymentMethod'])
-            ->where('salon_id', $salonId);
+            ->where('provider_id', $providerId);
 
         if ($request->has('status')) {
             $query->where('status', $request->query('status'));
@@ -46,8 +46,8 @@ class PaymentRequestController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $validated = $request->validate([
             'booking_id'        => 'nullable|exists:bookings,id',
@@ -62,7 +62,7 @@ class PaymentRequestController extends Controller
         // IDEMPOTENCY CHECK: Check for existing payment request with same idempotency key
         if (!empty($validated['idempotency_key'])) {
             $existingRequest = PaymentRequest::where('idempotency_key', $validated['idempotency_key'])
-                ->where('salon_id', $salonId)
+                ->where('provider_id', $providerId)
                 ->first();
 
             if ($existingRequest) {
@@ -95,7 +95,7 @@ class PaymentRequestController extends Controller
         if (!$paymentMethodId && !empty($validated['payment_method'])) {
             $provider = $validated['payment_method'];
             $pm = \App\Models\PaymentMethod::firstOrCreate(
-                ['salon_id' => $salonId, 'provider' => $provider],
+                ['provider_id' => $providerId, 'provider' => $provider],
                 [
                     'type' => $provider === 'cash' ? 'cash' : ($provider === 'visa' ? 'card' : 'mobile_money'),
                     'display_name' => ucfirst($provider)
@@ -111,17 +111,19 @@ class PaymentRequestController extends Controller
         // VALIDATE AMOUNT: Backend should calculate amount, not trust frontend
         $calculatedAmount = $validated['amount'];
         if ($validated['booking_id']) {
-            $booking = Booking::with(['services', 'salon'])->find($validated['booking_id']);
+            $booking = Booking::with(['services', 'location'])->find($validated['booking_id']);
             if ($booking) {
-                // Use BookingPolicyResolver for authoritative deposit calculation
-                $salon = $booking->salon;
+                // Derive provider from location since Booking no longer has salon relationship
+                $providerModel = $booking->location ? \App\Models\Provider::where('id', $booking->provider_id)->first() : null;
                 $serviceTotal = 0;
                 $depositAmount = 0;
 
                 foreach ($booking->services as $service) {
-                    $resolver = new \App\Services\BookingPolicyResolver($salon, $service);
-                    $serviceTotal += $resolver->effectivePrice();
-                    $depositAmount += $resolver->depositAmount();
+                    if ($providerModel && $booking->location) {
+                        $resolver = new \App\Services\BookingPolicyResolver($providerModel, $booking->location, $service);
+                        $serviceTotal += $resolver->effectivePrice();
+                        $depositAmount += $resolver->depositAmount();
+                    }
                 }
 
                 // If deposit is required, use deposit amount; otherwise use full amount
@@ -149,7 +151,7 @@ class PaymentRequestController extends Controller
         $reference = 'PAY-' . strtoupper(Str::random(12));
 
         $paymentRequest = PaymentRequest::create([
-            'salon_id'           => $salonId,
+            'provider_id'        => $providerId,
             'booking_id'         => $validated['booking_id'] ?? null,
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
@@ -165,7 +167,7 @@ class PaymentRequestController extends Controller
 
         // Dispatch to provider if it's a mobile money provider
         if (in_array($providerName, ['mtn_momo', 'airtel_money']) && $paymentRequest->phone_number) {
-            // Get credentials from payment method record (per-salon credentials)
+            // Get credentials from payment method record (per-provider credentials)
             $credentials = null;
             if ($paymentMethod) {
                 $credentials = [
@@ -254,7 +256,7 @@ class PaymentRequestController extends Controller
             $paymentAccount = $paymentMethod ? $this->paymentRoutingService->determinePaymentAccount($paymentMethod) : null;
 
             $transaction = \App\Models\Transaction::create([
-                'salon_id'           => $paymentRequest->salon_id,
+                'provider_id'        => $paymentRequest->provider_id,
                 'booking_id'         => $paymentRequest->booking_id,
                 'customer_id'        => $paymentRequest->customer_id,
                 'payment_method_id'  => $paymentRequest->payment_method_id,

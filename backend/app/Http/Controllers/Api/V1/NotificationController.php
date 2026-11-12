@@ -18,12 +18,16 @@ class NotificationController extends Controller
         
         $query = Notification::query();
 
-        // Filter by authenticated user type
+        // Filter by authenticated user type and provider context
         if ($user) {
-            // Salon owner/staff
+            // Salon owner/staff - enforce provider isolation
+            $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+            if ($provider) {
+                $query->where('provider_id', $provider->id);
+            }
             $query->where('user_id', $user->id);
         } elseif ($customer) {
-            // Customer portal
+            // Customer portal - filter by customer only
             $query->where('customer_id', $customer->id);
         }
 
@@ -34,6 +38,10 @@ class NotificationController extends Controller
         // Calculate unread count based on user type
         $unreadQuery = Notification::query();
         if ($user) {
+            $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+            if ($provider) {
+                $unreadQuery->where('provider_id', $provider->id);
+            }
             $unreadQuery->where('user_id', $user->id);
         } elseif ($customer) {
             $unreadQuery->where('customer_id', $customer->id);
@@ -53,10 +61,13 @@ class NotificationController extends Controller
         $user = auth()->user();
         $customer = auth()->guard('portal')->user();
         
-        // Check authorization based on user type
+        // Check authorization based on user type and provider context
         $isAuthorized = false;
-        if ($user && $notification->user_id === $user->id) {
-            $isAuthorized = true;
+        if ($user) {
+            $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+            if ($provider && $notification->provider_id === $provider->id && $notification->user_id === $user->id) {
+                $isAuthorized = true;
+            }
         } elseif ($customer && $notification->customer_id === $customer->id) {
             $isAuthorized = true;
         }
@@ -78,6 +89,10 @@ class NotificationController extends Controller
         $query = Notification::query();
         
         if ($user) {
+            $provider = method_exists($user, 'currentProvider') ? $user->currentProvider() : null;
+            if ($provider) {
+                $query->where('provider_id', $provider->id);
+            }
             $query->where('user_id', $user->id);
         } elseif ($customer) {
             $query->where('customer_id', $customer->id);

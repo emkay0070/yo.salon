@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip if salon_id column doesn't exist (fresh migration scenario where subscriptions already uses provider_id)
+        if (!Schema::hasColumn('subscriptions', 'salon_id')) {
+            return;
+        }
+
         Schema::table('subscriptions', function (Blueprint $table) {
             // Drop foreign key and index for salon_id
             $table->dropForeign(['salon_id']);
@@ -38,13 +43,17 @@ return new class extends Migration
             $table->dropIndex(['provider_id']);
             $table->dropUnique(['provider_id']);
             
-            // Rename provider_id back to salon_id
-            $table->renameColumn('provider_id', 'salon_id');
-            
-            // Add foreign key for salon_id
-            $table->foreign('salon_id')->references('id')->on('salons')->onDelete('cascade');
-            $table->index('salon_id');
-            $table->unique('salon_id');
+            // Rename provider_id back to salon_id only if it exists
+            if (Schema::hasColumn('subscriptions', 'provider_id')) {
+                $table->renameColumn('provider_id', 'salon_id');
+                
+                // Add foreign key for salon_id only if salons table exists
+                if (Schema::hasTable('salons')) {
+                    $table->foreign('salon_id')->references('id')->on('salons')->onDelete('cascade');
+                    $table->index('salon_id');
+                    $table->unique('salon_id');
+                }
+            }
         });
     }
 };

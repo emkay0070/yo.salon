@@ -20,6 +20,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Skip if salons table doesn't exist (fresh migration scenario)
+        if (!Schema::hasTable('salons')) {
+            return;
+        }
+
         // Step 1: Get all staff records with their salon information
         $staffRecords = DB::table('staff')
             ->join('salons', 'staff.salon_id', '=', 'salons.id')

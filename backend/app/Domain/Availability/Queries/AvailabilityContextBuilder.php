@@ -4,7 +4,7 @@ namespace App\Domain\Availability\Queries;
 
 use App\Domain\Availability\DTOs\AvailabilityContext;
 use App\Domain\Availability\Resolvers\ScheduleResolver;
-use App\Models\SalonSchedule;
+use App\Models\LocationSchedule;
 use App\Models\ProviderSchedule;
 use App\Models\AssignmentSchedule;
 use App\Models\SpecialistTimeOff;
@@ -34,7 +34,7 @@ class AvailabilityContextBuilder
         private readonly ScheduleResolver $scheduleResolver,
     ) {}
 
-    public function build(string $assignmentId, CarbonImmutable $date): AvailabilityContext
+    public function build(string $assignmentId, CarbonImmutable $date, ?string $serviceId = null): AvailabilityContext
     {
         $assignment = SpecialistAssignment::findOrFail($assignmentId);
         $dayOfWeekString  = $date->format('l'); // Monday, Tuesday, etc.
@@ -48,11 +48,13 @@ class AvailabilityContextBuilder
             ->where('status', 'ACTIVE')
             ->first();
 
-        // Salon schedule for this day
-        $salonSched = SalonSchedule::where('salon_id', $assignment->salon_id)
-            ->where('day_of_week', $dayOfWeekString)
-            ->where('status', 'ACTIVE')
-            ->first();
+        // Location schedule for this day
+        $locationSched = null;
+        if ($assignment->location_id) {
+            $locationSched = \App\Models\LocationSchedule::where('location_id', $assignment->location_id)
+                ->where('day_of_week', $dayOfWeekString)
+                ->first();
+        }
 
         // Assignment schedule for this day
         $assignmentSched = AssignmentSchedule::where('assignment_id', $assignmentId)
@@ -80,7 +82,8 @@ class AvailabilityContextBuilder
 
         // Existing bookings for this assignment/specialist on this date
         $existingBookings = Booking::where('specialist_id', $assignment->specialist_id)
-            ->where('salon_id', $assignment->salon_id)
+            ->where('provider_id', $assignment->provider_id)
+            ->when($assignment->location_id, fn($q) => $q->where('location_id', $assignment->location_id))
             ->where('date', $date->toDateString())
             ->whereNotIn('status', ['cancelled', 'no_show'])
             ->get();
@@ -88,8 +91,8 @@ class AvailabilityContextBuilder
         // --- 2. Hand OBJECTS to Resolver (no arrays, no DB calls inside Resolver) ---
         $resolvedSchedule = $this->scheduleResolver->resolve(
             providerSchedule:  $providerSched,
-            salonSchedule:     $salonSched,
-            salonMode:         $assignment->salon?->schedule_mode ?? 'INHERIT',
+            locationSchedule:  $locationSched,
+            locationMode:       'INHERIT',
             assignmentSchedule: $assignmentSched,
             assignmentMode:    $assignment->schedule_mode ?? 'INHERIT',
         );
@@ -97,9 +100,10 @@ class AvailabilityContextBuilder
         return new AvailabilityContext(
             assignmentId:       $assignmentId,
             specialistId:       $assignment->specialist_id,
-            salonId:            $assignment->salon_id,
             providerId:         $assignment->provider_id,
+            locationId:         $assignment->location_id,
             date:               $date,
+            serviceId:          $serviceId,
             resolvedSchedule:   $resolvedSchedule,
             scheduleOverride:   $scheduleOverride?->toArray(),
             scheduleExceptions: $scheduleExceptions,

@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\SpecialistAccount;
 use App\Models\Specialist;
-use App\Models\Salon;
+use App\Models\SpecialistAssignment;
+
 use App\Models\Customer;
 use App\Models\Booking;
 use App\Models\SpecialistTimeOff;
@@ -25,6 +26,44 @@ class SpecialistPortalController extends Controller
     {
         $this->invitationService = $invitationService;
         $this->capabilityResolver = $capabilityResolver;
+    }
+
+    /**
+     * Resolve the Specialist's active SpecialistAssignment for a given provider slug.
+     *
+     * SECURITY RULE: The provider_slug coming from the URL is NEVER trusted directly
+     * to scope data. We always verify that the authenticated Specialist has an ACTIVE
+     * assignment with a Provider whose slug matches, and then derive the provider_id
+     * from that verified assignment record.
+     *
+     * Returns null when no provider_slug is given (= global / god-view mode).
+     * Returns the SpecialistAssignment when slug is present and valid.
+     * Throws a 403 JsonResponse when slug is present but the Specialist has no active assignment.
+     *
+     * @param  Specialist  $specialist
+     * @param  string|null $providerSlug
+     * @return SpecialistAssignment|null
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException
+     */
+    private function resolveAssignment(Specialist $specialist, ?string $providerSlug): ?SpecialistAssignment
+    {
+        if (!$providerSlug) {
+            return null; // Global mode — no workspace context requested
+        }
+
+        $assignment = SpecialistAssignment::where('specialist_id', $specialist->id)
+            ->whereIn('status', ['ACTIVE', 'active'])
+            ->whereHas('provider', fn ($q) => $q->where('slug', $providerSlug))
+            ->with('provider')
+            ->first();
+
+        if (!$assignment) {
+            abort(response()->json([
+                'message' => 'You do not have an active assignment at this workspace.',
+            ], 403));
+        }
+
+        return $assignment;
     }
 
     /**
@@ -78,15 +117,32 @@ class SpecialistPortalController extends Controller
         }
 
         // Fetch all active Provider relationships from specialist_assignments.
-        // Each assignment carries role + employment_type at the Provider level.
+        // Each assignment carries employment_type at the Provider level.
+        // Business authority is determined by ProviderUser, not SpecialistAssignment.role
         $workplaces = $specialist->assignments()
             ->whereIn('status', ['ACTIVE', 'active'])
-            ->with(['provider', 'salon'])
+            ->with(['provider', 'location'])
             ->get()
             ->map(function ($assignment) {
                 $provider = $assignment->provider;
-                    $isOwner = in_array($assignment->role, ['OWNER', 'MANAGER']) || $provider?->type === 'independent_specialist';
-                    
+                    $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
+                    // Independent business ownership is determined by Provider.type, not SpecialistAssignment.role
+                    $isIndependentBusiness = $definition && $definition->isIndependent;
+
+                    // Determine role and permissions based on ProviderUser relationship
+                    // Note: Specialist may not have a User record for ProviderUser lookup
+                    // Default to SPECIALIST role with no management permissions
+                    $role = 'SPECIALIST';
+                    $canManageProvider = false;
+                    $canCreateServices = false;
+
+                    // If the provider is an independent_specialist type, the specialist is the owner
+                    if ($isIndependentBusiness) {
+                        $role = 'OWNER';
+                        $canManageProvider = true;
+                        $canCreateServices = true;
+                    }
+
                     return [
                         'assignment_id'   => $assignment->id,
                         'provider_id'     => $assignment->provider_id,
@@ -94,21 +150,21 @@ class SpecialistPortalController extends Controller
                         'provider_type'   => $provider?->type,
                         'provider_slug'   => $provider?->slug,
                         'provider_logo'   => $provider?->logo,
-                        'salon_id'        => $assignment->salon_id,
-                        'salon_name'      => $assignment->salon?->name,
-                        'role'            => $assignment->role,
+                        'location_id'     => $assignment->location_id,
+                        'location_name'   => $assignment->location?->name,
+                        'location_slug'   => $assignment->location?->slug,
                         'employment_type' => $assignment->employment_type,
                         'is_primary'      => $assignment->is_primary,
-                        // Can this assignment control Provider-level settings?
-                        'can_manage_provider' => $isOwner,
-                        // Can this assignment create new services for this Provider?
-                        'can_create_services' => $isOwner,
+                        'is_independent_business' => $isIndependentBusiness,
+                        'role'            => $role,
+                        'can_manage_provider' => $canManageProvider,
+                        'can_create_services' => $canCreateServices,
                     ];
             });
 
-        // The primary workplace is the first OWNER context (their own Provider),
-        // or the is_primary assignment if no OWNER context exists.
-        $primaryWorkplace = $workplaces->firstWhere('role', 'OWNER')
+        // The primary workplace is the first independent business context (their own Provider),
+        // or the is_primary assignment if no independent business context exists.
+        $primaryWorkplace = $workplaces->firstWhere('is_independent_business', true)
             ?? $workplaces->firstWhere('is_primary', true)
             ?? $workplaces->first();
 
@@ -231,6 +287,7 @@ class SpecialistPortalController extends Controller
      * 
      * Query params:
      *   ?provider_slug={provider_slug} - Required for workspace-specific customer list
+     *   ?location_slug={location_slug} - Optional: filter customers by location activity
      */
     public function getCustomers(Request $request): JsonResponse
     {
@@ -242,40 +299,111 @@ class SpecialistPortalController extends Controller
         }
 
         $providerSlug = $request->query('provider_slug');
+        $locationSlug = $request->query('location_slug');
         
         // Resolve workspace context
         if ($providerSlug) {
-            // Validate specialist has active assignment to this provider
-            $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $specialist->id)
-                ->where('status', 'active')
+            // Get ALL active assignments for this specialist at this provider
+            $assignments = \App\Models\SpecialistAssignment::where('specialist_id', $specialist->id)
+                ->whereIn('status', ['ACTIVE', 'active'])
                 ->whereHas('provider', fn($q) => $q->where('slug', $providerSlug))
-                ->first();
+                ->with(['provider', 'location'])
+                ->get();
 
-            if (!$assignment) {
+            if ($assignments->isEmpty()) {
                 return response()->json(['message' => 'Invalid workspace context - no active assignment'], 403);
             }
 
-            // Filter customers by workspace
-            $customers = $specialist->customers()
-                ->wherePivot('provider_id', $assignment->provider_id)
-                ->withPivot('is_favorite', 'is_following', 'total_bookings', 'total_spent', 'last_interaction_at', 'provider_id', 'relationship_origin', 'acquisition_source')
-                ->orderBy('pivot_last_interaction_at', 'desc')
-                ->get();
+            $providerId = $assignments->first()->provider_id;
+            
+            // Calculate permitted locations from all assignments
+            // NULL location_id grants provider-wide access
+            // Specific location_id grants access only to that location
+            $hasProviderWideAccess = $assignments->contains(fn($a) => $a->location_id === null);
+            $permittedLocationIds = $assignments->pluck('location_id')->filter()->unique()->values();
+            
+            // If location_slug is provided, validate it
+            if ($locationSlug) {
+                $location = \App\Models\Location::where('slug', $locationSlug)
+                    ->where('provider_id', $providerId)
+                    ->first();
+                
+                if (!$location) {
+                    return response()->json(['message' => 'Location not found or does not belong to this provider'], 404);
+                }
+                
+                // Check if specialist has access to this location
+                // Access granted if: assignment has matching location_id OR assignment has null location_id (provider-wide)
+                $hasLocationAccess = $assignments->contains(function ($assignment) use ($location) {
+                    return $assignment->location_id === null || $assignment->location_id === $location->id;
+                });
+                
+                if (!$hasLocationAccess) {
+                    return response()->json(['message' => 'You do not have access to this location'], 403);
+                }
+                
+                // Filter customers by location-specific booking activity
+                $customers = $specialist->customers()
+                    ->wherePivot('provider_id', $providerId)
+                    ->whereHas('bookings', function ($q) use ($location) {
+                        $q->where('location_id', $location->id);
+                    })
+                    ->withPivot('is_favorite', 'is_following', 'total_bookings', 'total_spent', 'last_interaction_at', 'provider_id', 'relationship_origin', 'acquisition_source')
+                    ->orderBy('pivot_last_interaction_at', 'desc')
+                    ->get();
 
+                return response()->json([
+                    'customers' => $customers,
+                    'total' => $customers->count(),
+                    'workspace_filtered' => true,
+                    'location_filtered' => true,
+                    'provider_slug' => $providerSlug,
+                    'provider_id' => $providerId,
+                    'location_slug' => $locationSlug,
+                    'location_id' => $location->id,
+                ]);
+            }
+            
+            // No location_slug provided
+            // Return provider-wide customers only if specialist has provider-wide access
+            if ($hasProviderWideAccess) {
+                $customers = $specialist->customers()
+                    ->wherePivot('provider_id', $providerId)
+                    ->withPivot('is_favorite', 'is_following', 'total_bookings', 'total_spent', 'last_interaction_at', 'provider_id', 'relationship_origin', 'acquisition_source')
+                    ->orderBy('pivot_last_interaction_at', 'desc')
+                    ->get();
+
+                return response()->json([
+                    'customers' => $customers,
+                    'total' => $customers->count(),
+                    'workspace_filtered' => true,
+                    'location_filtered' => false,
+                    'provider_slug' => $providerSlug,
+                    'provider_id' => $providerId,
+                    'provider_wide_access' => true,
+                ]);
+            }
+            
+            // Specialist has only location-specific access - require location selection
             return response()->json([
-                'customers' => $customers,
-                'total' => $customers->count(),
-                'workspace_filtered' => true,
-                'provider_slug' => $providerSlug,
-                'provider_id' => $assignment->provider_id,
-            ]);
+                'message' => 'Location selection required - you have location-specific access only',
+                'available_locations' => $assignments
+                    ->whereNotNull('location_id')
+                    ->map(fn($a) => [
+                        'location_id' => $a->location_id,
+                        'location_name' => $a->location->name,
+                        'location_slug' => $a->location->slug,
+                    ])
+                    ->unique('location_id')
+                    ->values(),
+            ], 400);
         }
 
         // If no provider_slug provided, return error - workspace context is required
         return response()->json([
             'message' => 'provider_slug is required for workspace-specific customer access',
             'available_workspaces' => $specialist->assignments()
-                ->where('status', 'active')
+                ->whereIn('status', ['ACTIVE', 'active'])
                 ->with('provider')
                 ->get()
                 ->map(fn($a) => [
@@ -443,11 +571,21 @@ class SpecialistPortalController extends Controller
             return response()->json(['message' => 'Specialist not found'], 404);
         }
 
+        // Resolve workspace context from the verified assignment.
+        // - No provider_slug → global mode: all bookings across every workspace.
+        // - provider_slug present → workspace mode: scoped to that assignment's provider.
+        $assignment = $this->resolveAssignment($specialist, $request->query('provider_slug'));
+
         $scope  = $request->query('scope', 'upcoming');   // today | upcoming | all
         $status = $request->query('status');              // optional filter
 
         $query = Booking::where('specialist_id', $specialist->id)
-            ->with(['customer', 'salon', 'service']);
+            ->with(['customer', 'location', 'service', 'bookingServices']);
+
+        // Workspace mode: filter to the provider derived from the verified assignment.
+        if ($assignment) {
+            $query->where('provider_id', $assignment->provider_id);
+        }
 
         // Apply date scope
         if ($scope === 'today') {
@@ -459,7 +597,6 @@ class SpecialistPortalController extends Controller
 
         // Apply optional status filter
         if ($status) {
-            // Map frontend tabs to DB values
             $statusMap = [
                 'upcoming'  => ['pending', 'confirmed'],
                 'completed' => ['completed'],
@@ -473,8 +610,10 @@ class SpecialistPortalController extends Controller
         $bookings = $query->orderBy('date', 'asc')->orderBy('time', 'asc')->get();
 
         return response()->json([
-            'bookings' => $bookings,
-            'total'    => $bookings->count(),
+            'bookings'      => $bookings,
+            'total'         => $bookings->count(),
+            'context'       => $assignment ? 'workspace' : 'global',
+            'provider_id'   => $assignment?->provider_id,
         ]);
     }
 
@@ -573,11 +712,16 @@ class SpecialistPortalController extends Controller
             return response()->json(['message' => 'Specialist not found'], 404);
         }
 
+        // Resolve workspace context from the verified assignment.
+        // - No provider_slug → global mode: calendar aggregates all workplaces.
+        // - provider_slug present → workspace mode: calendar scoped to this provider.
+        $assignment = $this->resolveAssignment($specialist, $request->query('provider_slug'));
+
         $weekStart = $request->query('week_start')
             ? \Carbon\CarbonImmutable::parse($request->query('week_start'))->startOfWeek(\Carbon\Carbon::MONDAY)
             : \Carbon\CarbonImmutable::now()->startOfWeek(\Carbon\Carbon::MONDAY);
 
-        $data = $calendarService->getWeekCalendar($specialist, $weekStart);
+        $data = $calendarService->getWeekCalendar($specialist, $weekStart, $assignment);
 
         return response()->json($data);
     }
@@ -624,7 +768,11 @@ class SpecialistPortalController extends Controller
             return response()->json(['message' => 'Specialist not found'], 404);
         }
 
-        $assignment = $specialist->assignments()->where('is_primary', true)->first();
+        // Workspace mode: resolve the specific assignment for this provider.
+        // Global mode (no slug): fall back to the primary assignment for backwards compat.
+        $assignment = $this->resolveAssignment($specialist, $request->query('provider_slug'))
+            ?? $specialist->assignments()->where('is_primary', true)->first();
+
         if (!$assignment) {
             return response()->json(['message' => 'No assignment found'], 404);
         }
@@ -633,19 +781,20 @@ class SpecialistPortalController extends Controller
             ->get()
             ->map(function ($schedule) {
                 return [
-                    'day' => $schedule->day_of_week,
-                    'active' => $schedule->is_working_day,
-                    'start' => $schedule->start_time,
-                    'end' => $schedule->end_time,
+                    'day'         => $schedule->day_of_week,
+                    'active'      => $schedule->is_working_day,
+                    'start'       => $schedule->start_time,
+                    'end'         => $schedule->end_time,
                     'break_start' => $schedule->break_start,
-                    'break_end' => $schedule->break_end,
+                    'break_end'   => $schedule->break_end,
                 ];
             });
 
         return response()->json([
             'assignment_id' => $assignment->id,
+            'provider_id'   => $assignment->provider_id,
             'schedule_mode' => $assignment->schedule_mode,
-            'schedules' => $schedules,
+            'schedules'     => $schedules,
         ]);
     }
 
@@ -662,16 +811,21 @@ class SpecialistPortalController extends Controller
         }
 
         $validated = $request->validate([
-            'availability' => 'required|array',
-            'availability.*.day' => 'required|string',
-            'availability.*.active' => 'required|boolean',
-            'availability.*.start' => 'nullable|string',
-            'availability.*.end' => 'nullable|string',
-            'availability.*.break_start' => 'nullable|string',
-            'availability.*.break_end' => 'nullable|string',
+            'availability'              => 'required|array',
+            'availability.*.day'        => 'required|string',
+            'availability.*.active'     => 'required|boolean',
+            'availability.*.start'      => 'nullable|string',
+            'availability.*.end'        => 'nullable|string',
+            'availability.*.break_start'=> 'nullable|string',
+            'availability.*.break_end'  => 'nullable|string',
         ]);
 
-        $assignment = $specialist->assignments()->where('is_primary', true)->first();
+        // SECURITY: provider_slug must be present to know WHICH assignment we are updating.
+        // Updating availability without knowing which workspace is ambiguous and dangerous.
+        // We resolve from the verified assignment — not raw from provider_slug.
+        $assignment = $this->resolveAssignment($specialist, $request->query('provider_slug'))
+            ?? $specialist->assignments()->where('is_primary', true)->first();
+
         if (!$assignment) {
             return response()->json(['message' => 'No assignment found'], 404);
         }
@@ -681,24 +835,64 @@ class SpecialistPortalController extends Controller
             $assignment->update(['schedule_mode' => 'CUSTOM']);
         }
 
-        // Update schedules
+        // Replace schedules for this specific assignment only
         \App\Models\AssignmentSchedule::where('assignment_id', $assignment->id)->delete();
 
         foreach ($validated['availability'] as $day) {
             $isWorking = $day['active'] && !empty($day['start']) && !empty($day['end']);
 
             \App\Models\AssignmentSchedule::create([
-                'assignment_id' => $assignment->id,
-                'day_of_week' => $day['day'],
+                'assignment_id'  => $assignment->id,
+                'day_of_week'    => $day['day'],
                 'is_working_day' => $isWorking,
-                'start_time' => $isWorking ? $day['start'] : null,
-                'end_time' => $isWorking ? $day['end'] : null,
-                'break_start' => $day['break_start'] ?? null,
-                'break_end' => $day['break_end'] ?? null,
+                'start_time'     => $isWorking ? $day['start'] : null,
+                'end_time'       => $isWorking ? $day['end'] : null,
+                'break_start'    => $day['break_start'] ?? null,
+                'break_end'      => $day['break_end'] ?? null,
             ]);
         }
 
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success'     => true,
+            'assignment_id' => $assignment->id,
+            'provider_id'   => $assignment->provider_id,
+        ]);
+    }
+
+    /**
+     * Get Provider services for Specialist to attach (Employee/Contractor flow).
+     * 
+     * The Specialist must have an active assignment with the Provider to view their services.
+     */
+    public function getProviderServices(string $providerSlug): JsonResponse
+    {
+        $account    = auth('specialist')->user();
+        $specialist = $account->specialist;
+
+        if (!$specialist) {
+            return response()->json(['message' => 'Specialist not found'], 404);
+        }
+
+        // Resolve the Specialist's active assignment for this provider slug
+        $assignment = $this->resolveAssignment($specialist, $providerSlug);
+
+        if (!$assignment) {
+            return response()->json(['message' => 'You do not have an active assignment at this workspace.'], 403);
+        }
+
+        // Get the provider from the verified assignment
+        $provider = $assignment->provider;
+
+        if (!$provider) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+
+        // Fetch the provider's services
+        $services = \App\Models\Service::where('provider_id', $provider->id)
+            ->where('active', true)
+            ->get();
+
+        return response()->json($services);
     }
 
     /**
@@ -780,10 +974,13 @@ class SpecialistPortalController extends Controller
             ->first();
 
         $provider = \App\Models\Provider::find($validated['provider_id']);
-        $isOwner = $assignment && (in_array($assignment->role, ['OWNER', 'MANAGER']) || $provider?->type === 'independent_specialist');
+        $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
+        // Business authority is determined by ProviderUser, not SpecialistAssignment.role
+        // For independent specialists, check if Provider type is independent
+        $isIndependentSpecialist = $definition && $definition->isIndependent;
 
-        if (!$isOwner) {
-            return response()->json(['message' => 'You do not have permission to create services for this Provider.'], 403);
+        if (!$isIndependentSpecialist) {
+            return response()->json(['message' => 'Only independent specialists can create services for their Provider.'], 403);
         }
 
         // Create the service
@@ -810,10 +1007,10 @@ class SpecialistPortalController extends Controller
             'updated_at'    => now(),
         ]);
 
-        // Also attach to the Provider's salon (if assignment has a salon_id)
-        if ($assignment->salon_id) {
-            \Illuminate\Support\Facades\DB::table('salon_service')->updateOrInsert(
-                ['salon_id' => $assignment->salon_id, 'service_id' => $service->id],
+        // Also attach to the Provider's location (if assignment has a location_id)
+        if ($assignment->location_id) {
+            \Illuminate\Support\Facades\DB::table('location_service')->updateOrInsert(
+                ['location_id' => $assignment->location_id, 'service_id' => $service->id],
                 ['is_available' => true, 'updated_at' => now(), 'created_at' => now()]
             );
         }
@@ -845,10 +1042,13 @@ class SpecialistPortalController extends Controller
             ->first();
 
         $provider = \App\Models\Provider::find($service->provider_id);
-        $isOwner = $assignment && (in_array($assignment->role, ['OWNER', 'MANAGER']) || $provider?->type === 'independent_specialist');
+        $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
+        // Business authority is determined by ProviderUser, not SpecialistAssignment.role
+        // For independent specialists, check if Provider type is independent
+        $isIndependentSpecialist = $definition && $definition->isIndependent;
 
-        if (!$isOwner) {
-            return response()->json(['message' => 'You do not have permission to edit this service.'], 403);
+        if (!$isIndependentSpecialist) {
+            return response()->json(['message' => 'Only independent specialists can edit services for their Provider.'], 403);
         }
 
         $validated = $request->validate([
@@ -921,6 +1121,90 @@ class SpecialistPortalController extends Controller
         $expertise->update($validated);
 
         return response()->json(['message' => 'Expertise updated successfully.', 'expertise' => $expertise]);
+    }
+
+    /**
+     * Check for appointments needing attention (no-show detection)
+     * 
+     * This endpoint is called periodically by the frontend to detect:
+     * - Bookings where scheduled time has passed
+     * - No session has been started
+     * - Grace period has elapsed (15 minutes after scheduled time)
+     * 
+     * The backend owns the state transition - frontend only triggers the check.
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function appointmentsNeedingAttention(Request $request): JsonResponse
+    {
+        $account = auth('specialist')->user();
+        $specialist = $account->specialist;
+
+        if (!$specialist) {
+            return response()->json(['message' => 'Specialist not found'], 404);
+        }
+
+        // Resolve workspace context
+        $assignment = $this->resolveAssignment($specialist, $request->query('provider_slug'));
+
+        // Grace period: 15 minutes after scheduled time
+        $gracePeriodMinutes = 15;
+        $cutoffTime = now()->subMinutes($gracePeriodMinutes);
+
+        // Query for bookings that should be marked as no-show
+        $query = Booking::where('specialist_id', $specialist->id)
+            ->whereIn('status', ['confirmed', 'pending'])
+            ->where(function ($q) use ($cutoffTime) {
+                $q->where(function ($dateQuery) use ($cutoffTime) {
+                    // Booking date is in the past
+                    $dateQuery->where('date', '<', $cutoffTime->format('Y-m-d'))
+                        ->orWhere(function ($timeQuery) use ($cutoffTime) {
+                            // Booking date is today but time has passed grace period
+                            $timeQuery->where('date', '=', $cutoffTime->format('Y-m-d'))
+                                ->where('time', '<=', $cutoffTime->format('H:i'));
+                        });
+                });
+            })
+            ->whereDoesntHave('bookingServices', function ($q) {
+                // No session has been started
+                $q->whereNotNull('started_at');
+            });
+
+        // Workspace mode: filter to the provider derived from the verified assignment
+        if ($assignment) {
+            $query->where('provider_id', $assignment->provider_id);
+        }
+
+        $bookingsNeedingAttention = $query->with(['customer', 'location', 'service', 'bookingServices'])->get();
+
+        // Mark these bookings as no-show
+        $noShowCount = 0;
+        foreach ($bookingsNeedingAttention as $booking) {
+            try {
+                app(\App\Services\BookingService::class)->transitionStatus(
+                    $booking,
+                    'no_show',
+                    'staff',
+                    auth('specialist')->id(),
+                    'Marked as no-show by specialist'
+                );
+                $noShowCount++;
+            } catch (\Exception $e) {
+                // Log error but continue processing other bookings
+                \Log::error('Failed to mark booking as no-show', [
+                    'booking_id' => $booking->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        return response()->json([
+            'processed' => $noShowCount,
+            'bookings' => $bookingsNeedingAttention,
+            'context' => $assignment ? 'workspace' : 'global',
+            'provider_id' => $assignment?->provider_id,
+        ]);
     }
 
     /**
@@ -1006,7 +1290,7 @@ class SpecialistPortalController extends Controller
         $request->merge([
             'customer_id' => $customerId,
             'specialist_id' => $specialist->id,
-            'salon_id' => $request->salon_id ?? $specialist->salons()->first()?->id,
+            'salon_id' => $request->salon_id ?? $specialist->assignments()->first()?->provider_id,
         ]);
 
         $controller = app(\App\Http\Controllers\SpecialistAssessmentController::class);
@@ -1052,11 +1336,10 @@ class SpecialistPortalController extends Controller
             }
         }
 
-        // Force specialist_id from auth, ignore any client input
+        // Force specialist_id and customer_id from auth, ignore any client input
         $request->merge([
             'customer_id' => $customerId,
             'specialist_id' => $specialist->id,
-            'salon_id' => $request->salon_id ?? $specialist->salons()->first()?->id,
         ]);
 
         $controller = app(\App\Http\Controllers\SpecialistAssessmentController::class);
@@ -1104,10 +1387,15 @@ class SpecialistPortalController extends Controller
             return response()->json(['message' => 'Unauthorized to update this booking'], 403);
         }
 
-        // Authorization: Specialist must have an active assignment at this salon
+        // Authorization: Specialist must have an active assignment at this branch
         $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $specialist->id)
-            ->where('salon_id', $booking->salon_id)
-            ->first();
+            ->where('provider_id', $booking->provider_id);
+            
+        if ($booking->location_id) {
+            $assignment->where('location_id', $booking->location_id);
+        }
+        
+        $assignment = $assignment->first();
 
         if (!$assignment) {
             return response()->json(['message' => 'Unauthorized: No active assignment at this branch'], 403);
@@ -1421,13 +1709,13 @@ class SpecialistPortalController extends Controller
             ->unique()
             ->count();
 
-        // Group by salon to show the specialist which locations generated what
-        $bySalon = $earnings
+        // Group by location to show the specialist which locations generated what
+        $byLocation = $earnings
             ->filter(fn ($e) => $e->source_type === \App\Models\Booking::class && $e->source)
-            ->groupBy(fn ($e) => $e->source->salon_id)
-            ->map(function ($group, $salonId) {
+            ->groupBy(fn ($e) => $e->source->location_id)
+            ->map(function ($group, $locationId) {
                 return [
-                    'salon_id' => $salonId,
+                    'location_id' => $locationId,
                     'clients'  => $group
                         ->pluck('source.customer_id')
                         ->filter()
@@ -1443,7 +1731,7 @@ class SpecialistPortalController extends Controller
             'total_settled'      => $totalSettled,
             'outstanding_balance'=> $outstandingBalance,
             'clients'            => $clients,
-            'by_salon'           => $bySalon,
+            'by_location'        => $byLocation,
         ]);
     }
 

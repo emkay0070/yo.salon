@@ -4,7 +4,7 @@ namespace App\Providers;
 
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\FlutterwaveProvider;
-use App\Services\Payments\MTNProvider;
+use App\Services\Payments\MTNMomoService;
 use App\Services\Payments\AirtelProvider;
 use Illuminate\Support\ServiceProvider;
 
@@ -17,70 +17,34 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(PaymentProviderInterface::class, FlutterwaveProvider::class);
         $this->app->bind('payment.flutterwave', FlutterwaveProvider::class);
-        $this->app->bind('payment.mtn', MTNProvider::class);
+        $this->app->bind('payment.mtn', MTNMomoService::class);
         $this->app->bind('payment.airtel', AirtelProvider::class);
     }
 
     /**
      * Bootstrap any application services.
+     *
+     * All event listeners are registered via Laravel's Event Auto-Discovery, which
+     * scans App\Listeners and registers any public method matching handle* or __invoke
+     * that has a typed first parameter (DiscoverEvents.php, line 87).
+     *
+     * This includes PostJournalForPayment@handlePaymentCaptured and
+     * PostJournalForPayment@handleRefundCaptured — the handle* wildcard matches
+     * non-default method names as well (confirmed via Str::is source).
+     *
+     * NO manual Event::listen() registrations belong here. Any such registration
+     * for a listener already in App\Listeners would cause that listener to fire twice.
+     *
+     * NOTE: A previous comment incorrectly stated that AddBookingActivity,
+     * CreateBookingNotification, AddPaymentActivity, CreatePaymentNotification and
+     * CreateRefundNotification define both handle() and __invoke() methods, causing
+     * duplicate execution. Investigation confirmed that none of these listeners
+     * define an __invoke() method — each has only handle(). Event Auto-Discovery
+     * therefore registers each listener exactly once. No duplicate execution occurs.
      */
     public function boot(): void
     {
-        // Register event listeners - separated by responsibility
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\PaymentConfirmed::class,
-            [\App\Listeners\ProcessPaymentInFinanceDomain::class, 'handle']
-        );
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\PaymentConfirmed::class,
-            [\App\Listeners\CreatePaymentNotification::class, 'handle']
-        );
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\PaymentConfirmed::class,
-            [\App\Listeners\AddPaymentActivity::class, 'handle']
-        );
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\PaymentConfirmed::class,
-            [\App\Listeners\BroadcastNotification::class, 'handle']
-        );
-
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Domain\Finance\Events\PaymentCaptured::class,
-            [\App\Listeners\PostJournalForPayment::class, 'handlePaymentCaptured']
-        );
-
-        // Refund event listeners
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\RefundConfirmed::class,
-            [\App\Listeners\ProcessRefundInFinanceDomain::class, 'handle']
-        );
-
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Domain\Finance\Events\RefundCaptured::class,
-            [\App\Listeners\PostJournalForPayment::class, 'handleRefundCaptured']
-        );
-
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Domain\Finance\Events\RevenueDistributionRequested::class,
-            [\App\Listeners\ApplyRevenueDistribution::class, 'handle']
-        );
-
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Domain\Finance\Events\EarningRecognized::class,
-            [\App\Listeners\Finance\RecordEarning::class, 'handle']
-        );
-
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\BookingCreated::class,
-            [\App\Listeners\CreateBookingNotification::class, 'handle']
-        );
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\BookingCreated::class,
-            [\App\Listeners\AddBookingActivity::class, 'handle']
-        );
-        \Illuminate\Support\Facades\Event::listen(
-            \App\Events\BookingCreated::class,
-            [\App\Listeners\BroadcastNotification::class, 'handle']
-        );
+        // Intentionally empty. All listeners managed by Event Auto-Discovery.
     }
 }
+

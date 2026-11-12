@@ -10,11 +10,13 @@ interface SalonInfo {
   name: string;
   slug: string;
   logo: string | null;
+  logo_url: string | null;
 }
 
 interface BrandSettings {
   experience_family: string;
   logo: string | null;
+  logo_url: string | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;
@@ -73,12 +75,12 @@ interface BrandContextType {
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
 
 export function BrandProvider({ children }: { children: ReactNode }) {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
   
   const { data: brand, isLoading, error, refetch } = useQuery({
-    queryKey: ['brand-experience', salonId],
+    queryKey: ['brand-experience', providerId],
     queryFn: () => apiClient.get('/v1/brand-experience'),
-    enabled: !!salonId,
+    enabled: !!providerId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet
   });

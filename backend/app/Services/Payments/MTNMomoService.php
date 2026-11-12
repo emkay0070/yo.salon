@@ -208,12 +208,15 @@ class MTNMomoService implements PaymentProviderInterface
     }
 
     /**
-     * Handle webhook callback from MTN
+     * Handle webhook callback from MTN.
+     * Parses and returns webhook data — does NOT update database directly.
+     * Database updates are handled by BookingPaymentService via verifyBookingPayment()
+     * to ensure consistent safety checks (expiry, cancellation, idempotency, fees).
      */
     public function handleWebhook(array $payload, string $signature): array
     {
         $transactionId = $payload['externalId'] ?? null;
-        
+
         if (!$transactionId) {
             throw new \Exception('MTN MoMo: Webhook missing externalId');
         }
@@ -224,18 +227,6 @@ class MTNMomoService implements PaymentProviderInterface
             'status' => $status,
             'transaction_id' => $transactionId,
         ]);
-
-        $paymentRequest = \App\Models\PaymentRequest::where('provider_reference', $transactionId)->first();
-        if ($paymentRequest) {
-            if ($status === 'successful' || $status === 'completed') {
-                if ($paymentRequest->status !== 'successful' && $paymentRequest->status !== 'paid') {
-                    $paymentRequest->update(['status' => 'successful']);
-                    $this->processSuccessfulPayment($paymentRequest, $payload);
-                }
-            } elseif (in_array($status, ['failed', 'expired', 'cancelled'])) {
-                $paymentRequest->update(['status' => 'failed']);
-            }
-        }
 
         return [
             'event'     => 'transaction.updated',
@@ -421,7 +412,7 @@ class MTNMomoService implements PaymentProviderInterface
     private function processSuccessfulPayment(\App\Models\PaymentRequest $paymentRequest, array $mtnData): void
     {
         $transaction = \App\Models\Transaction::create([
-            'salon_id' => $paymentRequest->salon_id,
+            'provider_id' => $paymentRequest->provider_id,
             'booking_id' => $paymentRequest->booking_id,
             'customer_id' => $paymentRequest->customer_id,
             'payment_method_id' => $paymentRequest->payment_method_id,

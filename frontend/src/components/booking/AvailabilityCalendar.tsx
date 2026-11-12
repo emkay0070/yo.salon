@@ -69,8 +69,8 @@ export interface TimeSlot {
  * @see AvailabilityPublicStatusValue for the 4 public status values
  */
 export interface AvailabilityData {
-  salon_id: string;
-  salon_name?: string | null;
+  provider_id: string;
+  provider_name?: string | null;
   date: string;
   timezone?: string | null;
   operating_hours?: {
@@ -90,7 +90,7 @@ export interface AvailabilityData {
 }
 
 interface AvailabilityCalendarProps {
-  salonId: string;
+  providerId: string;
   serviceId?: string;
   specialistId?: string;
   onSlotSelect?: (slot: TimeSlot) => void;
@@ -98,7 +98,7 @@ interface AvailabilityCalendarProps {
 }
 
 export default function AvailabilityCalendar({
-  salonId,
+  providerId,
   serviceId,
   specialistId,
   onSlotSelect,
@@ -112,15 +112,15 @@ export default function AvailabilityCalendar({
   };
 
   const { data: availability, isLoading, refetch } = useQuery({
-    queryKey: ['availability', salonId, formatDate(selectedDate), serviceId, specialistId],
-    queryFn: () => apiClient.get(`/salons/${salonId}/availability`, {
+    queryKey: ['availability', providerId, formatDate(selectedDate), serviceId, specialistId],
+    queryFn: () => apiClient.get(`/providers/${providerId}/availability`, {
       params: {
         date: formatDate(selectedDate),
         service_id: serviceId,
         specialist_id: specialistId,
       },
     }),
-    enabled: !!salonId,
+    enabled: !!providerId,
   });
 
   // Poll for availability updates every 30 seconds
@@ -129,14 +129,14 @@ export default function AvailabilityCalendar({
       await refetch();
     },
     {
-      enabled: !!salonId,
+      enabled: !!providerId,
       interval: 30000, // 30 seconds
     }
   );
 
   const { data: batchAvailability } = useQuery({
-    queryKey: ['batch-availability', salonId, formatDate(currentDate)],
-    queryFn: () => apiClient.get(`/salons/${salonId}/availability/batch`, {
+    queryKey: ['batch-availability', providerId, formatDate(currentDate)],
+    queryFn: () => apiClient.get(`/providers/${providerId}/availability/batch`, {
       params: {
         start_date: formatDate(currentDate),
         end_date: formatDate(new Date(currentDate.getTime() + 13 * 24 * 60 * 60 * 1000)), // 14 days
@@ -144,7 +144,7 @@ export default function AvailabilityCalendar({
         specialist_id: specialistId,
       },
     }),
-    enabled: !!salonId,
+    enabled: !!providerId,
   });
 
   const goToPreviousDay = () => {

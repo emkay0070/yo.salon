@@ -2,6 +2,7 @@
 
 namespace App\Domain\Availability\Constraints;
 
+use App\Domain\Availability\Contracts\AvailabilityConstraint;
 use App\Domain\Availability\DTOs\AvailabilityContext;
 use App\Domain\Availability\DTOs\WindowDTO;
 use Illuminate\Support\Collection;
@@ -9,7 +10,7 @@ use Carbon\Carbon;
 
 class ResolvedScheduleConstraint implements AvailabilityConstraint
 {
-    public function apply(Collection $windows, AvailabilityContext $context): Collection
+    public function apply(AvailabilityContext $context, Collection $windows): Collection
     {
         $schedule = $context->resolvedSchedule;
 

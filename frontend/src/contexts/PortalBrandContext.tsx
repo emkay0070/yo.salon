@@ -15,6 +15,7 @@ interface SalonInfo {
 interface BrandSettings {
   experience_family: string;
   logo: string | null;
+  logo_url: string | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;
@@ -77,7 +78,7 @@ export function PortalBrandProvider({ children }: { children: ReactNode }) {
   
   const { data: brand, isLoading, error, refetch } = useQuery({
     queryKey: ['portal-brand-experience', salon?.slug],
-    queryFn: () => portalApiClient.get(`/salons/${salon?.slug}/brand-experience`),
+    queryFn: () => portalApiClient.get(`/v1/providers/${salon?.slug}/brand-experience`),
     enabled: !!salon?.slug,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // Don't retry on 404 - endpoint may not be deployed yet

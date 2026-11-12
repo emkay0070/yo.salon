@@ -4,9 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Booking;
 use App\Models\Customer;
+use App\Models\Location;
 use App\Models\PaymentMethod;
 use App\Models\PaymentRequest;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,7 +15,8 @@ class PaymentIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected Salon $salon;
+    protected Provider $provider;
+    protected Location $location;
     protected Customer $customer;
     protected Booking $booking;
     protected PaymentMethod $paymentMethod;
@@ -24,23 +26,25 @@ class PaymentIntegrationTest extends TestCase
     {
         parent::setUp();
         
-        $this->salon = Salon::factory()->create();
+        $this->provider = Provider::factory()->create();
+        $this->location = Location::factory()->create(['provider_id' => $this->provider->id]);
         $this->customer = Customer::factory()->create();
         
         $this->booking = Booking::factory()->create([
-            'salon_id' => $this->salon->id,
+            'location_id' => $this->location->id,
+            'provider_id' => $this->provider->id,
             'customer_id' => $this->customer->id,
             'payment_status' => 'pending'
         ]);
         
         $this->paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'provider' => 'mtn_momo',
             'type' => 'mobile_money'
         ]);
 
         $this->paymentRequest = PaymentRequest::create([
-            'salon_id' => $this->salon->id,
+            'provider_id' => $this->provider->id,
             'booking_id' => $this->booking->id,
             'customer_id' => $this->customer->id,
             'payment_method_id' => $this->paymentMethod->id,
@@ -70,7 +74,7 @@ class PaymentIntegrationTest extends TestCase
         // Check Payment Request was updated
         $this->assertDatabaseHas('payment_requests', [
             'id' => $this->paymentRequest->id,
-            'status' => 'successful',
+            'status' => 'paid',
             'provider_reference' => 'MTN-12345'
         ]);
         

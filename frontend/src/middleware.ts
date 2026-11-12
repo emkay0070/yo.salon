@@ -19,7 +19,7 @@ export const config = {
  * Platform application routes — these belong to Yo.Salon the product,
  * not to any tenant. Even when accessed via a tenant subdomain or custom
  * domain, these routes must resolve to the existing src/app/* pages
- * WITHOUT being rewritten into /salons/[slug]/* (which doesn't exist).
+ * WITHOUT being rewritten into /providers/[slug]/* (which doesn't exist).
  *
  * The tenant context (slug) is passed as a header so application pages
  * can still know which salon the user is operating under.
@@ -123,11 +123,11 @@ export function middleware(req: NextRequest) {
   // ---------------------------------------------------------
   // TENANT SUBDOMAIN (non-platform route)
   // Rewrite to the tenant public salon experience:
-  //   freshcuts.localhost:3000/  → /salons/freshcuts
-  //   freshcuts.localhost:3000/services → /salons/freshcuts/services
+  //   freshcuts.localhost:3000/  → /freshcuts
+  //   freshcuts.localhost:3000/services → /freshcuts/services
   // ---------------------------------------------------------
   if (tenantSlug && tenantSlug !== 'www') {
-    const newPath = `/salons/${tenantSlug}${url.pathname}${url.search}`;
+    const newPath = `/${tenantSlug}${url.pathname}${url.search}`;
     return NextResponse.rewrite(new URL(newPath, req.url));
   }
 

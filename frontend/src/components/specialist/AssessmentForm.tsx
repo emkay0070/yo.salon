@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { Scissors, User, Save, X, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface Customer {
   id: string;
@@ -13,14 +14,14 @@ interface Customer {
 
 interface AssessmentFormProps {
   customer: Customer;
-  salonId: string;
+  providerId: string;
   specialistId: string;
   bookingId?: string;
   onCancel: () => void;
   onSuccess: () => void;
 }
 
-export default function AssessmentForm({ customer, salonId, specialistId, bookingId, onCancel, onSuccess }: AssessmentFormProps) {
+export default function AssessmentForm({ customer, providerId, specialistId, bookingId, onCancel, onSuccess }: AssessmentFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     // Hair Assessment
@@ -50,25 +51,13 @@ export default function AssessmentForm({ customer, salonId, specialistId, bookin
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('specialist_auth_token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/assessments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          customer_id: customer.id,
-          specialist_id: specialistId,
-          salon_id: salonId,
-          booking_id: bookingId,
-          ...formData,
-        }),
+      await apiClient.post('/v1/assessments', {
+        customer_id: customer.id,
+        specialist_id: specialistId,
+        provider_id: providerId,
+        booking_id: bookingId,
+        ...formData,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create assessment');
-      }
 
       onSuccess();
     } catch (error) {

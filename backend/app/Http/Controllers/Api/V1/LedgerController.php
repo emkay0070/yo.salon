@@ -11,23 +11,23 @@ use Illuminate\Http\JsonResponse;
 class LedgerController extends Controller
 {
     /**
-     * Get ledger entries representing the economic truth of the salon.
+     * Get ledger entries representing the economic truth of the provider.
      */
     public function index(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) {
-            return response()->json(['message' => 'No salon associated with your account'], 403);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) {
+            return response()->json(['message' => 'No provider associated with your account'], 403);
         }
 
-        // We fetch JournalEntries that belong to this salon's tenant
-        // Assuming JournalEntry is linked to tenant/salon context via tenant_id or salon_id.
-        // Or we can fetch LedgerEntries that belong to the salon's LedgerAccounts.
+        // We fetch JournalEntries that belong to this provider's tenant
+        // Assuming JournalEntry is linked to tenant/provider context via tenant_id or provider_id.
+        // Or we can fetch LedgerEntries that belong to the provider's LedgerAccounts.
         
         $query = LedgerEntry::with(['journalEntry', 'ledgerAccount', 'reference'])
-            ->whereHas('ledgerAccount', function ($q) use ($salon) {
-                $q->where('owner_type', \App\Models\Salon::class)
-                  ->where('owner_id', $salon->id);
+            ->whereHas('ledgerAccount', function ($q) use ($provider) {
+                $q->where('owner_type', \App\Models\Provider::class)
+                  ->where('owner_id', $provider->id);
             });
 
         if ($request->has('type')) {

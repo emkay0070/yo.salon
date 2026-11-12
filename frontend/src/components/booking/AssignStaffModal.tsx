@@ -31,14 +31,14 @@ interface Specialist {
 
 export default function AssignStaffModal({ isOpen, onClose, booking, onSuccess }: AssignStaffModalProps) {
   const queryClient = useQueryClient();
-  const { salonId } = useRole();
+  const { providerId, locationId } = useRole();
   const [selectedSpecialist, setSelectedSpecialist] = useState<Specialist | null>(null);
   const [showSpecialists, setShowSpecialists] = useState(false);
 
   const { data: specialists = [] } = useQuery({
-    queryKey: ['specialists', salonId],
-    queryFn: () => salonId ? apiClient.getSalonSpecialists(salonId) : Promise.resolve([]),
-    enabled: isOpen && !!salonId,
+    queryKey: ['assignable-specialists', providerId, locationId],
+    queryFn: () => providerId ? apiClient.getAssignableSpecialists(providerId, locationId || undefined) : Promise.resolve([]),
+    enabled: isOpen && !!providerId,
   });
 
   const updateBookingMutation = useMutation({
@@ -51,10 +51,9 @@ export default function AssignStaffModal({ isOpen, onClose, booking, onSuccess }
     onSuccess: (response) => {
       console.log('[AssignStaffModal] Update successful, response:', response);
       console.log('[AssignStaffModal] Invalidating queries...');
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', providerId, locationId] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
-      queryClient.invalidateQueries({ queryKey: ['specialists', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['specialists', providerId] });
       console.log('[AssignStaffModal] Queries invalidated');
       setSelectedSpecialist(null);
       setShowSpecialists(false);

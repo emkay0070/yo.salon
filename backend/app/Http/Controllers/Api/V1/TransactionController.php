@@ -24,11 +24,11 @@ class TransactionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $query = Transaction::with(['booking', 'customer', 'paymentMethod'])
-            ->where('salon_id', $salonId);
+            ->where('provider_id', $providerId);
 
         if ($request->has('type')) {
             $query->where('type', $request->query('type'));
@@ -58,8 +58,8 @@ class TransactionController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $validated = $request->validate([
             'booking_id'        => 'nullable|exists:bookings,id',
@@ -77,7 +77,7 @@ class TransactionController extends Controller
         if (!$paymentMethodId && !empty($validated['payment_method'])) {
             $provider = $validated['payment_method'];
             $pm = \App\Models\PaymentMethod::firstOrCreate(
-                ['salon_id' => $salonId, 'provider' => $provider],
+                ['provider_id' => $providerId, 'provider' => $provider],
                 [
                     'type' => $provider === 'cash' ? 'cash' : ($provider === 'visa' ? 'card' : 'mobile_money'),
                     'display_name' => ucfirst($provider)
@@ -93,7 +93,7 @@ class TransactionController extends Controller
         $paymentAccount = $paymentMethod ? $this->paymentRoutingService->determinePaymentAccount($paymentMethod) : null;
 
         $transaction = Transaction::create([
-            'salon_id'           => $salonId,
+            'provider_id'        => $providerId,
             'booking_id'         => $validated['booking_id'] ?? null,
             'customer_id'        => $validated['customer_id'] ?? null,
             'payment_method_id'  => $paymentMethodId,
@@ -128,7 +128,7 @@ class TransactionController extends Controller
 
     public function show(Transaction $transaction): JsonResponse
     {
-        return response()->json($transaction->load(['booking', 'customer', 'paymentMethod', 'salon']));
+        return response()->json($transaction->load(['booking', 'customer', 'paymentMethod', 'provider']));
     }
 
     /**
@@ -136,17 +136,17 @@ class TransactionController extends Controller
      */
     public function summary(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $date = $request->query('date', now()->toDateString());
 
-        $todayTransactions = Transaction::where('salon_id', $salonId)
+        $todayTransactions = Transaction::where('provider_id', $providerId)
             ->whereDate('created_at', $date)
             ->where('status', 'completed')
             ->get();
 
-        $yesterdayTransactions = Transaction::where('salon_id', $salonId)
+        $yesterdayTransactions = Transaction::where('provider_id', $providerId)
             ->whereDate('created_at', now()->subDay()->toDateString())
             ->where('status', 'completed')
             ->get();

@@ -7,13 +7,15 @@ interface StaffIntel {
   id: string;
   name: string;
   rank: number;
-  intelligence_score: number;
+  intelligence_score: number | null;
   score_breakdown: {
     revenue: number;
     repeat_clients: number;
     upsells: number;
     rating: number;
-  };
+  } | null;
+  confidence: string;
+  sample_size: number;
   bookings: number;
   revenue_generated: number;
 }
@@ -52,26 +54,46 @@ export default function StaffLeaderboard({ staff }: StaffLeaderboardProps) {
                   <span className="text-gold font-medium">UGX {member.revenue_generated.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
-              
+
               <div className="text-right">
-                <div className="text-sm font-bold text-gold">{member.intelligence_score}</div>
-                <div className="text-[10px] text-text-muted uppercase">Int. Score</div>
+                {member.intelligence_score !== null ? (
+                  <>
+                    <div className="text-sm font-bold text-gold">{member.intelligence_score}</div>
+                    <div className="text-[10px] text-text-muted uppercase">Int. Score</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-medium text-text-muted">N/A</div>
+                    <div className="text-[10px] text-text-muted uppercase">{member.confidence}</div>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Score Breakdown Bar */}
-            <div className="h-1.5 w-full bg-surface-light rounded-full flex overflow-hidden">
-              <div className="h-full bg-blue-500" style={{ width: `${member.score_breakdown.revenue * 0.4}%` }} title="Revenue"></div>
-              <div className="h-full bg-green-500" style={{ width: `${member.score_breakdown.repeat_clients * 0.25}%` }} title="Repeat Clients"></div>
-              <div className="h-full bg-purple-500" style={{ width: `${member.score_breakdown.upsells * 0.2}%` }} title="Upsells"></div>
-              <div className="h-full bg-yellow-500" style={{ width: `${member.score_breakdown.rating * 0.15}%` }} title="Rating"></div>
-            </div>
-            <div className="flex justify-between text-[9px] text-text-muted mt-1 uppercase tracking-wider">
-              <span>Rev</span>
-              <span>Repeat</span>
-              <span>Upsell</span>
-              <span>Rate</span>
-            </div>
+            {/* Score Breakdown Bar - only show if we have a score */}
+            {member.score_breakdown !== null && (
+              <>
+                <div className="h-1.5 w-full bg-surface-light rounded-full flex overflow-hidden">
+                  <div className="h-full bg-blue-500" style={{ width: `${member.score_breakdown.revenue * 0.4}%` }} title="Revenue"></div>
+                  <div className="h-full bg-green-500" style={{ width: `${member.score_breakdown.repeat_clients * 0.25}%` }} title="Repeat Clients"></div>
+                  <div className="h-full bg-purple-500" style={{ width: `${member.score_breakdown.upsells * 0.2}%` }} title="Upsells"></div>
+                  <div className="h-full bg-yellow-500" style={{ width: `${member.score_breakdown.rating * 0.15}%` }} title="Rating"></div>
+                </div>
+                <div className="flex justify-between text-[9px] text-text-muted mt-1 uppercase tracking-wider">
+                  <span>Rev</span>
+                  <span>Repeat</span>
+                  <span>Upsell</span>
+                  <span>Rate</span>
+                </div>
+              </>
+            )}
+
+            {/* Show insufficient data message */}
+            {member.score_breakdown === null && (
+              <div className="text-xs text-text-muted text-center py-2">
+                Insufficient data ({member.sample_size} bookings)
+              </div>
+            )}
           </div>
         ))}
       </div>

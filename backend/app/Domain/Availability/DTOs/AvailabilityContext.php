@@ -16,9 +16,10 @@ class AvailabilityContext
     public function __construct(
         public readonly string        $assignmentId,
         public readonly string        $specialistId,
-        public readonly string        $salonId,
         public readonly string        $providerId,
+        public readonly ?string       $locationId,
         public readonly CarbonImmutable $date,
+        public readonly ?string       $serviceId,
 
         // Resolved schedule for this day (already evaluated through Provider -> Branch -> Assignment inheritance)
         public readonly ?\App\Domain\Availability\DTOs\ResolvedSchedule $resolvedSchedule,
@@ -27,7 +28,7 @@ class AvailabilityContext
         public readonly ?array        $scheduleOverride,   // same shape as assignmentSchedule
 
         // Schedule exceptions (hierarchical: provider/salon/assignment) for this date.
-        // Narrowest scope (assignment) wins over broader (provider).
+        // Narrowest scope (assignment) wins over broadlocrti(provider).
         public readonly \Illuminate\Support\Collection $scheduleExceptions,
 
         // Time-off entries (already filtered to this date)

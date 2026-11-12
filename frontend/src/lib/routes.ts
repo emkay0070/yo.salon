@@ -1,17 +1,17 @@
 /**
- * Tenant-aware route helper for salon-based routing
+ * Provider-aware route helper for tenant-based routing
  * 
- * All salon management routes must include the salon slug in the URL.
+ * All provider management routes must include the provider slug in the URL.
  * This helper ensures consistent slug-based routing throughout the application.
  * 
  * Usage:
- *   salonRoutes(slug).dashboard      -> '/em-cuts/dashboard'
- *   salonRoutes(slug).bookings      -> '/em-cuts/bookings'
- *   salonRoutes(slug).customers     -> '/em-cuts/customers'
- *   salonRoutes(null).dashboard     -> '/dashboard' (fallback for no slug)
+ *   providerRoutes(slug).dashboard      -> '/em-cuts/dashboard'
+ *   providerRoutes(slug).bookings      -> '/em-cuts/bookings'
+ *   providerRoutes(slug).customers     -> '/em-cuts/customers'
+ *   providerRoutes(null).dashboard     -> '/dashboard' (fallback for no slug)
  */
 
-export interface SalonRoutes {
+export interface ProviderRoutes {
   dashboard: string;
   bookings: string;
   customers: string;
@@ -24,7 +24,14 @@ export interface SalonRoutes {
   financeTeam: string;
 }
 
-export function salonRoutes(slug: string | null | undefined): SalonRoutes {
+/**
+ * @deprecated Use providerRoutes instead. Kept for backward compatibility during migration.
+ */
+export function salonRoutes(slug: string | null | undefined): ProviderRoutes {
+  return providerRoutes(slug);
+}
+
+export function providerRoutes(slug: string | null | undefined): ProviderRoutes {
   const prefix = slug ? `/${slug}` : '';
   
   return {

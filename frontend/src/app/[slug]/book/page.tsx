@@ -22,7 +22,7 @@ export default function SalonBookingPage() {
 
       try {
         setLoading(true);
-        const salonData = await apiClient.getSalonBySlug(slug);
+        const salonData = await apiClient.getProviderBySlug(slug);
         setSalon(salonData);
       } catch (err: any) {
         console.error('Failed to load salon:', err);
@@ -52,5 +52,5 @@ export default function SalonBookingPage() {
   }
 
   // Render the booking component with preloaded salon data
-  return <BookingPageContent preloadedSalon={salon} />;
+  return <BookingPageContent preloadedProvider={salon} />;
 }

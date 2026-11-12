@@ -4,21 +4,27 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class GiftCard extends Model
 {
-    use HasUuids;
+    use HasUuids, HasFactory;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'code',
         'amount',
+        'balance',
         'currency',
+        'status',
         'purchased_by',
         'redeemed_by',
         'redeemed_at',
         'expires_at',
+        'issued_at',
+        'cancelled_at',
         'active',
         'message',
         'metadata',
@@ -26,15 +32,18 @@ class GiftCard extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'balance' => 'decimal:2',
         'active' => 'boolean',
         'redeemed_at' => 'datetime',
         'expires_at' => 'datetime',
+        'issued_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'metadata' => 'array',
     ];
 
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
     }
 
     public function purchasedBy(): BelongsTo
@@ -47,8 +56,13 @@ class GiftCard extends Model
         return $this->belongsTo(Customer::class, 'redeemed_by');
     }
 
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(GiftCardTransaction::class)->orderBy('created_at', 'desc');
+    }
+
     /**
-     * Check if gift card is valid
+     * Check if gift card is valid for redemption
      */
     public function isValid(): bool
     {
@@ -56,7 +70,15 @@ class GiftCard extends Model
             return false;
         }
 
-        if ($this->redeemed_at !== null) {
+        if ($this->status === 'cancelled' || $this->status === 'expired') {
+            return false;
+        }
+
+        if ($this->status === 'fully_redeemed') {
+            return false;
+        }
+
+        if ($this->balance <= 0) {
             return false;
         }
 
@@ -65,6 +87,14 @@ class GiftCard extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Check if gift card can be partially redeemed
+     */
+    public function canPartiallyRedeem(float $amount): bool
+    {
+        return $this->isValid() && $this->balance >= $amount;
     }
 
     /**
@@ -77,5 +107,27 @@ class GiftCard extends Model
         } while (self::where('code', $code)->exists());
 
         return $code;
+    }
+
+    /**
+     * Get current balance for a gift card code
+     */
+    public static function getBalance(string $code, string $providerId): ?float
+    {
+        $giftCard = self::where('code', $code)
+            ->where('provider_id', $providerId)
+            ->first();
+
+        return $giftCard ? $giftCard->balance : null;
+    }
+
+    /**
+     * Find gift card by code within provider scope
+     */
+    public static function findByCode(string $code, string $providerId): ?self
+    {
+        return self::where('code', $code)
+            ->where('provider_id', $providerId)
+            ->first();
     }
 }

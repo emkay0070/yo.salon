@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  *
  * Hierarchical (from broadest to narrowest):
  *   provider_id → applies to all branches of the business
- *   salon_id    → applies only to one branch
+ *   location_id → applies only to one branch
  *   assignment_id → applies to one specialist at one branch
  */
 class ScheduleException extends Model
@@ -26,7 +26,7 @@ class ScheduleException extends Model
     protected $fillable = [
         'scope_level',
         'provider_id',
-        'salon_id',
+        'location_id',
         'assignment_id',
         'start_date',
         'end_date',
@@ -56,8 +56,8 @@ class ScheduleException extends Model
     {
         return $query->where(fn($q) => $q
             ->where('scope_level', 'provider')->where('provider_id', $providerId)
-            ->orWhereIn('salon_id', function ($sub) use ($providerId) {
-                $sub->select('id')->from('salons')->where('provider_id', $providerId);
+            ->orWhereIn('location_id', function ($sub) use ($providerId) {
+                $sub->select('id')->from('locations')->where('provider_id', $providerId);
             })
             ->orWhereIn('assignment_id', function ($sub) use ($providerId) {
                 $sub->select('id')->from('specialist_assignments')->where('provider_id', $providerId);
@@ -65,17 +65,18 @@ class ScheduleException extends Model
         );
     }
 
-    public function scopeForSalon($query, string $salonId)
+    public function scopeForLocation($query, string $locationId)
     {
-        $salon = Salon::findOrFail($salonId);
+        $location = Location::findOrFail($locationId);
 
         return $query->where(fn($q) => $q
             // Provider-level exceptions cascade to all branches
-            ->where('scope_level', 'provider')->where('provider_id', $salon->provider_id)
-            ->orWhere(fn($q2) => $q2->where('scope_level', 'salon')->where('salon_id', $salonId))
+            ->where('scope_level', 'provider')->where('provider_id', $location->provider_id)
+            ->orWhere(fn($q2) => $q2->where('scope_level', 'location')->where('location_id', $locationId))
             ->orWhere(fn($q2) => $q2->where('scope_level', 'assignment')
-                ->whereIn('assignment_id', function ($sub) use ($salonId) {
-                    $sub->select('id')->from('specialist_assignments')->where('salon_id', $salonId);
+                ->whereIn('assignment_id', function ($sub) use ($location) {
+                    $sub->select('id')->from('specialist_assignments')->where('provider_id', $location->provider_id);
+                    $sub->where('location_id', $location->id);
                 })
             )
         );
@@ -88,8 +89,8 @@ class ScheduleException extends Model
         return $query->where(fn($q) => $q
             // Broadest: provider exceptions
             ->where('scope_level', 'provider')->where('provider_id', $assignment->provider_id)
-            // Salon-level
-            ->orWhere(fn($q2) => $q2->where('scope_level', 'salon')->where('salon_id', $assignment->salon_id))
+            // Location-level
+            ->orWhere(fn($q2) => $q2->where('scope_level', 'location')->where('location_id', $assignment->location_id))
             // Narrowest: assignment-level
             ->orWhere(fn($q2) => $q2->where('scope_level', 'assignment')->where('assignment_id', $assignmentId))
         );
@@ -114,9 +115,9 @@ class ScheduleException extends Model
         return $this->belongsTo(Provider::class);
     }
 
-    public function salon(): BelongsTo
+    public function location(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function assignment(): BelongsTo

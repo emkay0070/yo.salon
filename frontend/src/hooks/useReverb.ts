@@ -11,7 +11,7 @@ interface ReverbHookOptions {
 }
 
 export function useReverb(channelName: string, options: ReverbHookOptions = {}) {
-  const { salonId, user } = useRole();
+  const { providerId, user } = useRole();
   const socketRef = useRef<WebSocket | null>(null);
   const channelRef = useRef<string | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -22,10 +22,10 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
   const RECONNECT_DELAY_BASE = 1000; // 1 second
 
   const connect = () => {
-    if (!channelName || !salonId) return;
+    if (!channelName || !providerId) return;
 
     // Construct the full channel name
-    const fullChannel = channelName.replace('{id}', salonId);
+    const fullChannel = channelName.replace('{id}', providerId);
 
     // Reverb WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -114,7 +114,7 @@ export function useReverb(channelName: string, options: ReverbHookOptions = {}) 
         socketRef.current.close();
       }
     };
-  }, [channelName, salonId]);
+  }, [channelName, providerId]);
 
   return {
     isConnected,

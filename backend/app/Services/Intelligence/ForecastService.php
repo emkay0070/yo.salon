@@ -7,24 +7,18 @@ use Carbon\Carbon;
 
 class ForecastService implements AnalyzerInterface
 {
-    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts): array
     {
-        // 1. Demand Heatmap
+        // 1. Demand Heatmap from operational facts
+        $temporal = $operationalFacts['temporal'] ?? [];
+        $weeklyBookings = $temporal['weekly_bookings'] ?? [];
+
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        $byDay = array_fill_keys($days, 0);
-        
-        foreach ($bookings as $booking) {
-            $dayName = Carbon::parse($booking->date)->format('l');
-            if (isset($byDay[$dayName])) {
-                $byDay[$dayName]++;
-            }
-        }
-        
-        $maxBookings = max($byDay) ?: 1; // avoid div by zero
-        
+        $maxBookings = max(array_values($weeklyBookings)) ?: 1; // avoid div by zero
+
         $demandByDay = [];
         foreach ($days as $day) {
-            $count = $byDay[$day];
+            $count = $weeklyBookings[$day] ?? 0;
             $demandByDay[] = [
                 'day' => $day,
                 'bookings' => $count,
@@ -37,26 +31,21 @@ class ForecastService implements AnalyzerInterface
         $now = now();
         $daysInMonth = $now->daysInMonth;
         $currentDay = $now->day;
-        
+
         // Calculate current month net from trend data
-        $trend = $financialFacts['trend'];
+        $trend = $financialFacts['trend'] ?? [];
         $currentMonthNet = collect($trend)
             ->filter(function ($day) use ($now) {
                 return Carbon::parse($day['date'])->isSameMonth($now);
             })
             ->sum('net_revenue');
-        
+
         $dailyRunRate = $currentDay > 0 ? $currentMonthNet / $currentDay : 0;
         $projectedMonthlyNet = round($currentMonthNet + ($dailyRunRate * ($daysInMonth - $currentDay)));
 
-        // 3. Demand Spike Days (End of month 25th-31st)
+        // 3. Demand Spike Days - removed hardcoded 25th-31st logic
+        // TODO: Implement historical pattern-based spike detection
         $spikeDays = [];
-        for ($i = 25; $i <= $daysInMonth; $i++) {
-            $date = Carbon::create($now->year, $now->month, $i);
-            if ($date >= $now) {
-                $spikeDays[] = $date->toDateString();
-            }
-        }
 
         return [
             'analytics' => [
@@ -66,7 +55,8 @@ class ForecastService implements AnalyzerInterface
             ],
             'forecast' => [
                 'projected_monthly_net' => $projectedMonthlyNet,
-                'demand_spike_days' => $spikeDays
+                'demand_spike_days' => $spikeDays,
+                'confidence' => 'low' // Placeholder until historical pattern detection is implemented
             ]
         ];
     }

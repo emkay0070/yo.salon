@@ -19,6 +19,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Skip if salons table doesn't exist (fresh migration scenario)
+        if (!Schema::hasTable('salons')) {
+            return;
+        }
+
         if (DB::getDriverName() !== 'sqlite') {
             DB::statement("
                 UPDATE specialist_assignments sa

@@ -32,9 +32,9 @@ class CustomerActivity extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function salon(): BelongsTo
+    public function provider()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class, 'salon_id');
     }
 
     public function scopeForCustomer($query, $customerId)

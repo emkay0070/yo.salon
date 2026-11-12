@@ -65,4 +65,9 @@ class Service extends Model
     {
         return $this->belongsTo(CraftTaxonomy::class);
     }
+
+    public function resourceRequirements(): HasMany
+    {
+        return $this->hasMany(ResourceRequirement::class);
+    }
 }

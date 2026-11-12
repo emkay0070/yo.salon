@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\BrandExperience;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Services\MediaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -21,34 +21,34 @@ class BrandExperienceController extends Controller
     public function show(Request $request): JsonResponse
     {
         try {
-            $salonId = $request->attributes->get('salon_id');
+            $providerId = $request->attributes->get('provider_id');
 
-            if (!$salonId) {
-                \Log::warning('Brand experience: No salon context', [
+            if (!$providerId) {
+                \Log::warning('Brand experience: No provider context', [
                     'request' => $request->all(),
                 ]);
-                return response()->json(['error' => 'Salon context not found'], 400);
+                return response()->json(['error' => 'Provider context not found'], 400);
             }
 
-            $salon = Salon::find($salonId);
+            $provider = Provider::with('logoMedia')->find($providerId);
 
-            if (!$salon) {
-                \Log::warning('Brand experience: Salon not found', [
-                    'salon_id' => $salonId,
+            if (!$provider) {
+                \Log::warning('Brand experience: Provider not found', [
+                    'provider_id' => $providerId,
                 ]);
-                return response()->json(['error' => 'Salon not found'], 404);
+                return response()->json(['error' => 'Provider not found'], 404);
             }
 
             // Get or create brand experience
             try {
-                $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
+                $brand = $provider->brandExperience ?? $this->createDefaultBrandExperience($provider);
             } catch (\Exception $e) {
                 \Log::error('Brand experience: Failed to get/create brand', [
                     'error' => $e->getMessage(),
-                    'salon_id' => $salonId,
+                    'provider_id' => $providerId,
                 ]);
                 // Return default brand experience
-                $brand = $this->createDefaultBrandExperience($salon);
+                $brand = $this->createDefaultBrandExperience($provider);
             }
 
             // Load experience family config
@@ -73,11 +73,12 @@ class BrandExperienceController extends Controller
 
             // Build complete brand response
             $brandResponse = [
-                'salon' => [
-                    'id' => $salon->id,
-                    'name' => $salon->name,
-                    'slug' => $salon->slug,
-                    'logo' => $brand->logo ?? $salon->logo,
+                'provider' => [
+                    'id' => $provider->id,
+                    'name' => $provider->display_name,
+                    'slug' => $provider->slug,
+                    'logo' => $provider->logo,
+                    'logo_url' => $provider->logo_url,
                 ],
                 'brand' => [
                     'logo' => $brand->logo,
@@ -120,16 +121,17 @@ class BrandExperienceController extends Controller
             \Log::error('Brand experience error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'salon_id' => $request->attributes->get('salon_id'),
+                'provider_id' => $request->attributes->get('provider_id'),
             ]);
 
             // Return safe default brand experience
             return response()->json([
-                'salon' => [
-                    'id' => $request->attributes->get('salon_id'),
-                    'name' => 'Salon',
-                    'slug' => 'salon',
+                'provider' => [
+                    'id' => $request->attributes->get('provider_id'),
+                    'name' => 'Provider',
+                    'slug' => 'provider',
                     'logo' => null,
+                    'logo_url' => null,
                 ],
                 'brand' => [
                     'logo' => null,
@@ -177,21 +179,21 @@ class BrandExperienceController extends Controller
     
     public function update(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         
-        if (!$salonId) {
-            return response()->json(['error' => 'Salon context not found'], 400);
+        if (!$providerId) {
+            return response()->json(['error' => 'Provider context not found'], 400);
         }
         
-        $salon = Salon::find($salonId);
+        $provider = Provider::find($providerId);
         
-        if (!$salon) {
-            return response()->json(['error' => 'Salon not found'], 404);
+        if (!$provider) {
+            return response()->json(['error' => 'Provider not found'], 404);
         }
         
         $validated = $request->validate([
             'experience_family' => 'sometimes|in:luxury_noir,modern_glass,urban_pulse,minimal_zen,organic,classic_barber,neon_future,executive',
-            'logo' => 'sometimes|image|max:2048',
+            // 'logo' - DEPRECATED: Brand Experience does not own identity assets. Use Provider.logo instead.
             'primary_color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'secondary_color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/',
             'accent_color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/',
@@ -203,31 +205,15 @@ class BrandExperienceController extends Controller
         ]);
         
         $data = $validated;
+        $data['provider_id'] = $provider->id;
         
-        // Handle logo upload
-        if ($request->hasFile('logo')) {
-            $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
-            
-            // Delete old media if exists
-            if ($brand->logo && \Illuminate\Support\Str::isUuid($brand->logo)) {
-                $oldMedia = \App\Models\Media::find($brand->logo);
-                if ($oldMedia) {
-                    $this->mediaService->delete($oldMedia);
-                }
-            }
-            
-            $media = $this->mediaService->upload($request->file('logo'), [
-                'directory' => 'brand/logos',
-                'provider_id' => $salon->provider_id,
-                'salon_id' => $salon->id,
-                'alt_text' => $salon->name . ' logo',
-            ]);
-            $data['logo'] = $media->id;
-        }
+        // Logo handling: Brand Experience does not own identity assets
+        // Logo is managed via ProviderController::uploadLogo()
+        // BrandExperience.logo_url delegates to Provider.logo_url
         
         // Handle background image upload
         if ($request->hasFile('background_image')) {
-            $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
+            $brand = $provider->brandExperience ?? $this->createDefaultBrandExperience($provider);
             
             // Delete old media if exists
             if ($brand->background_image && \Illuminate\Support\Str::isUuid($brand->background_image)) {
@@ -239,25 +225,26 @@ class BrandExperienceController extends Controller
             
             $media = $this->mediaService->upload($request->file('background_image'), [
                 'directory' => 'brand/backgrounds',
-                'provider_id' => $salon->provider_id,
-                'salon_id' => $salon->id,
-                'alt_text' => $salon->name . ' background',
+                'provider_id' => $provider->id,
+                'attachable' => $brand,
+                'visibility' => \App\Models\Media::VISIBILITY_PUBLIC,
+                'alt_text' => $provider->display_name . ' background',
             ]);
             $data['background_image'] = $media->id;
         }
         
-        $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
+        $brand = $provider->brandExperience ?? $this->createDefaultBrandExperience($provider);
         $brand->update($data);
         
         return response()->json($brand);
     }
     
-    private function createDefaultBrandExperience(Salon $salon): BrandExperience
+    private function createDefaultBrandExperience(Provider $provider): BrandExperience
     {
         return BrandExperience::create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'experience_family' => 'luxury_noir',
-            'logo' => $salon->logo,
+            'logo' => $provider->logo,
             'primary_color' => '#FF622B',
             'secondary_color' => '#FF8C5A',
             'accent_color' => '#FFD700',
@@ -270,14 +257,14 @@ class BrandExperienceController extends Controller
     public function showBySlug(Request $request, string $slug): JsonResponse
     {
         try {
-            $salon = Salon::where('slug', $slug)->first();
+            $provider = Provider::with('logoMedia')->where('slug', $slug)->first();
             
-            if (!$salon) {
-                return response()->json(['error' => 'Salon not found'], 404);
+            if (!$provider) {
+                return response()->json(['error' => 'Provider not found'], 404);
             }
             
             // Get or create brand experience
-            $brand = $salon->brandExperience ?? $this->createDefaultBrandExperience($salon);
+            $brand = $provider->brandExperience ?? $this->createDefaultBrandExperience($provider);
             
             // Load experience family config
             $experienceFamily = config('experience_families.' . $brand->experience_family, config('experience_families.luxury_noir'));
@@ -298,11 +285,12 @@ class BrandExperienceController extends Controller
             
             // Build complete brand response
             $brandResponse = [
-                'salon' => [
-                    'id' => $salon->id,
-                    'name' => $salon->name,
-                    'slug' => $salon->slug,
-                    'logo' => $brand->logo ?? $salon->logo,
+                'provider' => [
+                    'id' => $provider->id,
+                    'name' => $provider->display_name ?? $provider->name,
+                    'slug' => $provider->slug,
+                    'logo' => $brand->logo ?? $provider->logo,
+                    'logo_url' => $provider->logo_url,
                 ],
                 'brand' => [
                     'logo' => $brand->logo,

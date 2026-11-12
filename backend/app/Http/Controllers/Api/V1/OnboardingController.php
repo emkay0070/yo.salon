@@ -31,19 +31,22 @@ class OnboardingController extends Controller
         }
 
         // Determine onboarding status from actual data
-        $salon = $user->salons()->first();
-        $salonCreated = $salon !== null;
+        $provider = $user->currentProvider();
+        $salonCreated = $provider !== null;
         
         $teamAdded = false;
         $servicesAdded = false;
         $walletConfigured = false;
         $firstBookingCreated = false;
         
-        if ($salon) {
-            $teamAdded = $salon->staff()->count() > 0;
-            $servicesAdded = $salon->services()->count() > 0;
-            $walletConfigured = $salon->paymentMethods()->count() > 0;
-            $firstBookingCreated = $salon->bookings()->count() > 0;
+        if ($provider) {
+            // Team added: check for active SpecialistAssignments (canonical employment authority)
+            $teamAdded = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                ->where('status', 'ACTIVE')
+                ->count() > 0;
+            $servicesAdded = $provider->services()->count() > 0;
+            $walletConfigured = \App\Models\PaymentMethod::where('provider_id', $provider->id)->count() > 0;
+            $firstBookingCreated = $provider->bookings()->count() > 0;
         }
 
         return response()->json([
@@ -126,7 +129,7 @@ class OnboardingController extends Controller
             return response()->json([
                 'message' => 'Onboarding completed successfully',
                 'salon' => $salon,
-                'user' => $user->fresh()->load('salons'),
+                'user' => $user->fresh()->load('providers'),
             ], 201);
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Onboarding complete error: ' . $e->getMessage());

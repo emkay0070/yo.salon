@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 
 interface CapabilitySummary {
   has_subscription: boolean;
@@ -56,16 +57,16 @@ interface UsePlanFeaturesResult {
  * - Quota limits (e.g., STAFF_SEAT, BRANCH, STORAGE_GB)
  * - Credit balances (e.g., SMS, AI_REQUEST)
  * 
- * @param salonId - The salon ID to fetch capabilities for
+ * @param providerId - The provider ID to fetch capabilities for
  * @returns Object with capability data and helper methods
  */
-export function usePlanFeatures(salonId: string | null): UsePlanFeaturesResult {
+export function usePlanFeatures(providerId: string | null): UsePlanFeaturesResult {
   const [capabilities, setCapabilities] = useState<CapabilitySummary | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchCapabilities = async () => {
-    if (!salonId) {
+    if (!providerId) {
       setCapabilities(null);
       return;
     }
@@ -74,17 +75,7 @@ export function usePlanFeatures(salonId: string | null): UsePlanFeaturesResult {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/salons/${salonId}/capabilities`, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch capabilities: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await apiClient.get(`/v1/providers/${providerId}/capabilities`);
       setCapabilities(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -96,10 +87,10 @@ export function usePlanFeatures(salonId: string | null): UsePlanFeaturesResult {
 
   useEffect(() => {
     fetchCapabilities();
-  }, [salonId]);
+  }, [providerId]);
 
   /**
-   * Check if a specific feature is enabled for the salon.
+   * Check if a specific feature is enabled for the provider.
    * 
    * @param featureCode - The feature code (e.g., 'CALENDAR_WEEK', 'CUSTOMER_PORTAL')
    * @returns true if the feature is enabled, false otherwise

@@ -3,13 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class SpecialistNote extends Model
 {
+    use HasUuids;
     protected $fillable = [
         'customer_id',
         'specialist_id',
-        'salon_id',
+        'provider_id',
         'booking_id',
         'note',
         'note_type',
@@ -44,11 +46,6 @@ class SpecialistNote extends Model
         return $this->belongsTo(Specialist::class, 'specialist_id');
     }
 
-    public function salon()
-    {
-        return $this->belongsTo(Salon::class);
-    }
-
     public function booking()
     {
         return $this->belongsTo(Booking::class);
@@ -62,11 +59,6 @@ class SpecialistNote extends Model
     public function scopeBySpecialist($query, string $specialistId)
     {
         return $query->where('specialist_id', $specialistId);
-    }
-
-    public function scopeBySalon($query, string $salonId)
-    {
-        return $query->where('salon_id', $salonId);
     }
 
     public function scopeByType($query, string $type)

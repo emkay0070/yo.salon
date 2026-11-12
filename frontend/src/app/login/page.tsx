@@ -5,7 +5,6 @@ import { apiClient } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useRole } from '@/contexts/RoleContext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -14,7 +13,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { refreshUser } = useRole();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,11 +29,6 @@ export default function LoginPage() {
         localStorage.setItem('portal_auth_token', response.token);
       } else {
         localStorage.setItem('auth_token', response.token);
-      }
-
-      // Refresh user context to load the latest user data
-      if (response.account_type === 'user') {
-        await refreshUser();
       }
 
       // Redirect based on account type and next_route

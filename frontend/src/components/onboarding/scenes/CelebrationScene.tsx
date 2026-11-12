@@ -3,17 +3,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOnboarding } from '@/contexts/OnboardingContext';
-import { useRole } from '@/contexts/RoleContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Crown, CheckCircle2, ArrowRight, Loader2, Copy, Check } from 'lucide-react';
-import BringingSalonToLife from '../BringingSalonToLife';
-import { salonRoutes } from '@/lib/routes';
+import BringingProviderToLife from '../BringingProviderToLife';
 
 export default function CelebrationScene() {
   const router = useRouter();
-  const { salonData, staff, services, resetOnboarding, completeOnboarding, loading } = useOnboarding();
-  const { refreshUser, salonSlug } = useRole();
-  const routes = salonRoutes(salonSlug);
+  const { providerData, staff, services, resetOnboarding, completeOnboarding, loading } = useOnboarding();
+  const { terminology } = useCategory();
   const [isBringingToLife, setIsBringingToLife] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -24,23 +22,23 @@ export default function CelebrationScene() {
       const origin = window.location.origin; // e.g. http://localhost:3000
       // Strip protocol to match the display aesthetic
       const cleanDomain = origin.replace(/https?:\/\//, '');
-      return `${cleanDomain}/${salonData.draftSlug || 'your-salon'}`;
+      return `${cleanDomain}/${providerData.draftSlug || 'your-salon'}`;
     }
-    return `yosalon.com/${salonData.draftSlug || 'your-salon'}`;
+    return `yosalon.com/${providerData.draftSlug || 'your-salon'}`;
   };
 
-  const salonLink = getSalonLink();
+  const providerLink = getSalonLink();
 
   // Optional things they might have skipped
   const finishLater = [
-    { id: 'logo', label: 'Add your logo', done: !!salonData.logo },
-    { id: 'desc', label: 'Add a salon description', done: !!salonData.description },
+    { id: 'logo', label: 'Add your logo', done: !!providerData.logo },
+    { id: 'desc', label: `Add a ${terminology.business.toLowerCase()} description`, done: !!providerData.description },
     { id: 'staff-photos', label: 'Add team photos', done: staff.every(s => s.photo) && staff.length > 0 },
     { id: 'more-services', label: 'Add more services', done: services.length > 2 },
   ].filter(item => !item.done);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(salonLink);
+    navigator.clipboard.writeText(providerLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -50,10 +48,9 @@ export default function CelebrationScene() {
     setIsBringingToLife(true);
     try {
       await completeOnboarding();
-      await refreshUser();
       setTimeout(() => {
         resetOnboarding();
-        router.push(routes.dashboard);
+        router.push(`/${providerData.draftSlug}/dashboard`);
       }, 4000);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -64,7 +61,7 @@ export default function CelebrationScene() {
   return (
     <>
       <AnimatePresence>
-        {isBringingToLife && <BringingSalonToLife onComplete={() => {}} />}
+        {isBringingToLife && <BringingProviderToLife onComplete={() => {}} />}
       </AnimatePresence>
 
       {!isBringingToLife && (
@@ -98,10 +95,10 @@ export default function CelebrationScene() {
               transition={{ delay: 0.3, duration: 0.5 }}
             >
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
-                Your salon is live 🎉
+                Your {terminology.business.toLowerCase()} is live 🎉
               </h1>
               <p className="text-white/70 text-lg mb-8 max-w-sm mx-auto">
-                <span className="font-semibold text-white">{salonData.name || 'Your Salon'}</span> is now discoverable on Yo.Salon.
+                <span className="font-semibold text-white">{providerData.name || `Your ${terminology.business}`}</span> is now discoverable on Yo.Salon.
               </p>
             </motion.div>
 
@@ -112,10 +109,10 @@ export default function CelebrationScene() {
               transition={{ delay: 0.45, duration: 0.5 }}
               className="w-full bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 mb-8 text-left"
             >
-              <p className="text-xs text-white/50 tracking-widest uppercase font-semibold mb-3">Share your salon</p>
+              <p className="text-xs text-white/50 tracking-widest uppercase font-semibold mb-3">Share your {terminology.business.toLowerCase()}</p>
               <div className="flex items-center gap-3">
                 <div className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 font-mono text-sm text-[#FFD700] overflow-hidden text-ellipsis">
-                  {salonLink}
+                  {providerLink}
                 </div>
                 <button
                   onClick={handleCopy}

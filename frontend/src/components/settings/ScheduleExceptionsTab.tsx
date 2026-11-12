@@ -91,7 +91,7 @@ function typeMeta(type: ExceptionType) {
 }
 
 export default function ScheduleExceptionsTab() {
-  const { salonId, specialists, isLoading: roleLoading } = useRole();
+  const { providerId, specialists, isLoading: roleLoading } = useRole();
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<ExceptionScope>('provider');
   const [assignmentId, setAssignmentId] = useState<string | undefined>(undefined);
@@ -101,14 +101,14 @@ export default function ScheduleExceptionsTab() {
   const [editing, setEditing] = useState<ScheduleException | null>(null);
   const [form, setForm] = useState<Omit<ScheduleException, 'id'>>(emptyForm());
 
-  const validSalonId = salonId && salonId !== 'null' && salonId !== 'undefined' ? salonId : null;
-  const canMutate = !!validSalonId && !roleLoading;
+  const validProviderId = providerId && providerId !== 'null' && providerId !== 'undefined' ? providerId : null;
+  const canMutate = !!validProviderId && !roleLoading;
 
   // Get salon data to determine location count
   const { data: salonData } = useQuery({
-    queryKey: ['salon-with-provider', validSalonId],
-    queryFn: () => apiClient.getSalonWithProvider(validSalonId!),
-    enabled: !!validSalonId && !roleLoading,
+    queryKey: ['provider-with-data', validProviderId],
+    queryFn: () => apiClient.getProviderSchedules(validProviderId!),
+    enabled: !!validProviderId && !roleLoading,
   });
 
   useEffect(() => {
@@ -118,27 +118,27 @@ export default function ScheduleExceptionsTab() {
     }
   }, [salonData]);
 
-  const queryKey = ['schedule-exceptions', validSalonId, scope, assignmentId];
+  const queryKey = ['schedule-exceptions', validProviderId, scope, assignmentId];
 
   const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: () => apiClient.getScheduleExceptions(validSalonId!, scope, assignmentId),
-    enabled: !!validSalonId && !roleLoading,
+    queryFn: () => apiClient.getScheduleExceptions(validProviderId!, scope, assignmentId),
+    enabled: !!validProviderId && !roleLoading,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => apiClient.createScheduleException(validSalonId!, payload),
+    mutationFn: (payload: Record<string, unknown>) => apiClient.createScheduleException(validProviderId!, payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey }); resetEditor(); },
   });
 
   const updateMutation = useMutation({
     mutationFn: (payload: { id: string; data: Record<string, unknown> }) =>
-      apiClient.updateScheduleException(validSalonId!, payload.id, payload.data),
+      apiClient.updateScheduleException(validProviderId!, payload.id, payload.data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey }); resetEditor(); },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.deleteScheduleException(validSalonId!, id),
+    mutationFn: (id: string) => apiClient.deleteScheduleException(validProviderId!, id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey }); },
   });
 
@@ -220,7 +220,7 @@ export default function ScheduleExceptionsTab() {
     );
   }
 
-  if (!validSalonId) {
+  if (!validProviderId) {
     return (
       <div className="flex flex-col justify-center items-center py-20 text-center space-y-3">
         <CalendarClock className="w-10 h-10 text-amber-400" />

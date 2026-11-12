@@ -24,8 +24,8 @@ class CompensationPolicyResolver
      *
      * @param string $compensatableType  e.g. App\Models\Specialist
      * @param string $compensatableId    UUID of the payee
-     * @param string $providerType       e.g. App\Models\Salon
-     * @param string $providerId         UUID of the salon
+     * @param string $providerType       e.g. App\Models\Provider
+     * @param string $providerId         UUID of the provider
      * @param string|null $assignmentId  If the payee is a specialist with an assignment
      * @param \DateTimeInterface|null $asOf  Date to evaluate policy against (defaults to now)
      */
@@ -83,8 +83,8 @@ class CompensationPolicyResolver
         return $this->resolve(
             compensatableType: $compensatableType,
             compensatableId:   $compensatableId,
-            providerType:      \App\Models\Salon::class,
-            providerId:        $booking->salon_id,
+            providerType:      \App\Models\Provider::class,
+            providerId:        $booking->provider_id,
             assignmentId:      null, // TODO: resolve assignment_id from booking when available
             asOf:              $booking->date instanceof \DateTimeInterface
                                    ? $booking->date

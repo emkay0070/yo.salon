@@ -31,9 +31,10 @@ class SpecialistAssignment extends Model
         return $this->belongsTo(Provider::class);
     }
 
-    public function salon()
+
+    public function location()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function schedules()

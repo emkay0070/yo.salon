@@ -7,7 +7,7 @@ use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\PlatformProduct;
 use App\Models\UsageEvent;
-use App\Models\SalonCapacity;
+use App\Models\ProviderCapacity;
 use App\Services\InvoiceService;
 use App\Services\Payments\PaymentManager;
 use App\Services\CapabilityResolver;
@@ -144,27 +144,20 @@ class AddOnPurchaseController extends Controller
                 $salon = $provider->salon;
                 
                 // Check if capacity record exists for this resource
-                $existingCapacity = SalonCapacity::forProvider($providerId)
+                $existingCapacity = ProviderCapacity::forProvider($providerId)
                     ->forResource($product->resource_code)
                     ->first();
 
                 if ($existingCapacity) {
-                    // Increment existing capacity
-                    $existingCapacity->increment('additional_capacity', $product->units);
+                    // Update existing capacity
                     $existingCapacity->update([
+                        'additional_capacity' => $existingCapacity->additional_capacity + $product->units,
+                        'expires_at' => $product->expires_at,
                         'is_active' => true,
-                        'metadata' => array_merge(
-                            $existingCapacity->metadata ?? [],
-                            [
-                                'last_purchase_invoice_id' => $invoice->id,
-                                'last_purchase_date' => now()->toIso8601String(),
-                                'last_purchase_units' => $product->units,
-                            ]
-                        )
                     ]);
                 } else {
                     // Create new capacity record
-                    SalonCapacity::create([
+                    ProviderCapacity::create([
                         'provider_id' => $providerId,
                         'resource_code' => $product->resource_code,
                         'additional_capacity' => $product->units,

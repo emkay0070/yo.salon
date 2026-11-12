@@ -113,6 +113,13 @@ class Specialist extends Model
         return $this->hasOne(SpecialistAccount::class);
     }
 
+    public function professions(): BelongsToMany
+    {
+        return $this->belongsToMany(Profession::class)
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
+
     /**
      * New Domain relationship: specialist_assignments (Availability Engine)
      */
@@ -125,9 +132,9 @@ class Specialist extends Model
      * Legacy relationship: salon_specialist pivot (used by existing controllers/seeders)
      * @deprecated Use assignments() for new features
      */
-    public function salons(): BelongsToMany
+    public function providers(): BelongsToMany
     {
-        return $this->belongsToMany(Salon::class, 'salon_specialist')
+        return $this->belongsToMany(Provider::class, 'salon_specialist', 'specialist_id', 'salon_id')
             ->withPivot('role', 'availability', 'services', 'active')
             ->withTimestamps();
     }

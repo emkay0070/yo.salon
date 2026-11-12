@@ -4,17 +4,17 @@ namespace App\Services;
 
 use App\Models\ServicePackage;
 use App\Models\Customer;
-use App\Models\Salon;
+
 use Illuminate\Support\Facades\DB;
 
 class ServicePackageService
 {
     /**
-     * Get active packages for a salon
+     * Get active packages for a location
      */
-    public function getActivePackages(string $salonId): array
+    public function getActivePackages(string $locationId): array
     {
-        $packages = ServicePackage::getActiveForSalon($salonId);
+        $packages = ServicePackage::getActiveForLocation($locationId);
 
         return $packages->map(function ($package) {
             return [
@@ -70,11 +70,11 @@ class ServicePackageService
             // Create customer package record
             $customerPackage = CustomerPackage::create([
                 'customer_id' => $customerId,
-                'salon_id' => $salonId,
+                'provider_id' => $salonId,
                 'package_id' => $packageId,
                 'services_remaining' => $package->services_included,
-                'expires_at' => $package->validity_days 
-                    ? now()->addDays($package->validity_days) 
+                'expires_at' => $package->validity_days
+                    ? now()->addDays($package->validity_days)
                     : null,
             ]);
 
@@ -116,7 +116,7 @@ class ServicePackageService
     public function getCustomerPackages(string $customerId, string $salonId): array
     {
         $packages = CustomerPackage::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $salonId)
             ->where('services_remaining', '>', 0)
             ->where(function ($query) {
                 $query->whereNull('expires_at')

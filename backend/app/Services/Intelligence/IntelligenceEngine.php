@@ -2,7 +2,8 @@
 
 namespace App\Services\Intelligence;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Booking;
 use App\Services\Finance\FinanceAnalyticsService;
 use App\Services\OperationalAnalyticsService;
@@ -35,37 +36,60 @@ class IntelligenceEngine
     }
 
     /**
-     * Generate the complete Intelligence DTO for a salon.
-     * 
-     * IMPORTANT: Intelligence now receives canonical facts from two domains:
+     * Generate the complete Intelligence DTO for a provider/location.
+     *
+     * IMPORTANT: Intelligence receives canonical facts from two domains:
      * - Financial facts from FinanceAnalyticsService (Finance → Intelligence boundary)
      * - Operational facts from OperationalAnalyticsService (Operations → Intelligence boundary)
-     * 
+     *
      * This preserves the domain separation and ensures Intelligence never queries
      * Transaction, LedgerEntry, or Booking directly for analytics.
+     *
+     * PRINCIPLE: Intelligence interprets facts, it does not fetch facts.
+     *
+     * Uses IntelligenceSnapshotService for caching/persistence to avoid expensive recalculations.
      */
-    public function generate(Salon $salon): array
+    public function generate(Provider $provider, ?Location $location = null, bool $forceRegenerate = false): array
+    {
+        $snapshotService = app(IntelligenceSnapshotService::class);
+
+        if ($forceRegenerate) {
+            return $snapshotService->regenerate($provider, $location);
+        }
+
+        return $snapshotService->getSnapshot($provider, $location);
+    }
+
+    /**
+     * Generate fresh intelligence without caching.
+     * Used by IntelligenceSnapshotService for persistence.
+     *
+     * @param Provider $provider
+     * @param Location|null $location
+     * @return array
+     */
+    public function generateFresh(Provider $provider, ?Location $location = null): array
     {
         $startTime = microtime(true);
-        $now = Carbon::now();
-        
+
+        // Use provider's configured timezone, fallback to UTC
+        $timezone = $provider->timezone ?? 'UTC';
+        $now = Carbon::now($timezone);
+
         // Fetch canonical financial facts from Finance domain
-        $financialFacts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
-        
+        $financialFacts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
+
         // Fetch canonical operational facts from Operations domain
-        $operationalFacts = $this->operationalAnalyticsService->getOperationalFacts($salon);
-            
-        // Fetch operational data (bookings) for non-financial analysis
-        // TODO: Eventually eliminate this by passing operational facts to analyzers
-        $bookings = Booking::with(['customer', 'staff', 'service', 'specialist'])
-            ->where('salon_id', $salon->id)
-            ->get();
+        $operationalFacts = $this->operationalAnalyticsService->getOperationalFacts($provider, $location);
 
         // Initialize the DTO
         $dto = [
             'schema_version' => 1,
+            'algorithm_version' => 'v1',
             'generated_at' => $now->toIso8601String(),
             'data_through' => $now->copy()->subMinutes(1)->toIso8601String(),
+            'timezone' => $timezone,
+            'freshness' => '1_minute',
             'confidence' => 0.96,
             'analytics' => [],
             'forecast' => [],
@@ -73,10 +97,10 @@ class IntelligenceEngine
             '_copilot_context' => []
         ];
 
-        // 1. Run all analyzers with canonical facts
+        // 1. Run all analyzers with canonical facts only (no direct database queries)
         foreach ($this->analyzers as $analyzer) {
-            $result = $analyzer->analyze($financialFacts, $operationalFacts, $bookings);
-            
+            $result = $analyzer->analyze($financialFacts, $operationalFacts);
+
             // Deep merge the result into the DTO
             foreach ($result as $key => $value) {
                 if (is_array($value) && isset($dto[$key]) && is_array($dto[$key])) {
@@ -90,9 +114,12 @@ class IntelligenceEngine
         // 2. Generate Prioritized Signals
         $dto['signals'] = $this->ruleEngine->generateSignals($dto);
 
-        // 3. Generate Executive Briefing
-        $dto['briefing'] = $this->briefingBuilder->build($dto, $salon);
-        
+        // 3. Add Today's Operational Context
+        $dto['analytics']['today'] = $this->getTodayContext($operationalFacts, $financialFacts);
+
+        // 4. Generate Executive Briefing
+        $dto['briefing'] = $this->briefingBuilder->build($dto, $provider, $location);
+
         // 4. Generate Recommendations (extract from signals & churn)
         $dto['recommendations'] = $this->extractRecommendations($dto);
 
@@ -106,10 +133,38 @@ class IntelligenceEngine
         return $dto;
     }
     
+    private function getTodayContext(array $operationalFacts, array $financialFacts): array
+    {
+        $today = Carbon::today();
+        $todayDate = $today->toDateString();
+
+        // Get today's bookings from operational facts
+        $todayStats = $operationalFacts['today'] ?? [];
+
+        // Get today's revenue from financial facts
+        $trend = $financialFacts['trend'] ?? [];
+        $todayRevenue = collect($trend)
+            ->firstWhere('date', $todayDate);
+        $todayNetRevenue = $todayRevenue['net_revenue'] ?? 0;
+
+        // Count active specialists (those with bookings today)
+        $bySpecialist = $operationalFacts['by_specialist'] ?? [];
+        $activeSpecialists = collect($bySpecialist)
+            ->where('booking_count', '>', 0)
+            ->count();
+
+        return [
+            'appointments' => $todayStats['total_bookings'] ?? 0,
+            'revenue' => $todayNetRevenue,
+            'specialists' => $activeSpecialists,
+            'date' => $todayDate
+        ];
+    }
+
     private function extractRecommendations(array $dto): array
     {
         $recommendations = [];
-        
+
         // Add churn recommendations
         $churnRisks = $dto['analytics']['customers']['churn_risks'] ?? [];
         foreach ($churnRisks as $risk) {
@@ -124,7 +179,7 @@ class IntelligenceEngine
                 ];
             }
         }
-        
+
         return $recommendations;
     }
     

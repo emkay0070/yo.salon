@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Salon;
+use App\Models\Provider;
+use App\Models\Location;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Specialist;
@@ -45,9 +46,10 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_returns_zero_facts_when_no_transactions_exist()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         $this->assertEquals(0, $facts['totals']['gross_revenue']);
         $this->assertEquals(0, $facts['totals']['net_revenue']);
@@ -63,11 +65,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_correctly_accounts_for_cash_payment()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -77,13 +81,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -98,7 +102,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         // Post to ledger
         $this->journalPostingService->postForTransaction($transaction);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Verify invariants: Asset debit = Revenue credit (no fees for cash)
         $this->assertEquals(100000, $facts['totals']['gross_revenue']);
@@ -114,11 +118,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_correctly_accounts_for_gateway_fee_payment()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -128,13 +134,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'mobile_money',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -151,7 +157,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         // Post to ledger
         $this->journalPostingService->postForTransaction($transaction);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Verify invariants: Asset debit + Processing-cost debit = Revenue credit
         $this->assertEquals(100000, $facts['totals']['gross_revenue']);
@@ -167,20 +173,23 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_correctly_attributes_revenue_to_multiple_entities()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         $customer1 = Customer::factory()->create();
         $customer2 = Customer::factory()->create();
         
         $booking1 = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer1->id,
             'amount_due' => 50000,
             'amount_paid' => 50000,
         ]);
 
         $booking2 = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer2->id,
             'amount_due' => 75000,
             'amount_paid' => 75000,
@@ -190,13 +199,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction1 = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking1->id,
             'customer_id' => $customer1->id,
             'payment_method_id' => $paymentMethod->id,
@@ -209,7 +218,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         ]);
 
         $transaction2 = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking2->id,
             'customer_id' => $customer2->id,
             'payment_method_id' => $paymentMethod->id,
@@ -224,7 +233,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->journalPostingService->postForTransaction($transaction1);
         $this->journalPostingService->postForTransaction($transaction2);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Verify totals
         $this->assertEquals(125000, $facts['totals']['gross_revenue']);
@@ -246,11 +255,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_correctly_accounts_for_refunds()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -260,13 +271,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $paymentTransaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -279,7 +290,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         ]);
 
         $refundTransaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -294,7 +305,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->journalPostingService->postForTransaction($paymentTransaction);
         $this->journalPostingService->postForTransaction($refundTransaction);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Refund should reduce revenue to zero (credit - debit)
         $this->assertEquals(0, $facts['totals']['gross_revenue']);
@@ -303,11 +314,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_distinguishes_payment_revenue_from_distribution_payable()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -317,13 +330,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -338,7 +351,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->journalPostingService->postForTransaction($transaction);
         $this->revenueDistributionEngine->applyForBooking($booking);
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Payment revenue: 100,000 (what the customer paid)
         $this->assertEquals(100000, $facts['totals']['gross_revenue']);
@@ -350,14 +363,16 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_correctly_accounts_for_pending_vs_paid_settlements()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
 
         // Create pending settlement
         $pendingSettlement = new Settlement([
-            'payable_type' => Salon::class,
-            'payable_id' => $salon->id,
-            'recipient_type' => Salon::class,
-            'recipient_id' => $salon->id,
+            'provider_id' => $provider->id,
+            'payable_type' => Provider::class,
+            'payable_id' => $provider->id,
+            'recipient_type' => Provider::class,
+            'recipient_id' => $provider->id,
             'amount' => 50000,
             'status' => Settlement::STATUS_PENDING,
         ]);
@@ -365,38 +380,44 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
         // Create paid settlement
         $paidSettlement = new Settlement([
-            'payable_type' => Salon::class,
-            'payable_id' => $salon->id,
-            'recipient_type' => Salon::class,
-            'recipient_id' => $salon->id,
+            'provider_id' => $provider->id,
+            'payable_type' => Provider::class,
+            'payable_id' => $provider->id,
+            'recipient_type' => Provider::class,
+            'recipient_id' => $provider->id,
             'amount' => 30000,
             'status' => Settlement::STATUS_PAID,
         ]);
         $paidSettlement->save();
 
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
 
         // Only pending settlements should be counted
         $this->assertEquals(50000, $facts['settlements']['pending_amount']);
     }
 
-    public function test_it_isolates_data_by_salon()
+    public function test_it_isolates_data_by_provider()
     {
-        $salon1 = Salon::factory()->create();
-        $salon2 = Salon::factory()->create();
+        $provider1 = Provider::factory()->create();
+        $location1 = Location::factory()->create(['provider_id' => $provider1->id]);
+        
+        $provider2 = Provider::factory()->create();
+        $location2 = Location::factory()->create(['provider_id' => $provider2->id]);
         
         $customer1 = Customer::factory()->create();
         $customer2 = Customer::factory()->create();
         
         $booking1 = Booking::factory()->create([
-            'salon_id' => $salon1->id,
+            'location_id' => $location1->id,
+            'provider_id' => $provider1->id,
             'customer_id' => $customer1->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
         ]);
 
         $booking2 = Booking::factory()->create([
-            'salon_id' => $salon2->id,
+            'location_id' => $location2->id,
+            'provider_id' => $provider2->id,
             'customer_id' => $customer2->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -406,7 +427,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon1->id,
+            'provider_id' => $provider1->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
@@ -415,13 +436,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod2 = PaymentMethod::factory()->create([
-            'salon_id' => $salon2->id,
+            'provider_id' => $provider2->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount2->id,
         ]);
 
         $transaction1 = Transaction::factory()->create([
-            'salon_id' => $salon1->id,
+            'provider_id' => $provider1->id,
             'booking_id' => $booking1->id,
             'customer_id' => $customer1->id,
             'payment_method_id' => $paymentMethod->id,
@@ -434,7 +455,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         ]);
 
         $transaction2 = Transaction::factory()->create([
-            'salon_id' => $salon2->id,
+            'provider_id' => $provider2->id,
             'booking_id' => $booking2->id,
             'customer_id' => $customer2->id,
             'payment_method_id' => $paymentMethod2->id,
@@ -449,29 +470,31 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->journalPostingService->postForTransaction($transaction1);
         $this->journalPostingService->postForTransaction($transaction2);
 
-        $facts1 = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon1);
-        $facts2 = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon2);
+        $facts1 = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider1, $location1);
+        $facts2 = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider2, $location2);
 
-        // Each salon should only see its own revenue
+        // Each provider should only see its own revenue
         $this->assertEquals(100000, $facts1['totals']['gross_revenue']);
         $this->assertEquals(100000, $facts2['totals']['gross_revenue']);
         
-        // Salon 1 should not see Salon 2's booking
+        // Provider 1 should not see Provider 2's booking
         $this->assertArrayHasKey($booking1->id, $facts1['by_booking']);
         $this->assertArrayNotHasKey($booking2->id, $facts1['by_booking']);
         
-        // Salon 2 should not see Salon 1's booking
+        // Provider 2 should not see Provider 1's booking
         $this->assertArrayHasKey($booking2->id, $facts2['by_booking']);
         $this->assertArrayNotHasKey($booking1->id, $facts2['by_booking']);
     }
 
     public function test_it_does_not_cause_n_plus_one_query_explosion()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         
         // Create 10 bookings
         $bookings = Booking::factory()->count(10)->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
         ]);
@@ -480,14 +503,14 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MANUAL,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'cash',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         foreach ($bookings as $booking) {
             $transaction = Transaction::factory()->create([
-                'salon_id' => $salon->id,
+                'provider_id' => $provider->id,
                 'booking_id' => $booking->id,
                 'payment_method_id' => $paymentMethod->id,
                 'payment_account_id' => $paymentAccount->id,
@@ -503,7 +526,7 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         // Enable query logging
         \DB::enableQueryLog();
         
-        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($salon);
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
         
         $queries = \DB::getQueryLog();
         \DB::disableQueryLog();
@@ -522,11 +545,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
 
     public function test_it_verifies_ledger_mathematical_invariants()
     {
-        $salon = Salon::factory()->create();
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
         
         $booking = Booking::factory()->create([
-            'salon_id' => $salon->id,
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
             'customer_id' => $customer->id,
             'amount_due' => 100000,
             'amount_paid' => 100000,
@@ -536,13 +561,13 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
             'account_type' => PaymentAccount::TYPE_MERCHANT,
         ]);
         $paymentMethod = PaymentMethod::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'type' => 'mobile_money',
             'payment_account_id' => $paymentAccount->id,
         ]);
 
         $transaction = Transaction::factory()->create([
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
             'booking_id' => $booking->id,
             'customer_id' => $customer->id,
             'payment_method_id' => $paymentMethod->id,
@@ -559,18 +584,18 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->journalPostingService->postForTransaction($transaction);
 
         // Verify ledger-level invariants directly
-        $revenueAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $revenueAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'revenue')
             ->first();
 
-        $processingAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $processingAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'processing_cost')
             ->first();
 
-        $assetAccount = LedgerAccount::where('owner_type', Salon::class)
-            ->where('owner_id', $salon->id)
+        $assetAccount = LedgerAccount::where('owner_type', Provider::class)
+            ->where('owner_id', $provider->id)
             ->where('account_type', 'mobile_money')
             ->first();
 

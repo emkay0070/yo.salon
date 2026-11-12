@@ -9,6 +9,8 @@ use App\Models\PortalAccount;
 use App\Models\BookingService as BookingServiceModel;
 use App\Models\ResourceAllocation;
 use App\Services\Payments\BookingPaymentService;
+use App\Services\BookingConflictService;
+use App\Domain\Availability\DTOs\ProviderLocationContext;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +35,9 @@ class BookingService
     private CustomerSpecialistService $customerSpecialistService;
     private NotificationService $notificationService;
     private ReminderService $reminderService;
+    private BookingConfigurationService $configService;
+    private BookingConflictService $conflictService;
+    private \App\Services\AvailabilityEngine $availabilityEngine;
 
     public function __construct(
         CustomerService $customerService,
@@ -40,7 +45,10 @@ class BookingService
         BookingPaymentService $bookingPaymentService,
         CustomerSpecialistService $customerSpecialistService,
         NotificationService $notificationService,
-        ReminderService $reminderService
+        ReminderService $reminderService,
+        BookingConfigurationService $configService,
+        BookingConflictService $conflictService,
+        \App\Services\AvailabilityEngine $availabilityEngine
     ) {
         $this->customerService = $customerService;
         $this->portalAuthService = $portalAuthService;
@@ -48,6 +56,35 @@ class BookingService
         $this->customerSpecialistService = $customerSpecialistService;
         $this->notificationService = $notificationService;
         $this->reminderService = $reminderService;
+        $this->configService = $configService;
+        $this->conflictService = $conflictService;
+        $this->availabilityEngine = $availabilityEngine;
+    }
+
+    /**
+     * Invalidate availability cache after successful booking creation
+     *
+     * @param string $providerId
+     * @param string|null $locationId
+     * @param string $date
+     * @param string|null $serviceId
+     * @param string|null $specialistId
+     * @return void
+     */
+    private function invalidateAvailabilityCache(
+        string $providerId,
+        ?string $locationId,
+        string $date,
+        ?string $serviceId,
+        ?string $specialistId
+    ): void {
+        $ctx = new ProviderLocationContext($providerId, $locationId);
+        $this->availabilityEngine->clearAvailabilityCacheForSession(
+            $locationId,
+            $date,
+            $serviceId,
+            $specialistId
+        );
     }
 
     /**
@@ -134,9 +171,15 @@ class BookingService
             ->when($specialistId, fn($q) => $q->where('specialist_id', $specialistId))
             ->where('date', $date)
             ->where('time', $time)
-            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereIn('status', ['confirmed', 'pending', 'reserved', 'pending_payment'])
+            ->where(function ($q) {
+                // Lifecycle-aware check for reserved status
+                $q->where('status', '!=', 'reserved')
+                  ->orWhereNull('slot_locked_until')
+                  ->orWhere('slot_locked_until', '>', now());
+            })
             ->first();
-        
+
         if ($existingBooking) {
             throw new \InvalidArgumentException("This time slot is already booked.");
         }
@@ -152,14 +195,25 @@ class BookingService
      */
     public function createGuestBooking(array $data): Booking
     {
-        return DB::transaction(function () use ($data) {
-            $providerId = $data['provider_id'];
-            $locationId = $data['location_id'] ?? null;
-            $specialistId = $data['specialist_id'] ?? null;
-            $date = $data['date'];
-            $time = $data['time'];
-            $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
-            
+        $providerId = $data['provider_id'];
+        $locationId = $data['location_id'] ?? null;
+        $specialistId = $data['specialist_id'] ?? null;
+        $date = $data['date'];
+        $time = $data['time'];
+        $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
+
+        $booking = DB::transaction(function () use ($data, $providerId, $locationId, $specialistId, $date, $time, $serviceId) {
+
+            // Acquire advisory lock if not already held (when called directly, not from BookingOrchestrator)
+            // BookingOrchestrator already acquires the lock before calling this method
+            if (!isset($data['_lock_acquired'])) {
+                if ($specialistId) {
+                    $this->conflictService->acquireSpecialistLock($specialistId, $providerId);
+                } else {
+                    $this->conflictService->acquireProviderLock($providerId);
+                }
+            }
+
             // Validate booking time against effective schedule
             // Skip for internal (walk-in) bookings — staff bypasses slot availability rules
             if (empty($data['internal_booking'])) {
@@ -187,6 +241,11 @@ class BookingService
                     $providerId,
                     $data['customer_name'] ?? 'Walk-in Guest'
                 );
+            }
+
+            // Ensure customer has provider relationship (domain integrity)
+            if (!$customer->providers()->where('provider_id', $providerId)->exists()) {
+                $this->customerService->addProviderRelationship($customer, $providerId);
             }
 
             // Determine initial status based on approval policy
@@ -253,6 +312,11 @@ class BookingService
 
             return $booking->load(['location', 'customer', 'specialist', 'service']);
         });
+
+        // Invalidate availability cache after successful transaction commit
+        $this->invalidateAvailabilityCache($providerId, $locationId, $date, $serviceId, $specialistId);
+
+        return $booking;
     }
 
     /**
@@ -265,16 +329,30 @@ class BookingService
      */
     public function createBookingWithAccount(array $data): array
     {
-        return DB::transaction(function () use ($data) {
-            $providerId = $data['provider_id'];
-            $locationId = $data['location_id'] ?? null;
-            $specialistId = $data['specialist_id'] ?? null;
-            $date = $data['date'];
-            $time = $data['time'];
-            $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
-            
+        $providerId = $data['provider_id'];
+        $locationId = $data['location_id'] ?? null;
+        $specialistId = $data['specialist_id'] ?? null;
+        $date = $data['date'];
+        $time = $data['time'];
+        $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
+
+        $result = DB::transaction(function () use ($data, $providerId, $locationId, $specialistId, $date, $time, $serviceId) {
+
+            // Acquire advisory lock if not already held (when called directly, not from BookingOrchestrator)
+            // BookingOrchestrator already acquires the lock before calling this method
+            if (!isset($data['_lock_acquired'])) {
+                if ($specialistId) {
+                    $this->conflictService->acquireSpecialistLock($specialistId, $providerId);
+                } else {
+                    $this->conflictService->acquireProviderLock($providerId);
+                }
+            }
+
             // Validate booking time against effective schedule
-            $this->validateBookingTime($providerId, $locationId, $specialistId, $date, $time, $serviceId);
+            // Skip for internal (walk-in) bookings — staff bypasses slot availability rules
+            if (empty($data['internal_booking'])) {
+                $this->validateBookingTime($providerId, $locationId, $specialistId, $date, $time, $serviceId);
+            }
 
             // Resolve or create customer (business event)
             if (!empty($data['customer_id'])) {
@@ -287,6 +365,11 @@ class BookingService
                         'email' => $data['customer_email'] ?? null,
                     ]
                 );
+            }
+
+            // Ensure customer has provider relationship (domain integrity)
+            if (!$customer->providers()->where('provider_id', $providerId)->exists()) {
+                $this->customerService->addProviderRelationship($customer, $providerId);
             }
 
             // Get provider and service price securely
@@ -435,6 +518,11 @@ class BookingService
                 'requires_deposit' => $requiresDeposit,
             ];
         });
+
+        // Invalidate availability cache after successful transaction commit
+        $this->invalidateAvailabilityCache($providerId, $locationId, $date, $serviceId, $specialistId);
+
+        return $result;
     }
 
     /**
@@ -448,15 +536,15 @@ class BookingService
      */
     public function createBookingForPortalUser(array $data, PortalAccount $portalAccount): Booking
     {
-        return DB::transaction(function () use ($data, $portalAccount) {
-            $customer = $portalAccount->customer;
+        $providerId = $data['provider_id'];
+        $locationId = $data['location_id'] ?? null;
+        $specialistId = $data['specialist_id'] ?? null;
+        $date = $data['date'];
+        $time = $data['time'];
+        $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
 
-            $providerId = $data['provider_id'];
-            $locationId = $data['location_id'] ?? null;
-            $specialistId = $data['specialist_id'] ?? null;
-            $date = $data['date'];
-            $time = $data['time'];
-            $serviceId = is_array($data['service_id']) ? $data['service_id'][0] : $data['service_id'];
+        $booking = DB::transaction(function () use ($data, $portalAccount, $providerId, $locationId, $specialistId, $date, $time, $serviceId) {
+            $customer = $portalAccount->customer;
             
             // Validate booking time against effective schedule
             $this->validateBookingTime($providerId, $locationId, $specialistId, $date, $time, $serviceId);
@@ -489,6 +577,11 @@ class BookingService
 
             return $booking->load(['location', 'customer', 'specialist', 'service']);
         });
+
+        // Invalidate availability cache after successful transaction commit
+        $this->invalidateAvailabilityCache($providerId, $locationId, $date, $serviceId, $specialistId);
+
+        return $booking;
     }
 
     /**
@@ -808,8 +901,68 @@ class BookingService
             ]);
         }
 
-        return DB::transaction(function () use ($booking, $reasonCode, $actorType, $actorId, $options) {
-            // Transition original booking to rescheduled
+        $newBookingData = $options['new_booking_data'];
+        $newDate = $newBookingData['date'];
+        $newTime = $newBookingData['time'];
+        $newSpecialistId = $newBookingData['specialist_id'] ?? $booking->specialist_id;
+        $newLocationId = $newBookingData['location_id'] ?? $booking->location_id;
+
+        return DB::transaction(function () use (
+            $booking,
+            $reasonCode,
+            $actorType,
+            $actorId,
+            $options,
+            $newBookingData,
+            $newDate,
+            $newTime,
+            $newSpecialistId,
+            $newLocationId
+        ) {
+            // Acquire lock for the NEW interval first (secure before releasing old)
+            if ($newSpecialistId) {
+                $this->conflictService->acquireSpecialistLock($newSpecialistId, $booking->provider_id);
+            } else {
+                $this->conflictService->acquireProviderLock($booking->provider_id);
+            }
+
+            // Check for conflicts at the NEW interval
+            $service = \App\Models\Service::find($booking->service_id);
+            $newServiceStart = Carbon::parse("{$newDate} {$newTime}");
+            $newServiceEnd = $newServiceStart->copy()->addMinutes($service->duration);
+            $newOccupiedInterval = $this->conflictService->calculateOccupiedInterval(
+                $newServiceStart,
+                $newServiceEnd,
+                $service
+            );
+
+            if ($newSpecialistId && $newLocationId) {
+                $hasConflict = $this->conflictService->hasIntervalConflict(
+                    $newSpecialistId,
+                    $newLocationId,
+                    $newOccupiedInterval['start'],
+                    $newOccupiedInterval['end'],
+                    $booking->id // Exclude the original booking from conflict check
+                );
+            } elseif (!$newSpecialistId) {
+                $hasConflict = $this->conflictService->hasProviderLevelConflict(
+                    $booking->provider_id,
+                    $newLocationId,
+                    $newOccupiedInterval['start'],
+                    $newOccupiedInterval['end'],
+                    $booking->id
+                );
+            } else {
+                $hasConflict = false;
+            }
+
+            if ($hasConflict) {
+                throw ValidationException::withMessages([
+                    'new_booking_data' => 'The requested reschedule time is not available.',
+                ]);
+            }
+
+            // NEW interval is secure - now transition original booking
             $this->transitionStatus(
                 $booking,
                 'rescheduled',
@@ -834,14 +987,15 @@ class BookingService
             ]);
 
             // Create new booking using existing booking creation flow
-            $newBookingData = $options['new_booking_data'];
+            // Use internal_booking bypass since conflict check already performed above
             $newBooking = $this->createGuestBooking(array_merge($newBookingData, [
                 'provider_id' => $booking->provider_id,
-                'location_id' => $booking->location_id,
+                'location_id' => $newLocationId,
                 'customer_id' => $booking->customer_id,
-                'specialist_id' => $booking->specialist_id,
+                'specialist_id' => $newSpecialistId,
                 'service_id' => $booking->service_id,
-                'internal_booking' => true, // Bypass availability validation for rescheduling
+                '_lock_acquired' => true, // Lock already acquired above
+                'internal_booking' => true, // Bypass availability validation - conflict check already done
             ]));
 
             // Link new booking to original

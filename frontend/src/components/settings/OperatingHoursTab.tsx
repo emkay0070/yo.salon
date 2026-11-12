@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { Loader2, Save, Clock, Rocket, ShieldAlert } from 'lucide-react';
 import { useRole } from '@/contexts/RoleContext';
+import ScheduleMigrationBanner from './ScheduleMigrationBanner';
 
 const DAYS_OF_WEEK = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
@@ -25,24 +26,24 @@ function hoursComplete(schedules: Schedule[]) {
 }
 
 export default function OperatingHoursTab() {
-  const { salonId, isLoading: roleLoading } = useRole();
+  const { providerId, isLoading: roleLoading } = useRole();
   const queryClient = useQueryClient();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [publishStatus, setPublishStatus] = useState<PublishStatus>('EMPTY');
   const [hasMultipleBranches, setHasMultipleBranches] = useState(false);
-  const [providerId, setProviderId] = useState<string | null>(null);
+  const [backendProviderId, setBackendProviderId] = useState<string | null>(null);
 
-  const validSalonId = salonId && salonId !== 'null' && salonId !== 'undefined' ? salonId : null;
+  const validProviderId = providerId && providerId !== 'null' && providerId !== 'undefined' ? providerId : null;
 
   const { data: salonData } = useQuery({
-    queryKey: ['salon-with-provider', validSalonId],
-    queryFn: () => apiClient.getSalonWithProvider(validSalonId!),
-    enabled: !!validSalonId && !roleLoading,
+    queryKey: ['provider-with-data', validProviderId],
+    queryFn: () => apiClient.getProviderSchedules(validProviderId!),
+    enabled: !!validProviderId && !roleLoading,
   });
 
   useEffect(() => {
     if (salonData?.provider_id) {
-      setProviderId(salonData.provider_id);
+      setBackendProviderId(salonData.provider_id);
       // For now, assume single location. In future, check provider's salon count
       setHasMultipleBranches(false);
     }
@@ -50,16 +51,16 @@ export default function OperatingHoursTab() {
 
   // Fetch schedules based on whether it's single or multi-location
   const { data, isLoading } = useQuery({
-    queryKey: hasMultipleBranches ? ['salon-schedules', validSalonId] : ['provider-schedules', providerId],
+    queryKey: hasMultipleBranches ? ['location-schedules', validProviderId] : ['provider-schedules', backendProviderId],
     queryFn: () => {
-      if (!providerId) {
+      if (!backendProviderId) {
         throw new Error('Provider ID is required to fetch schedules');
       }
       return hasMultipleBranches
-        ? apiClient.getSalonSchedules(validSalonId!)
-        : apiClient.getProviderSchedules(providerId);
+        ? apiClient.getProviderSchedules(validProviderId!)
+        : apiClient.getProviderSchedules(backendProviderId);
     },
-    enabled: !!validSalonId && !roleLoading && !!providerId,
+    enabled: !!validProviderId && !roleLoading && !!backendProviderId,
   });
 
   useEffect(() => {
@@ -85,34 +86,34 @@ export default function OperatingHoursTab() {
   }, [data, isLoading]);
 
   const willSaveAsDraft = !hoursComplete(schedules);
-  const canSave = !!validSalonId && !roleLoading;
+  const canSave = !!validProviderId && !roleLoading;
 
   const updateMutation = useMutation({
     mutationFn: () => {
-      if (!providerId) {
+      if (!backendProviderId) {
         throw new Error('Provider ID is required to update schedules');
       }
       return hasMultipleBranches
-        ? apiClient.updateSalonSchedules(validSalonId!, 'CUSTOM', schedules)
-        : apiClient.updateProviderSchedules(providerId, schedules);
+        ? apiClient.updateProviderSchedules(validProviderId!, 'CUSTOM', schedules)
+        : apiClient.updateProviderSchedules(backendProviderId, JSON.stringify(schedules));
     },
     onSuccess: (resp: any) => {
-      queryClient.invalidateQueries({ queryKey: hasMultipleBranches ? ['salon-schedules', validSalonId] : ['provider-schedules', providerId] });
+      queryClient.invalidateQueries({ queryKey: hasMultipleBranches ? ['location-schedules', validProviderId] : ['provider-schedules', backendProviderId] });
       if (resp?.publish_status) setPublishStatus(resp.publish_status);
     },
   });
 
   const publishMutation = useMutation({
     mutationFn: () => {
-      if (!providerId) {
+      if (!backendProviderId) {
         throw new Error('Provider ID is required to publish schedules');
       }
       return hasMultipleBranches
-        ? apiClient.publishSalonSchedules(validSalonId!)
-        : apiClient.publishProviderSchedules(providerId);
+        ? apiClient.publishProviderSchedules(validProviderId!)
+        : apiClient.publishProviderSchedules(backendProviderId);
     },
     onSuccess: (resp: any) => {
-      queryClient.invalidateQueries({ queryKey: hasMultipleBranches ? ['salon-schedules', validSalonId] : ['provider-schedules', providerId] });
+      queryClient.invalidateQueries({ queryKey: hasMultipleBranches ? ['location-schedules', validProviderId] : ['provider-schedules', backendProviderId] });
       if (resp?.publish_status) setPublishStatus(resp.publish_status);
     },
   });
@@ -137,7 +138,7 @@ export default function OperatingHoursTab() {
     );
   }
 
-  if (!validSalonId) {
+  if (!validProviderId) {
     return (
       <div className="flex flex-col justify-center items-center py-20 text-center space-y-3">
         <ShieldAlert className="w-10 h-10 text-amber-400" />
@@ -151,6 +152,7 @@ export default function OperatingHoursTab() {
 
   return (
     <div className="space-y-6">
+      <ScheduleMigrationBanner />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-text-primary mb-1 flex items-center gap-2">

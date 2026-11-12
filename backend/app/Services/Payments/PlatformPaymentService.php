@@ -141,6 +141,12 @@ class PlatformPaymentService
             // Get subscription from invoice
             $subscription = $invoice->subscription;
 
+            event(new \App\Events\SubscriptionRenewed(
+                $subscription->provider_id,
+                $subscription->id,
+                $invoice->id
+            ));
+
             return [
                 'success' => true,
                 'status' => 'completed',
@@ -175,6 +181,15 @@ class PlatformPaymentService
         }
 
         if ($webhookData['status'] !== 'successful' && $webhookData['status'] !== 'completed') {
+            $invoice = Invoice::where('metadata->payment_reference', $reference)->first();
+            if ($invoice && $invoice->subscription) {
+                event(new \App\Events\SubscriptionPaymentFailed(
+                    $invoice->subscription->provider_id,
+                    $invoice->subscription->id,
+                    $invoice->id
+                ));
+            }
+
             return [
                 'success' => true,
                 'status' => 'ignored',

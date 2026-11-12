@@ -4,7 +4,7 @@ namespace Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use App\Models\Transaction;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Booking;
 use App\Models\PaymentMethod;
 
@@ -33,11 +33,11 @@ class TransactionFactory extends Factory
         return [
             'internal_reference' => 'TXN-' . strtoupper($this->faker->unique()->bothify('?????-#####')),
             'provider_reference' => $this->faker->uuid,
-            'salon_id' => Salon::factory(),
+            'provider_id' => Provider::factory(),
             'booking_id' => Booking::factory(),
             'payment_method_id' => PaymentMethod::factory(),
             'type' => 'payment',
-            'status' => 'successful',
+            'status' => 'completed',
             'currency' => 'UGX',
             'gross_amount' => $gross,
             'gateway_fee' => $fee,

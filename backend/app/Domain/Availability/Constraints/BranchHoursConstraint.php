@@ -17,7 +17,7 @@ class BranchHoursConstraint implements AvailabilityConstraint
 {
     public function apply(AvailabilityContext $context, Collection $windows): Collection
     {
-        $schedule = $context->salonSchedule;
+        $schedule = $context->locationSchedule;
 
         // No branch-level override — inherit from provider (pass through)
         if (!$schedule) {

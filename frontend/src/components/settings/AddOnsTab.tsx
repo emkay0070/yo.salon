@@ -31,7 +31,7 @@ interface PaymentMethod {
 }
 
 export default function AddOnsTab() {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
   const queryClient = useQueryClient();
   const [selectedProduct, setSelectedProduct] = useState<AddOnProduct | null>(null);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string | null>(null);
@@ -39,9 +39,9 @@ export default function AddOnsTab() {
 
   // Fetch usage for balances
   const { data: usageData } = useQuery({
-    queryKey: ['membership-usage', salonId],
+    queryKey: ['membership-usage', providerId],
     queryFn: () => apiClient.getMembershipUsage(),
-    enabled: !!salonId,
+    enabled: !!providerId,
   });
 
   // Fetch available add-ons
@@ -52,9 +52,9 @@ export default function AddOnsTab() {
 
   // Prefetch payment methods
   const { data: paymentMethodsResponse } = useQuery({
-    queryKey: ['payment-methods', salonId],
+    queryKey: ['payment-methods', providerId],
     queryFn: () => apiClient.getPaymentMethods(),
-    enabled: !!salonId,
+    enabled: !!providerId,
   });
 
   const purchaseMutation = useMutation({

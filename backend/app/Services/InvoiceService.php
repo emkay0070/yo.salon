@@ -7,7 +7,7 @@ use App\Models\InvoicePayment;
 use App\Models\Subscription;
 use App\Models\Plan;
 use App\Models\PlatformPaymentMethod;
-use App\Models\SalonCapacity;
+use App\Models\ProviderCapacity;
 use App\Models\Provider;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -416,7 +416,7 @@ class InvoiceService
         }
 
         // Find capacity records linked to this invoice
-        $capacities = SalonCapacity::forProvider($invoice->provider_id)
+        $capacities = ProviderCapacity::forProvider($invoice->provider_id)
             ->whereJsonContains('metadata', ['first_purchase_invoice_id' => $invoiceId])
             ->orWhereJsonContains('metadata', ['last_purchase_invoice_id' => $invoiceId])
             ->get();

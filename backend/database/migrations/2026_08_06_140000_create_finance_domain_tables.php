@@ -115,8 +115,10 @@ return new class extends Migration
 
         // Update settlements table to use polymorphic relationships
         Schema::table('settlements', function (Blueprint $table) {
-            // Drop existing foreign keys
-            $table->dropForeign(['salon_id']);
+            // Drop existing foreign keys only if salon_id column exists
+            if (Schema::hasColumn('settlements', 'salon_id')) {
+                $table->dropForeign(['salon_id']);
+            }
             
             // Add polymorphic columns for payable (who owes)
             $table->string('payable_type')->after('id');
@@ -130,8 +132,10 @@ return new class extends Migration
             $table->string('reference_type')->nullable()->after('recipient_id');
             $table->uuid('reference_id')->nullable()->after('reference_type');
             
-            // Drop old salon_id column after migration
-            $table->dropColumn('salon_id');
+            // Drop old salon_id column after migration (only if it exists)
+            if (Schema::hasColumn('settlements', 'salon_id')) {
+                $table->dropColumn('salon_id');
+            }
         });
 
         // Create payouts table

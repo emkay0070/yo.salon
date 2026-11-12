@@ -5,14 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class LoyaltyPoint extends Model
 {
-    use HasUuids;
+    use HasUuids, HasFactory;
 
     protected $fillable = [
         'customer_id',
-        'salon_id',
+        'provider_id',
         'points_earned',
         'points_redeemed',
         'balance',
@@ -22,9 +23,6 @@ class LoyaltyPoint extends Model
         'redeemed_at',
         'description',
         'metadata',
-        'offer_id',
-        'points',
-        'type',
     ];
 
     protected $casts = [
@@ -42,33 +40,28 @@ class LoyaltyPoint extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
-    }
-
-    public function offer(): BelongsTo
-    {
-        return $this->belongsTo(Offer::class);
+        return $this->belongsTo(Provider::class);
     }
 
     /**
-     * Get customer's current balance for a salon
+     * Get customer's current balance for a provider
      */
-    public static function getCustomerBalance(string $customerId, string $salonId): int
+    public static function getCustomerBalance(string $customerId, string $providerId): int
     {
         return self::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->sum('balance');
     }
 
     /**
-     * Get customer's current tier for a salon
+     * Get customer's current tier for a provider
      */
-    public static function getCustomerTier(string $customerId, string $salonId): string
+    public static function getCustomerTier(string $customerId, string $providerId): string
     {
         $latest = self::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->orderBy('earned_at', 'desc')
             ->first();
 
@@ -76,12 +69,12 @@ class LoyaltyPoint extends Model
     }
 
     /**
-     * Get customer's tier progress for a salon
+     * Get customer's tier progress for a provider
      */
-    public static function getTierProgress(string $customerId, string $salonId): array
+    public static function getTierProgress(string $customerId, string $providerId): array
     {
         $latest = self::where('customer_id', $customerId)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->orderBy('earned_at', 'desc')
             ->first();
 
@@ -102,7 +95,7 @@ class LoyaltyPoint extends Model
         ];
 
         $currentTier = $latest->tier;
-        $currentPoints = self::getCustomerBalance($customerId, $salonId);
+        $currentPoints = self::getCustomerBalance($customerId, $providerId);
 
         $nextTier = match($currentTier) {
             'bronze' => 'silver',

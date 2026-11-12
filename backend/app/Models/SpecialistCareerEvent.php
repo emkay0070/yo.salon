@@ -16,7 +16,6 @@ class SpecialistCareerEvent extends Model
         'title',
         'description',
         'date',
-        'salon_id',
         'assignment_id',
         'data',
         'icon',
@@ -32,11 +31,6 @@ class SpecialistCareerEvent extends Model
     public function specialist(): BelongsTo
     {
         return $this->belongsTo(Specialist::class);
-    }
-
-    public function salon(): BelongsTo
-    {
-        return $this->belongsTo(Salon::class);
     }
 
     public function assignment(): BelongsTo

@@ -12,12 +12,12 @@ class CompensationAdjustmentController extends CompensationController
     /**
      * Add an adjustment (bonus, deduction, tip) to an open period.
      */
-    public function store(string $salonSlug, string $periodId, Request $request): JsonResponse
+    public function store(string $providerIdentifier, string $periodId, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $period = CompensationPeriod::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $period = CompensationPeriod::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->where('id', $periodId)
             ->firstOrFail();
 

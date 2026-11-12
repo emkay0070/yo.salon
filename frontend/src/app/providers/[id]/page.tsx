@@ -86,6 +86,11 @@ function ProviderProfilePageContent({ params }: { params: Promise<{ id: string }
     router.push(`/book?provider_id=${provider.id}`);
   };
 
+  const handleViewWebsite = () => {
+    if (!provider?.slug) return;
+    router.push(`/${provider.slug}`);
+  };
+
   const handleFavorite = () => {
     setIsFavorited(!isFavorited);
     // TODO: Implement favorite API call
@@ -170,6 +175,7 @@ function ProviderProfilePageContent({ params }: { params: Promise<{ id: string }
           verified={true}
           primaryAction={{ label: 'Book Appointment', onClick: handleBook }}
           secondaryActions={[
+            ...(provider.slug ? [{ label: 'View Website', onClick: handleViewWebsite }] : []),
             { label: 'View Locations', onClick: () => {} }
           ]}
           variant="provider"
@@ -229,7 +235,7 @@ function ProviderProfilePageContent({ params }: { params: Promise<{ id: string }
                   rating={location.rating}
                   isOpen={location.is_open}
                   openingHours={location.opening_hours}
-                  onBook={() => router.push(`/salons/${location.slug}/book`)}
+                  onBook={() => router.push(`/book?provider_slug=${location.slug}`)}
                   onNavigate={() => window.open(location.maps_url, '_blank')}
                   variant="compact"
                 />

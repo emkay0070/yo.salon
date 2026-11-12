@@ -4,7 +4,7 @@ namespace App\Domain\Finance\Journal;
 
 use App\Models\Transaction;
 use App\Models\PaymentAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Domain\Finance\FinancialTransaction;
 use App\Domain\Finance\Ledger\LedgerAccount;
 use App\Domain\Finance\Events\JournalPosted;
@@ -95,18 +95,18 @@ class JournalPostingService
     {
         $movements = [];
         $isRefund = $transaction->type === 'refund';
-        $salonId = $transaction->salon_id;
+        $providerId = $transaction->provider_id;
 
         $assetType = $policy->assetAccountType($transaction);
         $feeBearer = $policy->gatewayFeeBearer($transaction);
 
         // Get accounts
-        $assetAccount = LedgerAccount::getOrCreateFor(Salon::class, $salonId, $assetType, $transaction->currency);
-        $revenueAccount = LedgerAccount::getOrCreateFor(Salon::class, $salonId, 'revenue', $transaction->currency);
+        $assetAccount = LedgerAccount::getOrCreateFor(Provider::class, $providerId, $assetType, $transaction->currency);
+        $revenueAccount = LedgerAccount::getOrCreateFor(Provider::class, $providerId, 'revenue', $transaction->currency);
         
         $processingCostAccount = null;
-        if ($feeBearer === 'salon') {
-            $processingCostAccount = LedgerAccount::getOrCreateFor(Salon::class, $salonId, 'processing_cost', $transaction->currency);
+        if ($feeBearer === 'provider') {
+            $processingCostAccount = LedgerAccount::getOrCreateFor(Provider::class, $providerId, 'processing_cost', $transaction->currency);
         }
 
         $grossAmount = (float) $transaction->gross_amount;

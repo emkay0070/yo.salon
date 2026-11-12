@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('media', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('provider_id')->nullable();
-            $table->uuid('salon_id')->nullable();
             $table->bigInteger('uploaded_by')->nullable(); // user_id (bigint to match users table)
             
             // Storage info
@@ -37,13 +36,11 @@ return new class extends Migration
             
             // Indexes
             $table->index('provider_id');
-            $table->index('salon_id');
             $table->index('uploaded_by');
             $table->index('disk');
             
             // Foreign keys
             $table->foreign('provider_id')->references('id')->on('providers')->onDelete('cascade');
-            $table->foreign('salon_id')->references('id')->on('salons')->onDelete('cascade');
             $table->foreign('uploaded_by')->references('id')->on('users')->onDelete('set null');
         });
     }

@@ -1,15 +1,17 @@
 'use client';
 
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { motion } from 'framer-motion';
 import { Check, Sparkles, Eye } from 'lucide-react';
 import SceneLayout from './SceneLayout';
 
 export default function LaunchPreviewScene() {
-  const { salonData, setShowMobilePreview } = useOnboarding();
+  const { providerData, setShowMobilePreview } = useOnboarding();
+  const { terminology, category } = useCategory();
 
   const benefits = [
-    'Discover your salon online',
+    `Discover your ${terminology.business.toLowerCase()} online`,
     'View your services & prices',
     'Book appointments 24/7',
     'Join your community'
@@ -22,11 +24,11 @@ export default function LaunchPreviewScene() {
           <Sparkles className="w-8 h-8 text-[#FFD700]" />
         </div>
         <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-          Your salon is ready ✨
+          Your {terminology.business.toLowerCase()} is ready ✨
         </h2>
         <p className="text-white/40 text-base max-w-sm mx-auto">
-          {salonData.name || 'Your Salon'} has been beautifully digitized. 
-          {salonData.category && ` A premium ${salonData.category.toLowerCase()} experience.`}
+          {providerData.name || `Your ${terminology.business}`} has been beautifully digitized.
+          {category && ` A premium ${category.name?.toLowerCase() || category.short_name?.toLowerCase() || terminology.business.toLowerCase()} experience.`}
         </p>
       </div>
 

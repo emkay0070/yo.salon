@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
  * - Serializable via toLegacyPayload() for backward compatibility
  *
  * Properties:
- * - salonId, salonName, date, timezone: Context identifiers
+ * - locationId, locationName, date, timezone: Context identifiers
  * - status: The primary AvailabilityDomainStatus (may be composite winner)
  * - allStatuses: All contributing statuses (for diagnostics)
  * - slots: Collection of available time slots
@@ -33,13 +33,13 @@ use Illuminate\Support\Collection;
 final readonly class AvailabilityResult
 {
     /**
-     * @param  string  $salonId
+     * @param  string  $locationId
      * @param  string  $date
      * @param  AvailabilityDomainStatus  $status
      * @param  array<int, AvailabilityDomainStatus>  $allStatuses
      * @param  Collection<int, array{start: string, end: string, duration: int, available_specialists?: list<array{id: string, name: string, skill_level: string, price: int|float}>, base_price?: int|float}>  $slots
      * @param  ResolvedSchedule|null  $schedule
-     * @param  string|null  $salonName
+     * @param  string|null  $locationName
      * @param  string|null  $timezone
      * @param  array{open: string|null, close: string|null}|null  $operatingHours
      * @param  bool  $isClosed
@@ -47,13 +47,13 @@ final readonly class AvailabilityResult
      * @param  int  $totalAvailableSlots
      */
     public function __construct(
-        public string $salonId,
+        public string $locationId,
         public string $date,
         public AvailabilityDomainStatus $status,
         public array $allStatuses = [],
         public Collection $slots,
         public ?ResolvedSchedule $schedule = null,
-        public ?string $salonName = null,
+        public ?string $locationName = null,
         public ?string $timezone = null,
         public ?array $operatingHours = null,
         public bool $isClosed = false,
@@ -71,8 +71,8 @@ final readonly class AvailabilityResult
     public function toLegacyPayload(): array
     {
         return [
-            'salon_id'              => $this->salonId,
-            'salon_name'            => $this->salonName,
+            'location_id'           => $this->locationId,
+            'location_name'         => $this->locationName,
             'date'                  => $this->date,
             'timezone'              => $this->timezone,
             'operating_hours'       => $this->operatingHours,

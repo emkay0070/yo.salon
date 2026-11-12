@@ -12,16 +12,16 @@ class PaymentMethodController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
-        $methods = PaymentMethod::where('salon_id', $salonId)
+        $methods = PaymentMethod::where('provider_id', $providerId)
             ->where('is_active', true)
             ->orderBy('is_primary', 'desc')
             ->get();
 
         Log::info('Payment methods fetched', [
-            'salon_id' => $salonId,
+            'provider_id' => $providerId,
             'count' => $methods->count(),
             'methods' => $methods->pluck('provider'),
         ]);
@@ -30,17 +30,17 @@ class PaymentMethodController extends Controller
     }
 
     /**
-     * Get public payment methods for a salon (no auth required)
+     * Get public payment methods for a provider (no auth required)
      * Used in booking flow to show available payment options
      */
     public function getPublicMethods(string $slug): JsonResponse
     {
-        $salon = \App\Models\Salon::where('slug', $slug)->first();
-        if (!$salon) {
-            return response()->json(['message' => 'Salon not found'], 404);
+        $provider = \App\Models\Provider::where('slug', $slug)->first();
+        if (!$provider) {
+            return response()->json(['message' => 'Provider not found'], 404);
         }
 
-        $methods = PaymentMethod::where('salon_id', $salon->id)
+        $methods = PaymentMethod::where('provider_id', $provider->id)
             ->where('is_active', true)
             ->orderBy('is_primary', 'desc')
             ->get(['id', 'provider', 'type', 'display_name']);
@@ -50,8 +50,8 @@ class PaymentMethodController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $salonId = auth()->user()->currentSalon()?->id;
-        if (!$salonId) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $providerId = auth()->user()->currentProvider()?->id;
+        if (!$providerId) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $validated = $request->validate([
             'provider'               => 'required|in:cash,mtn,airtel,flutterwave,pesapal,visa,mastercard',
@@ -71,7 +71,7 @@ class PaymentMethodController extends Controller
             'metadata'               => 'nullable|array',
         ]);
 
-        $validated['salon_id'] = $salonId;
+        $validated['provider_id'] = $providerId;
 
         // For MTN, verify credentials before creating
         if (in_array($validated['provider'], ['mtn', 'mtn_momo'])) {
@@ -102,9 +102,9 @@ class PaymentMethodController extends Controller
             }
         }
 
-        // Enforce one primary per salon
+        // Enforce one primary per provider
         if (!empty($validated['is_primary'])) {
-            PaymentMethod::where('salon_id', $salonId)->update(['is_primary' => false]);
+            PaymentMethod::where('provider_id', $providerId)->update(['is_primary' => false]);
         }
 
         // Filter out empty strings for credential fields to avoid encryption errors
@@ -125,7 +125,7 @@ class PaymentMethodController extends Controller
 
     public function show(PaymentMethod $paymentMethod): JsonResponse
     {
-        return response()->json($paymentMethod->load('salon'));
+        return response()->json($paymentMethod->load('provider'));
     }
 
     public function update(Request $request, PaymentMethod $paymentMethod): JsonResponse
@@ -146,9 +146,9 @@ class PaymentMethodController extends Controller
             'metadata'               => 'nullable|array',
         ]);
 
-        // Enforce one primary per salon
+        // Enforce one primary per provider
         if (!empty($validated['is_primary'])) {
-            PaymentMethod::where('salon_id', $paymentMethod->salon_id)
+            PaymentMethod::where('provider_id', $paymentMethod->provider_id)
                 ->where('id', '!=', $paymentMethod->id)
                 ->update(['is_primary' => false]);
         }

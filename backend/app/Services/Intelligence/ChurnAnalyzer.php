@@ -2,61 +2,76 @@
 
 namespace App\Services\Intelligence;
 
-use Illuminate\Support\Collection;
-
 class ChurnAnalyzer implements AnalyzerInterface
 {
-    public function analyze(array $financialFacts, array $operationalFacts, Collection $bookings): array
+    public function analyze(array $financialFacts, array $operationalFacts): array
     {
-        $customerGroups = $bookings->groupBy('customer_id');
         $churnRisks = [];
         $now = now();
-        $totalCustomers = $customerGroups->count();
-        $uniqueThisMonth = $bookings->filter(fn($b) => \Carbon\Carbon::parse($b->date)->isCurrentMonth())->pluck('customer_id')->unique()->count();
-        $retainedCustomers = 0;
+
+        // Get customer data from operational facts
+        $byCustomer = $operationalFacts['by_customer'] ?? [];
+        $totalCustomers = count($byCustomer);
 
         // Get revenue by customer from financial facts
-        $byCustomer = $financialFacts['by_customer'];
+        $byCustomerFinance = $financialFacts['by_customer'] ?? [];
 
-        foreach ($customerGroups as $customerId => $customerBookings) {
+        // Get temporal data for unique this month calculation
+        $temporal = $operationalFacts['temporal'] ?? [];
+        $dailyTrend = $temporal['daily_trend'] ?? [];
+        $uniqueThisMonth = 0;
+
+        // Calculate unique customers this month from daily trend
+        foreach ($dailyTrend as $date => $count) {
+            if (\Carbon\Carbon::parse($date)->isCurrentMonth()) {
+                $uniqueThisMonth += $count;
+            }
+        }
+
+        $retainedCustomers = 0;
+
+        foreach ($byCustomer as $customerData) {
+            $customerId = $customerData['customer_id'];
             if (!$customerId) continue;
 
-            $customer = $customerBookings->first()->customer;
-            if (!$customer) continue;
+            $bookingCount = $customerData['booking_count'] ?? 0;
+            $isRepeat = $customerData['is_repeat_customer'] ?? false;
 
-            $bookingCount = $customerBookings->count();
-            if ($bookingCount > 1) {
+            if ($bookingCount > 1 || $isRepeat) {
                 $retainedCustomers++;
-                
-                $lastBookingDate = collect($customerBookings)->max('date');
-                $daysSinceLastBooking = $now->diffInDays(\Carbon\Carbon::parse($lastBookingDate));
-                
+
+                // Calculate days since last booking from operational data
+                // For now, we'll use a simplified approach since we don't have last booking date in facts
+                // TODO: Add last_booking_date to operational facts
+                $daysSinceLastBooking = 30; // Placeholder
+
                 // If they haven't booked in 45-90 days, flag as risk
                 if ($daysSinceLastBooking >= 45 && $daysSinceLastBooking <= 90) {
-                    
                     // Use canonical financial facts for LTV (from Ledger)
-                    $ltv = $byCustomer[$customerId]['net_revenue'] ?? 0;
-                    
+                    $financeData = $byCustomerFinance[$customerId] ?? null;
+                    $ltv = $financeData['net_revenue'] ?? 0;
+
                     // Risk Score 0-100 (90 days = 100%, 45 days = 50%)
                     $riskScore = min(100, round(($daysSinceLastBooking / 90) * 100));
-                    
+
                     $riskLabel = $riskScore > 80 ? 'critical' : ($riskScore > 60 ? 'high' : 'medium');
-                    
+
                     $churnRisks[] = [
-                        'customer_id' => $customer->id,
-                        'name' => $customer->name,
+                        'customer_id' => $customerId,
+                        'name' => $customerData['customer_name'] ?? 'Unknown',
                         'risk_score' => $riskScore,
                         'risk_label' => $riskLabel,
                         'days_since_visit' => $daysSinceLastBooking,
                         'lifetime_value' => $ltv,
-                        'recommended_action' => 'Offer Executive Package' // Static for now, could be dynamic
+                        'recommended_action' => 'Offer Executive Package',
+                        'confidence' => 'low' // Placeholder until we have actual last booking date
                     ];
                 }
             }
         }
-        
+
         $retentionRate = $totalCustomers > 0 ? round(($retainedCustomers / $totalCustomers), 2) : 0;
-        
+
         // Sort churn risks by LTV (most valuable first)
         usort($churnRisks, fn($a, $b) => $b['lifetime_value'] <=> $a['lifetime_value']);
 

@@ -181,13 +181,14 @@ class Earning extends Model
     }
 
     /**
-     * Void this earning (booking cancelled, policy error, etc.)
-     * Only valid from 'earned' or 'included'.
+     * Void this earning (booking cancelled, policy error, refund reversal, etc.)
+     * Valid from 'earned', 'included', or 'payable' (when Settlement has already been cancelled).
+     * For 'paid' earnings, use a CompensationAdjustment instead.
      */
     public function void(): void
     {
-        if (!in_array($this->status, [self::STATUS_EARNED, self::STATUS_INCLUDED])) {
-            throw new \LogicException("Cannot void earning: current status is '{$this->status}'. Use a CompensationAdjustment for paid/payable earnings.");
+        if (!in_array($this->status, [self::STATUS_EARNED, self::STATUS_INCLUDED, self::STATUS_PAYABLE])) {
+            throw new \LogicException("Cannot void earning: current status is '{$this->status}'. Use a CompensationAdjustment for paid earnings.");
         }
 
         $this->status = self::STATUS_VOIDED;

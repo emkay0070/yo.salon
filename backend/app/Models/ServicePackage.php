@@ -11,7 +11,7 @@ class ServicePackage extends Model
     use HasUuids;
 
     protected $fillable = [
-        'salon_id',
+        'location_id',
         'name',
         'description',
         'price',
@@ -34,9 +34,9 @@ class ServicePackage extends Model
         'image_url',
     ];
 
-    public function salon(): BelongsTo
+    public function location()
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Location::class, 'location_id');
     }
 
     public function imageMedia(): BelongsTo
@@ -56,11 +56,11 @@ class ServicePackage extends Model
     }
 
     /**
-     * Get active packages for a salon
+     * Get active packages for a location
      */
-    public static function getActiveForSalon(string $salonId)
+    public static function getActiveForLocation(string $locationId)
     {
-        return self::where('salon_id', $salonId)
+        return self::where('location_id', $locationId)
             ->where('active', true)
             ->orderBy('created_at', 'desc')
             ->get();

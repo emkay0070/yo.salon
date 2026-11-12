@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Provider extends Model
@@ -38,6 +39,7 @@ class Provider extends Model
         'awards',
         'gallery',
         'active',
+        'business_category_id',
     ];
 
     /**
@@ -45,6 +47,10 @@ class Provider extends Model
      */
     const TYPE_SALON = 'salon';
     const TYPE_SPECIALIST = 'independent_specialist';
+    const TYPE_SPA = 'spa';
+    const TYPE_BEAUTY_SCHOOL = 'beauty_school';
+    const TYPE_MOBILE_TEAM = 'mobile_team';
+    // TODO: TYPE_SUPPLIER is for Commerce/Catalog domain, not operational provider types
     const TYPE_SUPPLIER = 'supplier';
 
     protected $casts = [
@@ -71,9 +77,26 @@ class Provider extends Model
     }
 
     // Relationships
-    public function salon(): HasOne
+    public function locations(): HasMany
     {
-        return $this->hasOne(Salon::class);
+        return $this->hasMany(Location::class);
+    }
+
+    public function primaryLocation(): HasOne
+    {
+        return $this->hasOne(Location::class)->where('is_primary', true);
+    }
+
+    public function getLocationIdAttribute(): ?string
+    {
+        return $this->primaryLocation?->id;
+    }
+
+    public function customers(): BelongsToMany
+    {
+        return $this->belongsToMany(Customer::class, 'customer_providers')
+            ->withPivot('id', 'visits', 'joined_at')
+            ->withTimestamps();
     }
 
     public function logoMedia(): BelongsTo
@@ -89,6 +112,11 @@ class Provider extends Model
     public function specialists(): HasMany
     {
         return $this->hasMany(Specialist::class);
+    }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(SpecialistAssignment::class);
     }
 
     public function services(): HasMany
@@ -111,9 +139,19 @@ class Provider extends Model
         return $this->hasOne(ProviderBookingConfig::class);
     }
 
+    public function brandExperience(): HasOne
+    {
+        return $this->hasOne(BrandExperience::class);
+    }
+
     public function subscription(): HasOne
     {
         return $this->hasOne(Subscription::class);
+    }
+
+    public function businessCategory(): BelongsTo
+    {
+        return $this->belongsTo(BusinessCategory::class);
     }
 
     // Scopes
@@ -130,5 +168,13 @@ class Provider extends Model
     public function scopeByStatus($query, string $status)
     {
         return $query->where('status', $status);
+    }
+
+    /**
+     * Get the provider type definition from the registry
+     */
+    public function getTypeDefinition(): \App\Domain\Provider\ProviderTypeDefinition
+    {
+        return app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($this->type);
     }
 }

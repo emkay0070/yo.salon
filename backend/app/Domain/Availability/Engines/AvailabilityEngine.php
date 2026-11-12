@@ -28,10 +28,10 @@ class AvailabilityEngine
     /**
      * Check if a specific time slot is available for a specialist assignment.
      */
-    public function isSlotAvailable(string $assignmentId, string $date, string $startTime, int $durationMinutes): bool
+    public function isSlotAvailable(string $assignmentId, string $date, string $startTime, int $durationMinutes, ?string $serviceId = null): bool
     {
         $targetDate = CarbonImmutable::parse($date);
-        $context = $this->contextQuery->build($assignmentId, $targetDate);
+        $context = $this->contextQuery->build($assignmentId, $targetDate, $serviceId);
 
         // Generate the available slots for this date
         $availableSlots = $this->generator->generate($context);

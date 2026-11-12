@@ -75,16 +75,13 @@ class RecordEarning
     private function createImmediateSettlement(Earning $earning, CompensationPolicy $policy): void
     {
         $settlement = Settlement::create([
-            'payable_type'    => $policy->provider_type,
-            'payable_id'      => $policy->provider_id,
-            'recipient_type'  => $earning->compensatable_type,
-            'recipient_id'    => $earning->compensatable_id,
-            'reference_type'  => $earning->source_type,
-            'reference_id'    => $earning->source_id,
+            'provider_id'      => $policy->provider_id,
             'amount'          => $earning->gross_amount,
             'currency'        => $earning->currency,
             'status'          => Settlement::STATUS_PENDING,
             'scheduled_for'   => now(),
+            'reference'       => "Earning #{$earning->id}",
+            'notes'           => "Immediate settlement for earning from {$earning->source_type} #{$earning->source_id}",
             'metadata'        => [
                 'source'      => 'compensation_immediate',
                 'earning_id'  => $earning->id,

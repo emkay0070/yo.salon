@@ -11,7 +11,7 @@ interface Signal {
   summary: string;
   impact: string;
   recommended_action: string;
-  deep_link: string;
+  deep_link: string | null;
 }
 
 interface SignalsBoardProps {
@@ -64,9 +64,15 @@ export default function SignalsBoard({ signals }: SignalsBoardProps) {
                     </h3>
                     <p className="text-xs text-text-secondary">{signal.summary}</p>
                     <p className="text-xs text-text-muted italic">{signal.impact}</p>
-                    <Link href={signal.deep_link} className="text-xs font-medium text-gold hover:underline inline-flex items-center gap-1 mt-1 transition-transform group-hover:translate-x-1">
-                      {signal.recommended_action} <ArrowRight className="w-3 h-3" />
-                    </Link>
+                    {signal.deep_link ? (
+                      <Link href={signal.deep_link} className="text-xs font-medium text-gold hover:underline inline-flex items-center gap-1 mt-1 transition-transform group-hover:translate-x-1">
+                        {signal.recommended_action} <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    ) : (
+                      <div className="text-xs font-medium text-gold mt-1">
+                        {signal.recommended_action}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

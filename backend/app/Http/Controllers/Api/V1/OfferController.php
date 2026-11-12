@@ -17,19 +17,20 @@ class OfferController extends Controller
     }
 
     /**
-     * Get active offers for the current salon
+     * Get active offers for the current provider/location
      */
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
+        $locationId = $request->attributes->get('location_id');
 
-        if (!$salonId) {
+        if (!$providerId) {
             return response()->json([
-                'message' => 'Salon context not found',
+                'message' => 'Provider context not found',
             ], 400);
         }
 
-        $offers = $this->offerService->getActiveOffers($salonId);
+        $offers = $this->offerService->getActiveOffers($providerId, $locationId);
 
         return response()->json([
             'offers' => $offers,
@@ -41,16 +42,17 @@ class OfferController extends Controller
      */
     public function customerOffers(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
+        $locationId = $request->attributes->get('location_id');
         $customerId = $request->attributes->get('customer_id');
 
-        if (!$salonId || !$customerId) {
+        if (!$providerId || !$customerId) {
             return response()->json([
                 'message' => 'Context not found',
             ], 400);
         }
 
-        $offers = $this->offerService->getCustomerEligibleOffers($customerId, $salonId);
+        $offers = $this->offerService->getCustomerEligibleOffers($customerId, $providerId, $locationId);
 
         return response()->json([
             'offers' => $offers,
@@ -63,7 +65,8 @@ class OfferController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'salon_id' => 'required|uuid',
+            'provider_id' => 'required|uuid|exists:providers,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'discount_type' => 'required|enum:percentage,fixed,buy_x_get_y',
@@ -75,6 +78,24 @@ class OfferController extends Controller
             'image' => 'nullable|string',
             'usage_limit' => 'nullable|integer|min:1',
         ]);
+
+        // Verify the authenticated user owns this provider
+        $user = $request->user();
+        if (!$user->providers()->where('id', $validated['provider_id'])->exists()) {
+            return response()->json([
+                'message' => 'Unauthorized: you do not own this provider',
+            ], 403);
+        }
+
+        // If location_id is provided, verify it belongs to the provider
+        if (isset($validated['location_id'])) {
+            $location = \App\Models\Location::find($validated['location_id']);
+            if (!$location || $location->provider_id !== $validated['provider_id']) {
+                return response()->json([
+                    'message' => 'Invalid location: must belong to the provider',
+                ], 422);
+            }
+        }
 
         try {
             $offer = $this->offerService->createOffer($validated);

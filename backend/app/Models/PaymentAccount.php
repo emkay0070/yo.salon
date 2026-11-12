@@ -12,10 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * 
  * This is distinct from PaymentMethod:
  * - PaymentMethod: HOW the customer pays (MTN MoMo, Visa, Cash)
- * - PaymentAccount: WHOSE account receives the money (Salon's Flutterwave, Yo.Salon routing)
+ * - PaymentAccount: WHOSE account receives the money (Provider's Flutterwave, Yo.Salon routing)
  * 
  * This abstraction enables the dual payment ownership model:
- * 1. Salon-owned merchant accounts (existing setup)
+ * 1. Provider-owned merchant accounts (existing setup)
  * 2. Yo.Salon-facilitated connected/subaccount structures
  */
 class PaymentAccount extends Model
@@ -52,7 +52,7 @@ class PaymentAccount extends Model
     /**
      * Account types
      */
-    const TYPE_MERCHANT = 'merchant';           // Salon's own merchant account
+    const TYPE_MERCHANT = 'merchant';           // Provider's own merchant account
     const TYPE_SUBACCOUNT = 'subaccount';       // Yo.Salon-connected subaccount
     const TYPE_ROUTING = 'routing';             // Yo.Salon routing account
     const TYPE_MANUAL = 'manual';               // Manual/offline settlement
@@ -74,11 +74,11 @@ class PaymentAccount extends Model
     const SETTLEMENT_INSTANT = 'instant';
 
     /**
-     * Get the salon that owns this payment account.
+     * Get the provider that owns this payment account.
      */
-    public function salon(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(Salon::class);
+        return $this->belongsTo(Provider::class);
     }
 
     /**
@@ -130,7 +130,7 @@ class PaymentAccount extends Model
     }
 
     /**
-     * Scope for merchant accounts (salon-owned).
+     * Scope for merchant accounts (provider-owned).
      */
     public function scopeMerchant($query)
     {

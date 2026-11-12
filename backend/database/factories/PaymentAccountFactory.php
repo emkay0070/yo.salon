@@ -3,7 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\PaymentAccount;
-use App\Models\Salon;
+use App\Models\Provider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class PaymentAccountFactory extends Factory
@@ -13,7 +13,7 @@ class PaymentAccountFactory extends Factory
     public function definition(): array
     {
         return [
-            'salon_id' => Salon::factory(),
+            'provider_id' => Provider::factory(),
             'specialist_id' => null,
             'provider' => $this->faker->randomElement(['flutterwave', 'mtn', 'airtel', 'stripe']),
             'account_type' => $this->faker->randomElement(['merchant', 'subaccount', 'routing', 'manual']),
@@ -71,17 +71,17 @@ class PaymentAccountFactory extends Factory
         ]);
     }
 
-    public function forProvider(string $provider): self
+    public function usingProvider(string $provider): self
     {
         return $this->state(fn (array $attributes) => [
             'provider' => $provider,
         ]);
     }
 
-    public function forSalon(Salon $salon): self
+    public function forProvider(Provider $provider): self
     {
         return $this->state(fn (array $attributes) => [
-            'salon_id' => $salon->id,
+            'provider_id' => $provider->id,
         ]);
     }
 }

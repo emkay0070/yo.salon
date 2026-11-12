@@ -10,61 +10,54 @@ class ResolvePortalContext
 {
     /**
      * Handle an incoming request for portal routes.
-     * Resolves provider context through customer-salon relationship.
-     * Provider can be specified via query parameter or header, defaults to customer's first salon's provider.
+     * Resolves provider context through customer-location relationship.
+     * Provider can be specified via query parameter or header, defaults to customer's first location's provider.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure(\Illuminate\Http\Request): (\Illuminate\Http\Response|\Illuminate\Http\RedirectResponse)  $next
-     * @return \Illuminate\Http\Response|\Illuminate\Http\RedirectResponse
+     * New customers who have not yet visited any location will pass through without a location context
+     * so they can browse and book for the first time.
      */
     public function handle(Request $request, Closure $next)
     {
-        // Check if portal user is authenticated
-        if (Auth::guard('portal')->check()) {
-            $portalAccount = Auth::guard('portal')->user();
-
-            // Get the customer through the portal account relationship
-            $customer = $portalAccount->customer;
-
-            if (!$customer) {
-                return response()->json([
-                    'message' => 'Portal account is not linked to a customer',
-                ], 403);
-            }
-
-            // Get customer's salons
-            $salons = $customer->salons;
-
-            if ($salons->isEmpty()) {
-                return response()->json([
-                    'message' => 'Customer is not associated with any salon',
-                ], 403);
-            }
-
-            // Resolve salon_id from query parameter, header, or default to first salon
-            $salonId = $request->query('salon_id')
-                ?? $request->header('X-Salon-Id')
-                ?? $salons->first()->id;
-
-            // Verify customer has access to this salon
-            $salon = $salons->firstWhere('id', $salonId);
-
-            if (!$salon) {
-                return response()->json([
-                    'message' => 'Customer does not have access to this salon',
-                    'available_salons' => $salons->map(fn($s) => ['id' => $s->id, 'name' => $s->name, 'slug' => $s->slug]),
-                ], 403);
-            }
-
-            // Get provider from salon (optional — don't block if salon has no provider)
-            $provider = $salon->provider;
-
-            // Inject context into request for controllers to use
-            $request->attributes->set('provider_id', $provider?->id);
-            $request->attributes->set('salon_id', $salonId);
-            $request->attributes->set('customer_id', $customer->id);
-            $request->attributes->set('portal_account_id', $portalAccount->id);
+        if (!Auth::guard('portal')->check()) {
+            return $next($request);
         }
+
+        $portalAccount = Auth::guard('portal')->user();
+        $customer = $portalAccount->customer;
+
+        // No linked customer profile yet — let them through
+        if (!$customer) {
+            return $next($request);
+        }
+
+        // 1. Explicit location_id from the request is respected.
+        // 2. X-Location-Id is supported only when explicitly supplied by the caller.
+        // 3. Legacy salon_id is accepted for compatibility.
+        $locationId = $request->query('location_id') ?? $request->header('X-Location-Id')
+                     ?? $request->query('salon_id') ?? $request->header('X-Salon-Id');
+
+        $providerId = null;
+
+        if ($locationId) {
+            // 4. A supplied location ID may resolve to any valid location;
+            // it must NOT require that the customer has previously visited that location.
+            $location = \App\Models\Location::find($locationId);
+            if ($location) {
+                $providerId = $location->provider_id;
+            } else {
+                // If an invalid location ID is passed, treat it as no context
+                $locationId = null;
+            }
+        }
+
+        // 5. Do NOT fall back to $locations->first().
+        // 6. Set location_id and provider_id to null when no location context exists.
+
+        // Inject context into request for controllers to use
+        $request->attributes->set('provider_id', $providerId);
+        $request->attributes->set('location_id', $locationId);
+        $request->attributes->set('customer_id', $customer->id);
+        $request->attributes->set('portal_account_id', $portalAccount->id);
 
         return $next($request);
     }

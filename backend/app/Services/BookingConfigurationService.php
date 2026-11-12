@@ -3,70 +3,62 @@
 namespace App\Services;
 
 use App\Models\ProviderBookingConfig;
-use App\Models\SalonBookingConfig;
+use App\Models\LocationBookingConfig;
 use App\Models\ServiceBookingConfig;
 use App\Models\Provider;
-use App\Models\Salon;
+use App\Models\Location;
 use App\Models\Service;
 
 class BookingConfigurationService
 {
     /**
      * Get the effective booking configuration for a given context
-     * Merges policies in order: Service > Salon > Provider
+     * Merges policies in order: Service > Location > Provider
      */
-    public function getConfiguration(string $serviceId, string $salonId): array
+    public function getConfiguration(string $serviceId, string $providerId, ?string $locationId = null): array
     {
         $service = Service::find($serviceId);
-        $salon = Salon::find($salonId);
+        $provider = Provider::find($providerId);
 
-        if (!$service || !$salon) {
-            throw new \InvalidArgumentException('Invalid service or salon');
+        if (!$service || !$provider) {
+            throw new \InvalidArgumentException('Invalid service or provider');
         }
-
-        $providerId = $salon->provider_id;
 
         // Get all configuration levels
         $providerConfig = ProviderBookingConfig::where('provider_id', $providerId)->first();
-        $salonConfig = SalonBookingConfig::where('salon_id', $salonId)->first();
+        $locationConfig = $locationId ? LocationBookingConfig::where('location_id', $locationId)->first() : null;
         $serviceConfig = ServiceBookingConfig::where('service_id', $serviceId)->first();
 
         // Get defaults from model or create empty config objects
         $providerDefaults = $providerConfig ? $providerConfig->getDefaults() : $this->getProviderDefaults();
-        $salonOverrides = $salonConfig ? $salonConfig->getOverrides() : [];
+        $locationOverrides = $locationConfig ? $locationConfig->getOverride() : [];
         $serviceOverrides = $serviceConfig ? $serviceConfig->getOverrides() : [];
         $serviceRequirements = $serviceConfig ? $serviceConfig->getServiceRequirements() : [];
 
-        // Merge policies with precedence: Service > Salon > Provider
+        // Merge policies with precedence: Service > Location > Provider
         return [
             'availability_policy' => $this->mergePolicy(
-                $providerDefaults['availability_policy'] ?? [],
-                $salonOverrides['availability_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['availability_policy'] ?? [], $locationOverrides['availability_policy'] ?? []),
                 $serviceOverrides['availability_policy'] ?? []
             ),
             'assignment_policy' => $this->mergePolicy(
-                $providerDefaults['assignment_policy'] ?? [],
-                $salonOverrides['assignment_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['assignment_policy'] ?? [], $locationOverrides['assignment_policy'] ?? []),
                 $serviceOverrides['assignment_policy'] ?? []
             ),
             'payment_policy' => $this->mergePolicy(
-                $providerDefaults['payment_policy'] ?? [],
-                $salonOverrides['payment_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['payment_policy'] ?? [], $locationOverrides['payment_policy'] ?? []),
                 $serviceOverrides['payment_policy'] ?? []
             ),
             'cancellation_policy' => $this->mergePolicy(
-                $providerDefaults['cancellation_policy'] ?? [],
-                $salonOverrides['cancellation_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['cancellation_policy'] ?? [], $locationOverrides['cancellation_policy'] ?? []),
                 $serviceOverrides['cancellation_policy'] ?? []
             ),
             'approval_policy' => $this->mergePolicy(
-                $providerDefaults['approval_policy'] ?? [],
-                $salonOverrides['approval_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['approval_policy'] ?? [], $locationOverrides['approval_policy'] ?? []),
                 $serviceOverrides['approval_policy'] ?? []
             ),
             'booking_policy' => $this->mergePolicy(
-                $providerDefaults['booking_policy'] ?? [],
-                $salonOverrides['booking_policy'] ?? [],
+                $this->mergePolicy($providerDefaults['booking_policy'] ?? [], $locationOverrides['booking_policy'] ?? []),
                 $serviceOverrides['booking_policy'] ?? []
             ),
             'service_requirements' => $serviceRequirements,
@@ -140,20 +132,20 @@ class BookingConfigurationService
     }
 
     /**
-     * Merge policies with precedence: service > salon > provider
+     * Merge policies with precedence: service > provider
      * Later policies override earlier ones
      */
-    protected function mergePolicy(array $provider, array $salon, array $service): array
+    protected function mergePolicy(array $provider, array $service): array
     {
-        return array_merge($provider, $salon, $service);
+        return array_merge($provider, $service);
     }
 
     /**
      * Get a specific policy value
      */
-    public function getPolicy(string $serviceId, string $salonId, string $policy, string $key = null): mixed
+    public function getPolicy(string $serviceId, string $providerId, ?string $locationId, string $policy, string $key = null): mixed
     {
-        $config = $this->getConfiguration($serviceId, $salonId);
+        $config = $this->getConfiguration($serviceId, $providerId, $locationId);
         
         if ($key) {
             return $config[$policy][$key] ?? null;
@@ -165,9 +157,9 @@ class BookingConfigurationService
     /**
      * Check if deposit is required
      */
-    public function requiresDeposit(string $serviceId, string $salonId): bool
+    public function requiresDeposit(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $paymentPolicy = $this->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         return $paymentPolicy['strategy'] === 'deposit' || 
                ($paymentPolicy['strategy'] === 'full_payment' && $paymentPolicy['deposit']['amount'] > 0);
     }
@@ -175,9 +167,9 @@ class BookingConfigurationService
     /**
      * Get deposit amount
      */
-    public function getDepositAmount(string $serviceId, string $salonId, float $servicePrice): float
+    public function getDepositAmount(string $serviceId, string $providerId, ?string $locationId, float $servicePrice): float
     {
-        $paymentPolicy = $this->getPolicy($serviceId, $salonId, 'payment_policy');
+        $paymentPolicy = $this->getPolicy($serviceId, $providerId, $locationId, 'payment_policy');
         $depositConfig = $paymentPolicy['deposit'] ?? [];
 
         if ($depositConfig['type'] === 'percentage') {
@@ -190,69 +182,69 @@ class BookingConfigurationService
     /**
      * Check if approval is required
      */
-    public function requiresApproval(string $serviceId, string $salonId): bool
+    public function requiresApproval(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $approvalPolicy = $this->getPolicy($serviceId, $salonId, 'approval_policy');
+        $approvalPolicy = $this->getPolicy($serviceId, $providerId, $locationId, 'approval_policy');
         return $approvalPolicy['require_approval'] ?? false;
     }
 
     /**
      * Get specialist assignment strategy
      */
-    public function getSpecialistAssignmentStrategy(string $serviceId, string $salonId): string
+    public function getSpecialistAssignmentStrategy(string $serviceId, string $providerId, ?string $locationId = null): string
     {
-        $assignmentPolicy = $this->getPolicy($serviceId, $salonId, 'assignment_policy');
+        $assignmentPolicy = $this->getPolicy($serviceId, $providerId, $locationId, 'assignment_policy');
         return $assignmentPolicy['strategy'] ?? 'customer_choice';
     }
 
     /**
      * Check if customer can choose specialist
      */
-    public function allowSpecialistChoice(string $serviceId, string $salonId): bool
+    public function allowSpecialistChoice(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $strategy = $this->getSpecialistAssignmentStrategy($serviceId, $salonId);
+        $strategy = $this->getSpecialistAssignmentStrategy($serviceId, $providerId, $locationId);
         return $strategy === 'customer_choice';
     }
 
     /**
      * Get maximum advance booking days
      */
-    public function getMaxAdvanceBookingDays(string $serviceId, string $salonId): int
+    public function getMaxAdvanceBookingDays(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        return $this->getPolicy($serviceId, $salonId, 'availability_policy', 'max_advance_booking_days') ?? 30;
+        return $this->getPolicy($serviceId, $providerId, $locationId, 'availability_policy', 'max_advance_booking_days') ?? 30;
     }
 
     /**
      * Get minimum notice hours
      */
-    public function getMinNoticeHours(string $serviceId, string $salonId): int
+    public function getMinNoticeHours(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        return $this->getPolicy($serviceId, $salonId, 'availability_policy', 'min_notice_hours') ?? 2;
+        return $this->getPolicy($serviceId, $providerId, $locationId, 'availability_policy', 'min_notice_hours') ?? 2;
     }
 
     /**
      * Get free cancellation hours
      */
-    public function getFreeCancellationHours(string $serviceId, string $salonId): int
+    public function getFreeCancellationHours(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        return $this->getPolicy($serviceId, $salonId, 'cancellation_policy', 'free_cancellation_hours') ?? 24;
+        return $this->getPolicy($serviceId, $providerId, $locationId, 'cancellation_policy', 'free_cancellation_hours') ?? 24;
     }
 
     /**
      * Check if consultation is required
      */
-    public function requiresConsultation(string $serviceId, string $salonId): bool
+    public function requiresConsultation(string $serviceId, string $providerId, ?string $locationId = null): bool
     {
-        $serviceRequirements = $this->getPolicy($serviceId, $salonId, 'service_requirements');
+        $serviceRequirements = $this->getPolicy($serviceId, $providerId, $locationId, 'service_requirements');
         return $serviceRequirements['require_consultation'] ?? false;
     }
 
     /**
      * Get consultation duration
      */
-    public function getConsultationDuration(string $serviceId, string $salonId): int
+    public function getConsultationDuration(string $serviceId, string $providerId, ?string $locationId = null): int
     {
-        $serviceRequirements = $this->getPolicy($serviceId, $salonId, 'service_requirements');
+        $serviceRequirements = $this->getPolicy($serviceId, $providerId, $locationId, 'service_requirements');
         return $serviceRequirements['consultation_duration_minutes'] ?? 15;
     }
 
@@ -270,12 +262,16 @@ class BookingConfigurationService
     }
 
     /**
-     * Create or update salon booking configuration
+     * Create or update location booking configuration
      */
-    public function updateSalonConfig(string $salonId, array $overrides): SalonBookingConfig
+    public function updateLocationConfig(string $providerId, ?string $locationId, array $overrides): LocationBookingConfig
     {
-        $config = SalonBookingConfig::updateOrCreate(
-            ['salon_id' => $salonId],
+        if (!$locationId) {
+            throw new \InvalidArgumentException('location_id is required for location configuration');
+        }
+
+        $config = LocationBookingConfig::updateOrCreate(
+            ['location_id' => $locationId],
             $overrides
         );
 
@@ -296,11 +292,15 @@ class BookingConfigurationService
     }
 
     /**
-     * Reset salon configuration to provider defaults
+     * Reset location configuration to provider defaults
      */
-    public function resetSalonConfig(string $salonId): void
+    public function resetLocationConfig(string $providerId, ?string $locationId = null): void
     {
-        SalonBookingConfig::where('salon_id', $salonId)->delete();
+        if (!$locationId) {
+            throw new \InvalidArgumentException('location_id is required for location configuration');
+        }
+
+        LocationBookingConfig::where('location_id', $locationId)->delete();
     }
 
     /**

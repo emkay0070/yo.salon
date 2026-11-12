@@ -41,24 +41,24 @@ class AutomatedExecution implements ExecutionStrategy
         try {
             $provider = DisbursementProviderFactory::make($payout->method);
 
-            // Resolve the salon from the settlement's payable.
-            // Settlement::payable is the entity that OWES the money (the Salon).
+            // Resolve the provider from the settlement's payable.
+            // Settlement::payable is the entity that OWES the money (the Provider).
             $settlement = $payout->settlement;
             $payable = $settlement->payable;
 
-            // Determine the salon_id — payable is usually a Salon, but could be a Provider.
-            // Prefer a direct salon_id if the payable exposes one, otherwise use its ID directly.
-            $salonId = $payable->salon_id ?? $payable->id;
+            // Determine the provider_id — payable is usually a Provider.
+            // Prefer a direct provider_id if the payable exposes one, otherwise use its ID directly.
+            $providerId = $payable->provider_id ?? $payable->id;
 
-            // Look up the salon's disbursement configuration.
+            // Look up the provider's disbursement configuration.
             // We reuse the PaymentMethod model, with provider = '{method}_disbursement'
-            $config = \App\Models\PaymentMethod::where('salon_id', $salonId)
+            $config = \App\Models\PaymentMethod::where('provider_id', $providerId)
                 ->where('provider', $payout->method . '_disbursement')
                 ->where('is_active', true)
                 ->first();
 
             if (!$config) {
-                throw new RuntimeException("Disbursement configuration not found for salon [{$salonId}]. Please configure a {$payout->method} disbursement method.");
+                throw new RuntimeException("Disbursement configuration not found for provider [{$providerId}]. Please configure a {$payout->method} disbursement method.");
             }
 
             if (method_exists($provider, 'setCredentials')) {

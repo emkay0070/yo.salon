@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, Circle, ArrowRight, Scissors, Users, Calendar, CreditCard, Wallet } from 'lucide-react';
+import { X, CheckCircle2, Circle, ArrowRight, Scissors, Users, Calendar, CreditCard, Wallet, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { apiClient } from '@/lib/api-client';
+import { useCategory } from '@/contexts/CategoryContext';
 
 interface ChecklistItem {
   id: string;
@@ -23,54 +25,59 @@ const iconMap: Record<string, any> = {
   CreditCard,
 };
 
-const defaultChecklist: ChecklistItem[] = [
-  {
-    id: 'salon',
-    label: 'Salon Created',
-    description: 'Your salon profile is set up',
-    completed: false,
-    action: '/settings',
-    icon: 'Scissors',
-  },
-  {
-    id: 'team',
-    label: 'Team Added',
-    description: 'Add your staff members',
-    completed: false,
-    action: '/staff',
-    icon: 'Users',
-  },
-  {
-    id: 'services',
-    label: 'Services Added',
-    description: 'Configure your service menu',
-    completed: false,
-    action: '/services',
-    icon: 'Calendar',
-  },
-  {
-    id: 'wallet',
-    label: 'Configure Wallet',
-    description: 'Set up payment methods',
-    completed: false,
-    action: '/settings/membership',
-    icon: 'Wallet',
-  },
-  {
-    id: 'booking',
-    label: 'Create First Booking',
-    description: 'Book your first appointment',
-    completed: false,
-    action: '/bookings',
-    icon: 'CreditCard',
-  },
-];
+interface OnboardingChecklistProps {
+  variant?: 'full' | 'banner';
+}
 
-export default function OnboardingChecklist() {
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(defaultChecklist);
+export default function OnboardingChecklist({ variant = 'full' }: OnboardingChecklistProps) {
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [isVisible, setIsVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { terminology } = useCategory();
+
+  const defaultChecklist = useMemo<ChecklistItem[]>(() => [
+    {
+      id: 'salon',
+      label: `${terminology.business} Created`,
+      description: `Your ${terminology.business.toLowerCase()} profile is set up`,
+      completed: false,
+      action: '/settings',
+      icon: 'Scissors',
+    },
+    {
+      id: 'team',
+      label: 'Team Added',
+      description: `Add your ${terminology.specialistPlural.toLowerCase()}`,
+      completed: false,
+      action: '/staff',
+      icon: 'Users',
+    },
+    {
+      id: 'services',
+      label: 'Services Added',
+      description: 'Configure your service menu',
+      completed: false,
+      action: '/services',
+      icon: 'Calendar',
+    },
+    {
+      id: 'wallet',
+      label: 'Configure Wallet',
+      description: 'Set up payment methods',
+      completed: false,
+      action: '/settings/membership',
+      icon: 'Wallet',
+    },
+    {
+      id: 'booking',
+      label: `Create First ${terminology.appointment}`,
+      description: `Book your first ${terminology.appointment.toLowerCase()}`,
+      completed: false,
+      action: '/bookings',
+      icon: 'CreditCard',
+    },
+  ], [terminology]);
 
   // Fetch onboarding status from backend
   useEffect(() => {
@@ -154,109 +161,94 @@ export default function OnboardingChecklist() {
     return null;
   }
 
+  if (variant === 'banner') {
+    return (
+      <div className="w-full mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+            <AlertCircle className="w-5 h-5 text-amber-500" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-text-primary">Incomplete Setup Actions</h4>
+            <p className="text-xs text-text-secondary">You have {checklist.length - completedCount} tasks left to complete your {terminology.business.toLowerCase()} setup.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <Link href="/settings" className="px-4 py-2 bg-amber-500 text-black text-sm font-semibold rounded-lg hover:bg-amber-400 transition-colors">
+            Complete Setup
+          </Link>
+          <button onClick={handleDismiss} className="p-2 text-text-secondary hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none">
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="w-80 bg-[#111115]/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl mb-4 overflow-hidden pointer-events-auto"
-          >
-            {/* Header */}
-            <div className="p-4 border-b border-white/[0.04] bg-white/[0.02] flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">Getting Started</h3>
-                <p className="text-[10px] text-text-secondary mt-0.5">Set up your salon</p>
-              </div>
+    <div className="w-full mb-6">
+      <div className="bg-card border border-border-light rounded-3xl p-6 shadow-xl relative overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+
+        <div className="flex items-center justify-between mb-6 relative z-10">
+          <div>
+            <h3 className="text-lg font-bold text-text-primary">Getting Started</h3>
+            <p className="text-sm text-text-secondary mt-1">Set up your {terminology.business.toLowerCase()}</p>
+          </div>
+          
+          <div className="flex flex-col items-end">
+            <div className="text-sm font-medium text-text-secondary mb-2">
+              <span className="text-gold mr-1">{Math.round(progress)}%</span>
+              <span>Complete</span>
+            </div>
+            <div className="w-32 h-1.5 bg-surface rounded-full overflow-hidden border border-border-light">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="h-full bg-gradient-to-r from-gold to-amber-400"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 relative z-10">
+          {checklist.map((item, index) => {
+            const Icon = iconMap[item.icon] || Scissors;
+            return (
               <button
-                onClick={() => setIsExpanded(false)}
-                className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-white/[0.04] transition-colors"
+                key={item.id}
+                onClick={() => handleItemClick(item)}
+                disabled={item.completed}
+                className={`flex flex-col items-start p-4 rounded-2xl transition-all text-left border ${
+                  item.completed
+                    ? 'bg-surface/50 border-border-light opacity-60 cursor-default'
+                    : 'bg-surface border-border-light hover:border-gold/30 hover:bg-white/[0.02] cursor-pointer group'
+                }`}
               >
-                <X className="w-4 h-4" />
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-3 transition-colors ${
+                  item.completed 
+                    ? 'bg-green-500/20 text-green-400' 
+                    : 'bg-white/[0.04] text-text-secondary group-hover:text-gold group-hover:bg-gold/10'
+                }`}>
+                  {item.completed ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                </div>
+                
+                <h4 className={`text-sm font-medium mb-1 ${item.completed ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+                  {item.label}
+                </h4>
+                
+                {!item.completed && (
+                  <p className="text-xs text-text-secondary line-clamp-2 mt-auto">
+                    {item.description}
+                  </p>
+                )}
               </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-4 max-h-[320px] overflow-y-auto scrollbar-hide">
-              {/* Progress */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between text-[10px] text-text-secondary mb-2 font-medium">
-                  <span>{completedCount} of {checklist.length} completed</span>
-                  <span className="text-[#FFD700]">{Math.round(progress)}%</span>
-                </div>
-                <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.5 }}
-                    className="h-full bg-gradient-to-r from-[#FFD700] to-[#C9A227]"
-                  />
-                </div>
-              </div>
-
-              {/* Items */}
-              <div className="space-y-1">
-                {checklist.map((item) => {
-                  const Icon = iconMap[item.icon] || Scissors;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleItemClick(item)}
-                      disabled={item.completed}
-                      className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-left ${
-                        item.completed
-                          ? 'opacity-50 cursor-not-allowed'
-                          : 'hover:bg-white/[0.04] cursor-pointer group'
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        item.completed 
-                          ? 'bg-emerald-500/20 text-emerald-400' 
-                          : 'bg-white/[0.04] text-text-secondary group-hover:text-[#FFD700] border border-white/[0.04]'
-                      }`}>
-                        {item.completed ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className={`text-xs font-medium truncate ${item.completed ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
-                          {item.label}
-                        </h4>
-                        {!item.completed && (
-                          <p className="text-[10px] text-text-secondary truncate mt-0.5">{item.description}</p>
-                        )}
-                      </div>
-                      {!item.completed && (
-                        <ArrowRight className="w-3.5 h-3.5 text-text-secondary opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Floating Action Button (when collapsed) */}
-      <AnimatePresence>
-        {!isExpanded && isVisible && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={() => setIsExpanded(true)}
-            className="w-12 h-12 bg-[#111115] border border-white/[0.08] hover:border-[#FFD700]/50 rounded-full shadow-2xl flex items-center justify-center text-text-primary hover:text-[#FFD700] transition-colors pointer-events-auto relative"
-          >
-            <div className="absolute inset-0 rounded-full border-[2px] border-[#FFD700]" style={{ clipPath: `inset(0 ${100 - progress}% 0 0)` }} />
-            <Scissors className="w-5 h-5 relative z-10" />
-            
-            {/* Notification dot */}
-            <span className="absolute top-0 right-0 w-3 h-3 bg-[#FFD700] rounded-full border-2 border-[#111115]" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

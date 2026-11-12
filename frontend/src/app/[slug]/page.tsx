@@ -3,16 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { PublicSalonExperienceResolver, EffectiveWebsiteConfiguration } from '@/services/PublicSalonExperienceResolver';
+import { PublicProviderExperienceResolver, EffectiveWebsiteConfiguration } from '@/services/PublicProviderExperienceResolver';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Section components
-import HeroSection from '@/components/public-salon/sections/HeroSection';
-import ServicesSection from '@/components/public-salon/sections/ServicesSection';
-import SpecialistsSection from '@/components/public-salon/sections/SpecialistsSection';
-import GallerySection from '@/components/public-salon/sections/GallerySection';
-import TestimonialsSection from '@/components/public-salon/sections/TestimonialsSection';
-import ContactSection from '@/components/public-salon/sections/ContactSection';
+import HeroSection from '@/components/public-provider/sections/HeroSection';
+import ServicesSection from '@/components/public-provider/sections/ServicesSection';
+import SpecialistsSection from '@/components/public-provider/sections/SpecialistsSection';
+import GallerySection from '@/components/public-provider/sections/GallerySection';
+import TestimonialsSection from '@/components/public-provider/sections/TestimonialsSection';
+import ContactSection from '@/components/public-provider/sections/ContactSection';
 
 const sectionComponents: Record<string, any> = {
   hero: HeroSection,
@@ -54,7 +54,7 @@ export default function PublicSalonPage() {
 
       try {
         setLoading(true);
-        const resolved = await PublicSalonExperienceResolver.resolve(slug);
+        const resolved = await PublicProviderExperienceResolver.resolve(slug);
         setExperience(resolved);
       } catch (err: any) {
         console.error('Failed to load salon:', err);
@@ -84,9 +84,9 @@ export default function PublicSalonPage() {
     );
   }
 
-  const { salon, theme, sections, navigation, colors, brand } = experience;
-  const orderedSections = PublicSalonExperienceResolver.getOrderedSections(sections);
-  const cssVariables = PublicSalonExperienceResolver.getCssVariables(experience);
+  const { provider, theme, sections, navigation, colors, brand } = experience;
+  const orderedSections = PublicProviderExperienceResolver.getOrderedSections(sections);
+  const cssVariables = PublicProviderExperienceResolver.getCssVariables(experience);
 
   return (
     <div 
@@ -94,7 +94,7 @@ export default function PublicSalonPage() {
       style={cssVariables as React.CSSProperties}
     >
       <AnimatePresence mode="wait">
-        {orderedSections.map((sectionId, index) => {
+        {orderedSections.map((sectionId: string, index: number) => {
           const SectionComponent = sectionComponents[sectionId];
           if (!SectionComponent) return null;
 
@@ -106,11 +106,11 @@ export default function PublicSalonPage() {
               transition={{ delay: index * 0.1, duration: 0.5 }}
             >
               <SectionComponent 
-                salon={salon}
+                provider={provider}
                 theme={theme}
                 brand={brand}
                 colors={colors}
-                bookingUrl={PublicSalonExperienceResolver.getBookingUrl(slug)}
+                bookingUrl={PublicProviderExperienceResolver.getBookingUrl(slug)}
               />
             </motion.div>
           );

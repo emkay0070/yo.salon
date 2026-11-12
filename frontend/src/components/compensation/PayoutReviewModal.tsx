@@ -3,14 +3,14 @@ import { X, CheckCircle, CreditCard, Banknote, Landmark, Smartphone, AlertCircle
 import { apiClient } from '@/lib/api-client';
 
 interface PayoutReviewModalProps {
-  salonId: string;
+  providerId: string;
   staff: any;
   settlement: any;
   onClose: () => void;
   onPaid: () => void;
 }
 
-export default function PayoutReviewModal({ salonId, staff, settlement, onClose, onPaid }: PayoutReviewModalProps) {
+export default function PayoutReviewModal({ providerId, staff, settlement, onClose, onPaid }: PayoutReviewModalProps) {
   const [executionMode, setExecutionMode] = useState<'automated' | 'manual'>('manual');
   const [method, setMethod] = useState('cash');
   const [reference, setReference] = useState('');
@@ -22,7 +22,7 @@ export default function PayoutReviewModal({ salonId, staff, settlement, onClose,
   const [loadingReadiness, setLoadingReadiness] = useState(true);
 
   useEffect(() => {
-    apiClient.getPayoutReadiness(salonId, settlement.id)
+    apiClient.getPayoutReadiness(providerId, settlement.id)
       .then(res => {
         setReadiness(res);
         if (res.automated_available) {
@@ -36,7 +36,7 @@ export default function PayoutReviewModal({ salonId, staff, settlement, onClose,
       .finally(() => {
         setLoadingReadiness(false);
       });
-  }, [salonId, settlement.id]);
+  }, [providerId, settlement.id]);
 
   const amount = Number(settlement.amount);
 
@@ -51,14 +51,14 @@ export default function PayoutReviewModal({ salonId, staff, settlement, onClose,
     try {
       if (executionMode === 'automated') {
         // Dispatch automated payout via backend integration
-        await apiClient.initiateCompensationPayout(salonId, settlement.id, {
+        await apiClient.initiateCompensationPayout(providerId, settlement.id, {
           amount: amount,
           method: readiness?.method,
           execution_mode: 'automated'
         });
       } else {
         // Record manual payout
-        await apiClient.initiateCompensationPayout(salonId, settlement.id, {
+        await apiClient.initiateCompensationPayout(providerId, settlement.id, {
           amount: amount,
           method: method,
           execution_mode: 'manual', 

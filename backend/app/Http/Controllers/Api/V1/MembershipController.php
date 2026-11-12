@@ -31,8 +31,8 @@ class MembershipController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -42,7 +42,7 @@ class MembershipController extends Controller
         }
 
         $usage = $this->usageService->getUsageBySubscription($subscription->id);
-        $status = $this->subscriptionService->checkSubscriptionStatus($salonId);
+        $status = $this->subscriptionService->checkSubscriptionStatus($providerId);
 
         return response()->json([
             'subscription' => $subscription->load('plan'),
@@ -51,9 +51,10 @@ class MembershipController extends Controller
         ]);
     }
 
-    public function plans(): JsonResponse
+    public function plans(Request $request): JsonResponse
     {
-        $plans = $this->planService->getAllActivePlans();
+        $providerType = $request->query('provider_type', 'salon');
+        $plans = $this->planService->getActivePlansByProvider($providerType);
 
         return response()->json([
             'plans' => $plans,
@@ -78,8 +79,8 @@ class MembershipController extends Controller
 
     public function usage(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -100,8 +101,8 @@ class MembershipController extends Controller
 
     public function invoices(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -133,8 +134,8 @@ class MembershipController extends Controller
 
     public function timeline(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -155,8 +156,8 @@ class MembershipController extends Controller
             'plan_id' => 'required|uuid|exists:plans,id',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -186,8 +187,8 @@ class MembershipController extends Controller
             'reason' => 'nullable|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -208,8 +209,8 @@ class MembershipController extends Controller
 
     public function resume(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
-        $subscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $providerId = $request->attributes->get('provider_id');
+        $subscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
 
         if (!$subscription) {
             return response()->json([
@@ -231,9 +232,9 @@ class MembershipController extends Controller
             'plan_id' => 'required|uuid|exists:plans,id',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
 
-        $existingSubscription = $this->subscriptionService->getSubscriptionBySalon($salonId);
+        $existingSubscription = $this->subscriptionService->getSubscriptionByProvider($providerId);
         if ($existingSubscription) {
             return response()->json([
                 'message' => 'Subscription already exists',
@@ -241,7 +242,7 @@ class MembershipController extends Controller
         }
 
         $subscription = $this->subscriptionService->startTrial(
-            $salonId,
+            $providerId,
             $request->plan_id,
             14
         );

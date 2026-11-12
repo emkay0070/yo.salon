@@ -12,14 +12,14 @@ use Illuminate\Support\Facades\DB;
 class CompensationPolicyController extends CompensationController
 {
     /**
-     * List policies for the salon's team.
+     * List policies for the provider's team.
      */
-    public function index(string $salonSlug, Request $request): JsonResponse
+    public function index(string $providerIdentifier, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $policies = CompensationPolicy::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $policies = CompensationPolicy::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->with('compensatable')
             ->orderBy('effective_from', 'desc')
             ->get();
@@ -30,9 +30,9 @@ class CompensationPolicyController extends CompensationController
     /**
      * Create a new policy. Correctly sets effective_until on the previous active policy.
      */
-    public function store(string $salonSlug, Request $request): JsonResponse
+    public function store(string $providerIdentifier, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
         $validated = $request->validate([
             'compensatable_id'     => 'required|uuid',
@@ -45,11 +45,11 @@ class CompensationPolicyController extends CompensationController
 
         $effectiveFrom = Carbon::parse($validated['effective_from'])->startOfDay();
 
-        $policy = DB::transaction(function () use ($salon, $validated, $effectiveFrom) {
+        $policy = DB::transaction(function () use ($provider, $validated, $effectiveFrom) {
             
             // 1. Find existing active policy that might overlap
-            $existingActive = CompensationPolicy::where('provider_type', get_class($salon))
-                ->where('provider_id', $salon->id)
+            $existingActive = CompensationPolicy::where('provider_type', get_class($provider))
+                ->where('provider_id', $provider->id)
                 ->where('compensatable_type', $validated['compensatable_type'])
                 ->where('compensatable_id', $validated['compensatable_id'])
                 ->where('is_active', true)
@@ -80,8 +80,8 @@ class CompensationPolicyController extends CompensationController
 
             // 3. Create the new policy
             return CompensationPolicy::create([
-                'provider_type'        => get_class($salon),
-                'provider_id'          => $salon->id,
+                'provider_type'        => get_class($provider),
+                'provider_id'          => $provider->id,
                 'compensatable_type'   => $validated['compensatable_type'],
                 'compensatable_id'     => $validated['compensatable_id'],
                 'type'                 => $validated['type'],

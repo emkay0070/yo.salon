@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Phone, Scissors, CheckCircle2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ interface WalkInModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialStaffId?: string;
 }
 
 interface Service {
@@ -23,15 +24,20 @@ interface Service {
 interface Staff {
   id: string;
   name: string;
+  role?: string;
+  photo_url?: string | null;
+  // specialist_id is set if this staff member has an active SpecialistAssignment.
+  // It will be null/undefined for pure admin/receptionist staff with no specialist link.
+  specialist_id?: string | null;
 }
 
 function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function WalkInModal({ isOpen, onClose, onSuccess }: WalkInModalProps) {
+export default function WalkInModal({ isOpen, onClose, onSuccess, initialStaffId }: WalkInModalProps) {
   const queryClient = useQueryClient();
-  const { salonId } = useRole();
+  const { providerId, locationId } = useRole();
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -39,41 +45,52 @@ export default function WalkInModal({ isOpen, onClose, onSuccess }: WalkInModalP
   const [notes, setNotes] = useState('');
 
   const { data: services = [] } = useQuery({
-    queryKey: ['services', salonId],
-    queryFn: () => apiClient.getServices({ salon_id: salonId }),
-    enabled: isOpen && !!salonId,
+    queryKey: ['services', providerId],
+    queryFn: () => apiClient.getServices({ provider_id: providerId }),
+    enabled: isOpen && !!providerId,
   });
 
+  // Use the same staff endpoint as the Staff page — scoped to provider, no cross-provider leakage
   const { data: staff = [] } = useQuery({
-    queryKey: ['staff', salonId],
-    queryFn: () => apiClient.getStaff({ salon_id: salonId }),
-    enabled: isOpen && !!salonId,
+    queryKey: ['staff', providerId],
+    queryFn: () => apiClient.getStaff({ provider_id: providerId }),
+    enabled: isOpen && !!providerId,
   });
+
+  // Pre-select staff when initialStaffId is provided and staff data loads
+  useEffect(() => {
+    if (initialStaffId && staff.length > 0) {
+      const initialStaff = staff.find((s: Staff) => s.id === initialStaffId);
+      if (initialStaff) {
+        setSelectedStaff(initialStaff);
+      }
+    }
+  }, [initialStaffId, staff]);
 
   const createBookingMutation = useMutation({
     mutationFn: async () => {
-      let customerId;
-      if (customerName && customerPhone) {
-        const customer = await apiClient.createCustomer({
-          salon_id: salonId,
-          name: customerName,
-          phone: customerPhone,
-        });
-        customerId = customer.id;
-      }
+      // specialist_id on the staff record is the SpecialistAssignment's specialist_id.
+      // Only send it if the selected staff member has an active assignment — otherwise
+      // the backend will reject with 403 (specialist not assigned to provider).
+      const specialistId = selectedStaff?.specialist_id ?? null;
+
       return await apiClient.createBooking({
-        salon_id: salonId,
-        service_id: selectedService?.id,
-        staff_id: selectedStaff?.id,
-        customer_id: customerId,
-        date: new Date().toISOString(),
-        status: 'checked_in',
+        provider_id: providerId,
+        location_id: locationId,
+        service_id: selectedService ? [selectedService.id] : undefined,
+        ...(specialistId ? { specialist_id: specialistId } : {}),
+        customer_name: customerName || 'Walk-in Guest',
+        ...(customerPhone ? { customer_phone: customerPhone } : {}),
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        status: 'pending',
         notes: notes || 'Walk-in booking',
+        internal_booking: true, // bypass online-only booking gate
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings', salonId] });
-      queryClient.invalidateQueries({ queryKey: ['customers', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', providerId, locationId] });
+      queryClient.invalidateQueries({ queryKey: ['customers', providerId, locationId] });
       setCustomerName('');
       setCustomerPhone('');
       setSelectedService(null);
@@ -290,45 +307,76 @@ export default function WalkInModal({ isOpen, onClose, onSuccess }: WalkInModalP
                     transition={{ delay: 0.4 }}
                   >
                     <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-3">
-                      Assign Staff <span className="text-white/30 normal-case font-normal">(optional)</span>
+                      Assign Specialist <span className="text-white/30 normal-case font-normal">(optional)</span>
                     </label>
                     {staff.length === 0 ? (
                       <p className="text-white/50 text-sm">No staff available</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        {staff.map((member: Staff, index: number) => (
-                          <motion.button
-                            key={member.id}
-                            type="button"
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.45 + index * 0.05 }}
-                            whileHover={{ scale: 1.05, y: -2 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => setSelectedStaff(selectedStaff?.id === member.id ? null : member)}
-                            className={`p-3 rounded-xl border-2 transition-all text-left flex items-center gap-2.5 backdrop-blur-xl ${
-                              selectedStaff?.id === member.id
-                                ? 'border-[#FFD700] bg-[#FFD700]/20'
-                                : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                            }`}
-                          >
-                            <motion.div 
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                                selectedStaff?.id === member.id ? 'bg-[#FFD700] text-black' : 'bg-white/10 text-white'
-                              }`}
-                              animate={selectedStaff?.id === member.id ? {
-                                rotate: [0, 5, -5, 0],
-                              } : {}}
-                              transition={{ duration: 0.5 }}
-                            >
-                              {getInitials(member.name)}
-                            </motion.div>
-                            <p className="text-white font-medium text-xs truncate">{member.name}</p>
-                          </motion.button>
-                        ))}
-                      </div>
-                    )}
+                    ) : (() => {
+                      const assignable = staff.filter((m: Staff) => !!m.specialist_id);
+                      const unassignable = staff.filter((m: Staff) => !m.specialist_id);
+                      return (
+                        <div className="space-y-3">
+                          {assignable.length === 0 && (
+                            <p className="text-amber-400/70 text-xs bg-amber-400/5 border border-amber-400/20 rounded-xl px-3 py-2">
+                              No staff have an active specialist assignment. Create one in the Staff page first.
+                            </p>
+                          )}
+                          {assignable.length > 0 && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {assignable.map((member: Staff, index: number) => (
+                                <motion.button
+                                  key={member.id}
+                                  type="button"
+                                  initial={{ opacity: 0, scale: 0.9 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ delay: 0.45 + index * 0.05 }}
+                                  whileHover={{ scale: 1.05, y: -2 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => setSelectedStaff(selectedStaff?.id === member.id ? null : member)}
+                                  className={`p-3 rounded-xl border-2 transition-all text-left flex items-center gap-2.5 backdrop-blur-xl ${
+                                    selectedStaff?.id === member.id
+                                      ? 'border-[#FFD700] bg-[#FFD700]/20'
+                                      : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                                  }`}
+                                >
+                                  <motion.div 
+                                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                                      selectedStaff?.id === member.id ? 'bg-[#FFD700] text-black' : 'bg-white/10 text-white'
+                                    }`}
+                                    animate={selectedStaff?.id === member.id ? { rotate: [0, 5, -5, 0] } : {}}
+                                    transition={{ duration: 0.5 }}
+                                  >
+                                    {getInitials(member.name)}
+                                  </motion.div>
+                                  <p className="text-white font-medium text-xs truncate">{member.name}</p>
+                                </motion.button>
+                              ))}
+                            </div>
+                          )}
+                          {unassignable.length > 0 && (
+                            <div>
+                              <p className="text-white/25 text-[10px] uppercase tracking-wider mb-1.5">Support staff (no specialist link)</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {unassignable.map((member: Staff) => (
+                                  <div
+                                    key={member.id}
+                                    title="This staff member has no active specialist assignment and cannot be booked as a specialist"
+                                    className="p-3 rounded-xl border-2 border-white/5 bg-white/[0.02] flex items-center gap-2.5 opacity-40 cursor-not-allowed"
+                                  >
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 bg-white/5 text-white/40">
+                                      {getInitials(member.name)}
+                                    </div>
+                                    <p className="text-white/40 font-medium text-xs truncate">{member.name}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </motion.div>
+
 
                   {/* Notes */}
                   <motion.div 

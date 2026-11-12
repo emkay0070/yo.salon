@@ -10,17 +10,13 @@ use Illuminate\Support\Facades\DB;
 class PortalRecommendationService
 {
     /**
-     * Get recommended services for a customer at a specific salon
-     * Based on visit history, favorite stylist, preferred category, seasonal campaigns
+     * Get recommended services for a customer at a specific provider
+     * Based on visit history, preferred category, seasonal campaigns
      */
-    public function getRecommendedServices(Customer $customer, string $salonId, int $limit = 6): array
+    public function getRecommendedServices(Customer $customer, string $providerId, int $limit = 6): array
     {
         try {
             $customerId = $customer->id;
-
-            // Get salon to find its provider_id
-            $salon = \App\Models\Salon::find($salonId);
-            $providerId = $salon ? $salon->provider_id : null;
 
             if (!$providerId) {
                 return [];
@@ -36,11 +32,6 @@ class PortalRecommendationService
                 ->limit(3)
                 ->pluck('service_id')
                 ->toArray();
-
-            // Get customer's preferred stylist for this salon
-            $preferredStaffId = \App\Models\CustomerPreference::where('customer_id', $customerId)
-                ->where('salon_id', $salonId)
-                ->first()?->preferred_staff_id;
 
             // Get services from the same category as frequently booked services
             $categoryIds = [];
@@ -58,20 +49,12 @@ class PortalRecommendationService
 
             // Prioritize services from same category as frequently booked
             if (!empty($categoryIds)) {
-                // Use a case statement approach that's more database-agnostic
                 $categoryPriority = implode(',', array_map(function($id) { return "'$id'"; }, $categoryIds));
                 try {
                     $query->orderByRaw("CASE WHEN category IN ($categoryPriority) THEN 0 ELSE 1 END");
                 } catch (\Exception $e) {
-                    // If the raw query fails, just skip the ordering
                     \Log::warning('Failed to order by category priority', ['error' => $e->getMessage()]);
                 }
-            }
-
-            // If customer has preferred stylist, prioritize services they offer
-            if ($preferredStaffId) {
-                // This would require a staff_services pivot table
-                // For now, we'll just get active services
             }
 
             // Exclude already frequently booked services to suggest new ones
@@ -99,7 +82,7 @@ class PortalRecommendationService
             \Log::error('getRecommendedServices error', [
                 'error' => $e->getMessage(),
                 'customer_id' => $customer->id,
-                'salon_id' => $salonId,
+                'provider_id' => $providerId,
             ]);
             return [];
         }
@@ -109,13 +92,9 @@ class PortalRecommendationService
      * Get trending services
      * Based on booking count in the last 30 days
      */
-    public function getTrendingServices(string $salonId, int $limit = 6): array
+    public function getTrendingServices(string $providerId, int $limit = 6): array
     {
         $thirtyDaysAgo = now()->subDays(30);
-
-        // Get provider_id from salon
-        $salon = \App\Models\Salon::find($salonId);
-        $providerId = $salon ? $salon->provider_id : null;
 
         if (!$providerId) {
             return [];
@@ -133,7 +112,7 @@ class PortalRecommendationService
 
         if (empty($trendingServiceIds)) {
             // Fallback to active services
-            return Service::where('salon_id', $salonId)
+            return Service::where('provider_id', $providerId)
                 ->where('active', true)
                 ->limit($limit)
                 ->get()
@@ -152,7 +131,7 @@ class PortalRecommendationService
         }
 
         return Service::whereIn('id', $trendingServiceIds)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->where('active', true)
             ->get()
             ->map(function ($service) {
@@ -173,12 +152,8 @@ class PortalRecommendationService
      * Get popular services
      * Based on all-time booking count
      */
-    public function getPopularServices(string $salonId, int $limit = 6): array
+    public function getPopularServices(string $providerId, int $limit = 6): array
     {
-        // Get provider_id from salon
-        $salon = \App\Models\Salon::find($salonId);
-        $providerId = $salon ? $salon->provider_id : null;
-
         if (!$providerId) {
             return [];
         }
@@ -194,7 +169,7 @@ class PortalRecommendationService
 
         if (empty($popularServiceIds)) {
             // Fallback to active services
-            return Service::where('salon_id', $salonId)
+            return Service::where('provider_id', $providerId)
                 ->where('active', true)
                 ->limit($limit)
                 ->get()
@@ -213,7 +188,7 @@ class PortalRecommendationService
         }
 
         return Service::whereIn('id', $popularServiceIds)
-            ->where('salon_id', $salonId)
+            ->where('provider_id', $providerId)
             ->where('active', true)
             ->get()
             ->map(function ($service) {
@@ -234,7 +209,7 @@ class PortalRecommendationService
      * Get seasonal services
      * Based on current season/month
      */
-    public function getSeasonalServices(string $salonId, int $limit = 6): array
+    public function getSeasonalServices(string $providerId, int $limit = 6): array
     {
         // Simple seasonal logic - in production, this would be more sophisticated
         $currentMonth = now()->month;
@@ -252,7 +227,7 @@ class PortalRecommendationService
             return [];
         }
 
-        return Service::where('salon_id', $salonId)
+        return Service::where('provider_id', $providerId)
             ->where('active', true)
             ->where(function ($query) use ($seasonalCategories) {
                 foreach ($seasonalCategories as $category) {
@@ -278,9 +253,9 @@ class PortalRecommendationService
     /**
      * Get recently added services
      */
-    public function getRecentlyAddedServices(string $salonId, int $limit = 6): array
+    public function getRecentlyAddedServices(string $providerId, int $limit = 6): array
     {
-        return Service::where('salon_id', $salonId)
+        return Service::where('provider_id', $providerId)
             ->where('active', true)
             ->orderBy('created_at', 'desc')
             ->limit($limit)

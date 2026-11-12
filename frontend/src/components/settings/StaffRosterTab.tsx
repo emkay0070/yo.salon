@@ -37,11 +37,11 @@ interface DaySchedule {
 }
 
 function SpecialistScheduleDrawer({
-  salonId,
+  providerId,
   specialist,
   onClose,
 }: {
-  salonId: string;
+  providerId: string;
   specialist: any;
   onClose: () => void;
 }) {
@@ -52,8 +52,8 @@ function SpecialistScheduleDrawer({
   );
 
   const { isLoading } = useQuery({
-    queryKey: ['assignment-schedule', salonId, specialist.id],
-    queryFn: () => apiClient.getAssignmentSchedule(salonId, specialist.id),
+    queryKey: ['assignment-schedule', providerId, specialist.id],
+    queryFn: () => apiClient.getAssignmentSchedule(providerId, specialist.id),
     onSuccess: (data: any) => {
       setScheduleMode(data?.schedule_mode ?? 'INHERIT');
       if (data?.data?.length) {
@@ -77,13 +77,13 @@ function SpecialistScheduleDrawer({
   const saveMutation = useMutation({
     mutationFn: () =>
       apiClient.updateAssignmentSchedule(
-        salonId,
+        providerId,
         specialist.id,
         scheduleMode,
         scheduleMode === 'CUSTOM' ? schedules : undefined,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assignment-schedule', salonId, specialist.id] });
+      queryClient.invalidateQueries({ queryKey: ['assignment-schedule', providerId, specialist.id] });
     },
   });
 
@@ -225,33 +225,33 @@ function SpecialistScheduleDrawer({
 }
 
 export default function StaffRosterTab() {
-  const { salonId } = useRole();
+  const { providerId } = useRole();
   const queryClient = useQueryClient();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newRole, setNewRole] = useState<string>('');
   const [scheduleDrawerSpecialist, setScheduleDrawerSpecialist] = useState<any | null>(null);
-  const { salonSlug } = useRole();
+  const { providerSlug } = useRole();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['salon-specialists', salonId, salonSlug],
-    queryFn: () => apiClient.getSalonSpecialistsWithFallback(salonId || undefined, salonSlug || undefined),
-    enabled: !!salonId || !!salonSlug,
+    queryKey: ['provider-specialists', providerId, providerSlug],
+    queryFn: () => apiClient.getProviderSpecialistsWithFallback(providerId || undefined, providerSlug || undefined),
+    enabled: !!providerId || !!providerSlug,
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
-      apiClient.updateSalonSpecialist(salonId!, id, data),
+      apiClient.updateProviderSpecialist(providerId!, id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salon-specialists', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['provider-specialists', providerId] });
       setEditingId(null);
     },
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) => apiClient.removeSalonSpecialist(salonId!, id),
+    mutationFn: (id: string) => apiClient.removeProviderSpecialist(providerId!, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salon-specialists', salonId] });
+      queryClient.invalidateQueries({ queryKey: ['provider-specialists', providerId] });
     },
   });
 
@@ -426,9 +426,9 @@ export default function StaffRosterTab() {
       )}
 
       {/* Schedule Drawer */}
-      {scheduleDrawerSpecialist && salonId && (
+      {scheduleDrawerSpecialist && providerId && (
         <SpecialistScheduleDrawer
-          salonId={salonId}
+          providerId={providerId}
           specialist={scheduleDrawerSpecialist}
           onClose={() => setScheduleDrawerSpecialist(null)}
         />

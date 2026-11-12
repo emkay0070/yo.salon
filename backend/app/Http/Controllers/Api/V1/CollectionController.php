@@ -33,11 +33,11 @@ class CollectionController extends Controller
         ]);
         
         $customerId = $request->attributes->get('customer_id');
-        $salonId = $request->attributes->get('salon_id');
-        
+        $locationId = $request->attributes->get('location_id');
+
         $collection = CustomerCollection::create([
             'customer_id' => $customerId,
-            'salon_id' => $salonId,
+            'location_id' => $locationId,
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
             'icon' => $validated['icon'] ?? null,

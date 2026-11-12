@@ -4,6 +4,8 @@ namespace Tests\Unit\Finance;
 
 use App\Domain\Finance\Settlement\Settlement;
 use App\Domain\Finance\Payout\Payout;
+use App\Models\Provider;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -14,11 +16,15 @@ class SettlementTest extends TestCase
 
     public function test_mark_as_paid_works_with_and_without_explicit_timestamp()
     {
+        $provider = Provider::factory()->create();
+        $user = User::factory()->create();
+        
         $settlement1 = Settlement::create([
-            'payable_type' => 'App\Models\Salon',
-            'payable_id' => Str::uuid(),
+            'provider_id' => $provider->id,
+            'payable_type' => 'App\Models\Provider',
+            'payable_id' => $provider->id,
             'recipient_type' => 'App\Models\User',
-            'recipient_id' => Str::uuid(),
+            'recipient_id' => $user->id,
             'amount' => 10000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,
@@ -27,10 +33,11 @@ class SettlementTest extends TestCase
         ]);
 
         $settlement2 = Settlement::create([
-            'payable_type' => 'App\Models\Salon',
-            'payable_id' => Str::uuid(),
+            'provider_id' => $provider->id,
+            'payable_type' => 'App\Models\Provider',
+            'payable_id' => $provider->id,
             'recipient_type' => 'App\Models\User',
-            'recipient_id' => Str::uuid(),
+            'recipient_id' => $user->id,
             'amount' => 20000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,
@@ -53,11 +60,15 @@ class SettlementTest extends TestCase
 
     public function test_payout_belongs_to_settlement_via_uuid()
     {
+        $provider = Provider::factory()->create();
+        $user = User::factory()->create();
+        
         $settlement = Settlement::create([
-            'payable_type' => 'App\Models\Salon',
-            'payable_id' => Str::uuid(),
+            'provider_id' => $provider->id,
+            'payable_type' => 'App\Models\Provider',
+            'payable_id' => $provider->id,
             'recipient_type' => 'App\Models\User',
-            'recipient_id' => Str::uuid(),
+            'recipient_id' => $user->id,
             'amount' => 15000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,

@@ -120,9 +120,6 @@ class ProviderBookingConfig extends Model
         ];
     }
 
-    /**
-     * Get default booking policy
-     */
     public function getDefaultBookingPolicy(): array
     {
         return $this->booking_policy ?? [
@@ -132,6 +129,21 @@ class ProviderBookingConfig extends Model
             'waiting_list_enabled' => false,
             'require_customer_profile' => false,
             'require_phone_number' => true,
+        ];
+    }
+
+    /**
+     * Get all defaults as an array
+     */
+    public function getDefaults(): array
+    {
+        return [
+            'availability_policy' => $this->getDefaultAvailabilityPolicy(),
+            'assignment_policy' => $this->getDefaultAssignmentPolicy(),
+            'payment_policy' => $this->getDefaultPaymentPolicy(),
+            'cancellation_policy' => $this->getDefaultCancellationPolicy(),
+            'approval_policy' => $this->getDefaultApprovalPolicy(),
+            'booking_policy' => $this->getDefaultBookingPolicy(),
         ];
     }
 }

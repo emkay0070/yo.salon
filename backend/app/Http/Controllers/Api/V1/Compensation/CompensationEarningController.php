@@ -9,14 +9,14 @@ use Illuminate\Http\JsonResponse;
 class CompensationEarningController extends CompensationController
 {
     /**
-     * List earnings for the salon's team.
+     * List earnings for the provider's team.
      */
-    public function index(string $salonSlug, Request $request): JsonResponse
+    public function index(string $providerIdentifier, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
-        $query = Earning::where('provider_type', get_class($salon))
-            ->where('provider_id', $salon->id)
+        $query = Earning::where('provider_type', get_class($provider))
+            ->where('provider_id', $provider->id)
             ->with(['compensatable', 'policy', 'period']);
 
         if ($request->has('compensatable_type') && $request->has('compensatable_id')) {

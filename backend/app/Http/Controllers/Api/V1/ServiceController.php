@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service;
+use App\Models\Location;
 use App\Services\MediaService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -20,51 +21,43 @@ class ServiceController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) return response()->json(['message' => 'No salon associated with your account'], 403);
-        
-        // Services are provider-scoped, filter by salon's provider
-        $query = Service::with('provider')->where('provider_id', $salon->provider_id);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) return response()->json(['message' => 'No provider associated with your account'], 403);
+
+        // Services are provider-scoped
+        $query    = Service::with('provider')->where('provider_id', $provider->id);
         $services = $query->get();
         return response()->json($services);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
-        if (!$salon) return response()->json(['message' => 'No salon associated with your account'], 403);
+        $provider = auth()->user()->currentProvider();
+        if (!$provider) return response()->json(['message' => 'No provider associated with your account'], 403);
 
         $validated = $request->validate([
-            'name' => 'required|string',
+            'name'        => 'required|string',
             'description' => 'nullable|string',
-            'price' => 'required|numeric',
-            'duration' => 'required|integer',
-            'category' => 'nullable|string',
-            'active' => 'sometimes|boolean',
-            'image' => 'nullable|image|max:2048',
+            'price'       => 'required|numeric',
+            'duration'    => 'required|integer',
+            'category'    => 'nullable|string',
+            'active'      => 'sometimes|boolean',
+            'image'       => 'nullable|image|max:2048',
         ]);
 
-        $data = $validated;
-        $data['provider_id'] = $salon->provider_id;
+        $data                = $validated;
+        $data['provider_id'] = $provider->id;
 
         if ($request->hasFile('image')) {
-            $media = $this->mediaService->upload($request->file('image'), [
-                'directory' => 'services',
-                'provider_id' => $salon->provider_id,
-                'salon_id' => $salon->id,
-                'alt_text' => $data['name'] . ' image',
+            $media                  = $this->mediaService->upload($request->file('image'), [
+                'directory'   => 'services',
+                'provider_id' => $provider->id,
+                'alt_text'    => $data['name'] . ' image',
             ]);
             $data['image_media_id'] = $media->id;
         }
 
         $service = Service::create($data);
-        
-        // Attach to the current salon automatically
-        \Illuminate\Support\Facades\DB::table('salon_service')->insert([
-            'salon_id' => $salon->id,
-            'service_id' => $service->id,
-            'is_available' => true,
-        ]);
 
         return response()->json($service->load('provider'), 201);
     }
@@ -90,18 +83,20 @@ class ServiceController extends Controller
             )
             ->get();
 
-        // Get salons that offer this service (via provider)
-        $salons = \DB::table('salons')
-            ->where('provider_id', $service->provider_id)
-            ->select(
-                'id',
-                'name',
-                'slug',
-                'logo',
-                'address',
-                'phone'
-            )
-            ->get();
+        // Get locations that offer this service (via provider)
+        $locations = Location::where('provider_id', $service->provider_id)
+            ->where('is_active', true)
+            ->get()
+            ->map(function ($location) {
+                return [
+                    'id'      => $location->id,
+                    'name'    => $location->name,
+                    'slug'    => $location->slug,
+                    'logo'    => $location->provider?->logo,
+                    'address' => $location->address,
+                    'phone'   => $location->phone,
+                ];
+            });
 
         // Get booking count for popularity
         $bookingCount = \DB::table('bookings')
@@ -120,68 +115,67 @@ class ServiceController extends Controller
             ->get()
             ->map(function ($review) {
                 return [
-                    'id' => $review->id,
-                    'rating' => $review->rating,
+                    'id'      => $review->id,
+                    'rating'  => $review->rating,
                     'comment' => $review->comment,
-                    'author' => $review->customer_name,
-                    'date' => $review->created_at,
+                    'author'  => $review->customer_name,
+                    'date'    => $review->created_at,
                 ];
             });
 
         return response()->json([
-            'id' => $service->id,
-            'name' => $service->name,
-            'description' => $service->description,
-            'preparation' => $service->preparation,
-            'aftercare' => $service->aftercare,
-            'cancellation_policy' => $service->cancellation_policy,
-            'price' => $service->price,
-            'duration' => $service->duration,
-            'buffer_before' => $service->buffer_before,
-            'buffer_after' => $service->buffer_after,
-            'requires_specialist' => $service->requires_specialist,
-            'max_concurrent' => $service->max_concurrent,
-            'min_booking_notice' => $service->min_booking_notice,
-            'max_booking_days_ahead' => $service->max_booking_days_ahead,
+            'id'                        => $service->id,
+            'name'                      => $service->name,
+            'description'               => $service->description,
+            'preparation'               => $service->preparation,
+            'aftercare'                 => $service->aftercare,
+            'cancellation_policy'       => $service->cancellation_policy,
+            'price'                     => $service->price,
+            'duration'                  => $service->duration,
+            'buffer_before'             => $service->buffer_before,
+            'buffer_after'              => $service->buffer_after,
+            'requires_specialist'       => $service->requires_specialist,
+            'max_concurrent'            => $service->max_concurrent,
+            'min_booking_notice'        => $service->min_booking_notice,
+            'max_booking_days_ahead'    => $service->max_booking_days_ahead,
             'cancellation_cutoff_hours' => $service->cancellation_cutoff_hours,
-            'category' => $service->category,
-            'image_path' => $service->image_path,
-            'image_url' => $service->image_url,
-            'images' => $service->images,
-            'active' => $service->active,
-            'provider' => $service->provider ? [
-                'id' => $service->provider->id,
-                'name' => $service->provider->name,
+            'category'                  => $service->category,
+            'image_path'                => $service->image_path,
+            'image_url'                 => $service->image_url,
+            'images'                    => $service->images,
+            'active'                    => $service->active,
+            'provider'                  => $service->provider ? [
+                'id'           => $service->provider->id,
                 'display_name' => $service->provider->display_name,
-                'slug' => $service->provider->slug,
-                'logo' => $service->provider->logo,
-                'description' => $service->provider->description,
+                'slug'         => $service->provider->slug,
+                'logo'         => $service->provider->logo,
+                'description'  => $service->provider->description,
             ] : null,
-            'available_specialists' => $availableSpecialists,
-            'salons' => $salons,
-            'popularity' => $bookingCount,
-            'rating' => $service->rating ?? 0,
-            'review_count' => $reviews->count(),
-            'reviews' => $reviews,
-            'what_included' => $service->what_included ?? [],
-            'suitable_for' => $service->suitable_for ?? [],
+            'available_specialists'     => $availableSpecialists,
+            'locations'                 => $locations,
+            'popularity'                => $bookingCount,
+            'rating'                    => $service->rating ?? 0,
+            'review_count'              => $reviews->count(),
+            'reviews'                   => $reviews,
+            'what_included'             => $service->what_included ?? [],
+            'suitable_for'              => $service->suitable_for ?? [],
         ]);
     }
 
     public function update(Request $request, Service $service): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'sometimes|string',
+            'name'        => 'sometimes|string',
             'description' => 'nullable|string',
-            'price' => 'sometimes|numeric',
-            'duration' => 'sometimes|integer',
-            'category' => 'nullable|string',
-            'active' => 'sometimes|boolean',
-            'image' => 'nullable|image|max:2048',
+            'price'       => 'sometimes|numeric',
+            'duration'    => 'sometimes|integer',
+            'category'    => 'nullable|string',
+            'active'      => 'sometimes|boolean',
+            'image'       => 'nullable|image|max:2048',
         ]);
 
         $data = $validated;
-        
+
         if ($request->hasFile('image')) {
             // Delete old media if exists
             if ($service->image_media_id) {
@@ -190,12 +184,11 @@ class ServiceController extends Controller
                     $this->mediaService->delete($oldMedia);
                 }
             }
-            
-            $media = $this->mediaService->upload($request->file('image'), [
-                'directory' => 'services',
+
+            $media                  = $this->mediaService->upload($request->file('image'), [
+                'directory'   => 'services',
                 'provider_id' => $service->provider_id,
-                'salon_id' => auth()->user()->currentSalon()?->id,
-                'alt_text' => $data['name'] ?? $service->name . ' image',
+                'alt_text'    => ($data['name'] ?? $service->name) . ' image',
             ]);
             $data['image_media_id'] = $media->id;
         }
@@ -221,25 +214,72 @@ class ServiceController extends Controller
         return response()->json(null, 204);
     }
 
-    public function bySalon(string $salon): JsonResponse
+    /**
+     * Get services by provider.
+     */
+    public function byProvider(string $providerId): JsonResponse
     {
-        $services = Service::where('salon_id', $salon)
+        $provider = \App\Models\Provider::find($providerId);
+        if (!$provider) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+
+        $services = Service::where('provider_id', $provider->id)
             ->where('active', true)
             ->get();
+
+        return response()->json($services);
+    }
+
+    /**
+     * Get services by location (branch).
+     */
+    public function byLocation(string $locationId): JsonResponse
+    {
+        $location = Location::find($locationId);
+        if (!$location) {
+            return response()->json(['message' => 'Location not found'], 404);
+        }
+
+        $services = Service::where('provider_id', $location->provider_id)
+            ->where('active', true)
+            ->get();
+
         return response()->json($services);
     }
 
     public function indexForPortal(Request $request): JsonResponse
     {
         $providerId = $request->attributes->get('provider_id');
-        if (!$providerId) {
-            return response()->json(['message' => 'No provider context found'], 400);
+        $locationId = $request->attributes->get('location_id');
+
+        if ($providerId) {
+            // Resolve the primary location for supplementary context
+            $location = $locationId
+                ? Location::find($locationId)
+                : Location::where('provider_id', $providerId)->where('is_primary', true)->first();
+
+            $services = Service::where('provider_id', $providerId)
+                ->where('active', true)
+                ->get()
+                ->map(function (Service $service) use ($location) {
+                    $row = $service->toArray();
+                    if ($location) {
+                        $row['location_id'] = $location->id;
+                        $row['location']    = [
+                            'id'   => $location->id,
+                            'name' => $location->name,
+                            'slug' => $location->slug,
+                            'city' => $location->city,
+                        ];
+                    }
+                    return $row;
+                });
+
+            return response()->json($services);
         }
 
-        $services = Service::where('provider_id', $providerId)
-            ->where('active', true)
-            ->get();
-            
-        return response()->json($services);
+        // No context at all
+        return response()->json([]);
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Domain\Finance\Compensation\CompensationController;
+use App\Http\Controllers\Api\V1\Compensation\CompensationController;
 use App\Models\PaymentProfile;
 use App\Models\Specialist;
 use App\Models\Staff;
@@ -14,20 +14,24 @@ class TeamPaymentProfileController extends CompensationController
     /**
      * Get a team member's masked payment profile (Manager view)
      */
-    public function show(string $salonSlug, string $memberId, Request $request): JsonResponse
+    public function show(string $providerIdentifier, string $memberId, Request $request): JsonResponse
     {
-        $salon = $this->authorizeSalonManager($salonSlug);
+        $provider = $this->authorizeProviderManager($providerIdentifier);
 
         // Resolve member (Staff or Specialist)
-        $member = Staff::where('salon_id', $salon->id)->where('id', $memberId)->first();
+        $member = Staff::where('provider_id', $provider->id)
+            ->when($provider->location_id, fn($q) => $q->where('location_id', $provider->location_id))
+            ->where('id', $memberId)
+            ->first();
         $ownerType = Staff::class;
 
         if (!$member) {
-            // Check if they are a specialist assigned to the salon
-            $assignment = \App\Models\SpecialistAssignment::where('salon_id', $salon->id)
+            // Check if they are a specialist assigned to the provider
+            $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
+                ->when($provider->location_id, fn($q) => $q->where('location_id', $provider->location_id))
                 ->where('specialist_id', $memberId)
                 ->first();
-            
+
             if ($assignment) {
                 $member = Specialist::find($memberId);
                 $ownerType = Specialist::class;

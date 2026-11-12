@@ -24,6 +24,11 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Skip if salons table doesn't exist (fresh migration scenario)
+        if (!Schema::hasTable('salons')) {
+            return;
+        }
+
         // Get all assignments that still have no staff_id
         $unlinkedAssignments = DB::table('specialist_assignments')
             ->whereNull('staff_id')

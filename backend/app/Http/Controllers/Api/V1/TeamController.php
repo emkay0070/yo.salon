@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Models\Specialist;
 use App\Models\SpecialistAssignment;
 use App\Models\Staff;
@@ -13,11 +13,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 /**
- * TeamController returns a unified list of all entities the salon can owe money to.
+ * TeamController returns a unified list of all entities the provider can owe money to.
  *
  * Every payee is normalized into the same TeamMember shape regardless of whether
  * they are a Staff member (employee, receptionist), an employed specialist, or
- * an independent specialist assigned to the salon.
+ * an independent specialist assigned to the provider.
  *
  * The compensation and payable sub-objects mean the frontend does NOT need to
  * call multiple endpoints to render the Team Payments screen — it receives
@@ -25,24 +25,25 @@ use Illuminate\Http\JsonResponse;
  */
 class TeamController extends Controller
 {
-    public function index(string $salonSlug, Request $request): JsonResponse
+    public function index(string $providerIdentifier, Request $request): JsonResponse
     {
-        $salon = auth()->user()->currentSalon();
+        $provider = auth()->user()->currentProvider();
 
-        if (!$salon || $salon->slug !== $salonSlug) {
-            return response()->json(['message' => 'Unauthorized access to salon team.'], 403);
+        if (!$provider || ($provider->slug !== $providerIdentifier && $provider->id !== $providerIdentifier)) {
+            return response()->json(['message' => 'Unauthorized access to provider team.'], 403);
         }
 
         $members = collect();
 
         // ── 1. Staff (employees, receptionists, managers) ──────────────────────
-        $staff = Staff::where('salon_id', $salon->id)
+        $staff = Staff::where('provider_id', $provider->id)
+            ->when($provider->location_id, fn($q) => $q->where('location_id', $provider->location_id))
             ->where('active', true)
             ->get();
 
         foreach ($staff as $member) {
-            $policy = $this->activePolicy(\App\Models\Staff::class, $member->id, \App\Models\Salon::class, $salon->id);
-            $payable = $this->outstandingPayable(\App\Models\Staff::class, $member->id, \App\Models\Salon::class, $salon->id);
+            $policy = $this->activePolicy(\App\Models\Staff::class, $member->id, \App\Models\Provider::class, $provider->id);
+            $payable = $this->outstandingPayable(\App\Models\Staff::class, $member->id, \App\Models\Provider::class, $provider->id);
 
             $members->push([
                 'id'        => $member->id,
@@ -58,12 +59,13 @@ class TeamController extends Controller
             ]);
         }
 
-        // ── 2. Specialists assigned to this salon ───────────────────────────────
+        // ── 2. Specialists assigned to this provider ───────────────────────────────
         // Covers both:
         //   (a) Independent specialists  — assignment.staff_id IS NULL
         //   (b) Employed specialists     — assignment.staff_id IS NOT NULL
-        // Both belong on the Team Payments screen as they both earn from the salon.
-        $assignments = SpecialistAssignment::where('salon_id', $salon->id)
+        // Both belong on the Team Payments screen as they both earn from the provider.
+        $assignments = SpecialistAssignment::where('provider_id', $provider->id)
+            ->when($provider->location_id, fn($q) => $q->where('location_id', $provider->location_id))
             ->where('status', 'active')
             ->with('specialist')
             ->get();
@@ -77,11 +79,11 @@ class TeamController extends Controller
             // Determine sub-type: employed vs independent
             $subtype = isset($assignment->staff_id) ? 'employed_specialist' : 'independent_specialist';
 
-            $policy = $this->activePolicy(\App\Models\Specialist::class, $specialist->id, \App\Models\Salon::class, $salon->id, $assignment->id);
-            $payable = $this->outstandingPayable(\App\Models\Specialist::class, $specialist->id, \App\Models\Salon::class, $salon->id);
+            $policy = $this->activePolicy(\App\Models\Specialist::class, $specialist->id, \App\Models\Provider::class, $provider->id, $assignment->id);
+            $payable = $this->outstandingPayable(\App\Models\Specialist::class, $specialist->id, \App\Models\Provider::class, $provider->id);
 
             // Avoid duplicate: if employed specialist also has a Staff record in
-            // this salon, we've already included them above. Skip.
+            // this provider, we've already included them above. Skip.
             if ($subtype === 'employed_specialist' && $members->contains('id', $assignment->staff_id)) {
                 continue;
             }
@@ -102,16 +104,16 @@ class TeamController extends Controller
         }
 
         return response()->json([
-            'salon_id' => $salon->id,
-            'team'     => $members->values(),
-            'total'    => $members->count(),
+            'provider_id' => $provider->id,
+            'team'        => $members->values(),
+            'total'       => $members->count(),
         ]);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * Get the currently active CompensationPolicy for a given payee + salon.
+     * Get the currently active CompensationPolicy for a given payee + provider.
      */
     private function activePolicy(
         string $compensatableType,
@@ -134,7 +136,7 @@ class TeamController extends Controller
     }
 
     /**
-     * Get outstanding payment obligations for a given payee from this salon.
+     * Get outstanding payment obligations for a given payee from this provider.
      * This reads from Settlement — not from bookings.
      */
     private function outstandingPayable(

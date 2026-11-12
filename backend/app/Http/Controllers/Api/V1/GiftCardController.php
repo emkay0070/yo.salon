@@ -25,10 +25,10 @@ class GiftCardController extends Controller
             'code' => 'required|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
 
         try {
-            $giftCard = $this->giftCardService->validateCode($validated['code'], $salonId);
+            $giftCard = $this->giftCardService->validateCode($validated['code'], $providerId);
 
             if (!$giftCard) {
                 return response()->json([
@@ -39,7 +39,9 @@ class GiftCardController extends Controller
             return response()->json([
                 'valid' => true,
                 'amount' => $giftCard->amount,
+                'balance' => $giftCard->balance,
                 'currency' => $giftCard->currency,
+                'status' => $giftCard->status,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -50,7 +52,7 @@ class GiftCardController extends Controller
     }
 
     /**
-     * Redeem a gift card
+     * Redeem a gift card (full redemption)
      */
     public function redeem(Request $request): JsonResponse
     {
@@ -58,14 +60,47 @@ class GiftCardController extends Controller
             'code' => 'required|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            $result = $this->giftCardService->redeemGiftCard($validated['code'], $customerId, $salonId);
+            $result = $this->giftCardService->redeemGiftCard($validated['code'], $customerId, $providerId);
 
             return response()->json([
                 'message' => 'Gift card redeemed successfully',
+                'result' => $result,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to redeem gift card',
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Partially redeem a gift card
+     */
+    public function redeemPartial(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string',
+            'amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $providerId = $request->attributes->get('provider_id');
+        $customerId = $request->attributes->get('customer_id');
+
+        try {
+            $result = $this->giftCardService->redeemGiftCardPartial(
+                $validated['code'],
+                $customerId,
+                $providerId,
+                $validated['amount']
+            );
+
+            return response()->json([
+                'message' => 'Gift card partially redeemed successfully',
                 'result' => $result,
             ]);
         } catch (\Exception $e) {
@@ -86,13 +121,13 @@ class GiftCardController extends Controller
             'message' => 'nullable|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
             $giftCard = $this->giftCardService->purchaseGiftCard(
                 $customerId,
-                $salonId,
+                $providerId,
                 $validated['amount'],
                 $validated['message'] ?? null
             );
@@ -114,11 +149,11 @@ class GiftCardController extends Controller
      */
     public function purchased(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            $giftCards = $this->giftCardService->getCustomerPurchasedGiftCards($customerId, $salonId);
+            $giftCards = $this->giftCardService->getCustomerPurchasedGiftCards($customerId, $providerId);
 
             return response()->json([
                 'gift_cards' => $giftCards,
@@ -136,11 +171,11 @@ class GiftCardController extends Controller
      */
     public function redeemed(Request $request): JsonResponse
     {
-        $salonId = $request->attributes->get('salon_id');
+        $providerId = $request->attributes->get('provider_id');
         $customerId = $request->attributes->get('customer_id');
 
         try {
-            $giftCards = $this->giftCardService->getCustomerRedeemedGiftCards($customerId, $salonId);
+            $giftCards = $this->giftCardService->getCustomerRedeemedGiftCards($customerId, $providerId);
 
             return response()->json([
                 'gift_cards' => $giftCards,
@@ -154,43 +189,111 @@ class GiftCardController extends Controller
     }
 
     /**
-     * Send a gift card to someone
+     * Get gift card transaction history
      */
-    public function send(Request $request): JsonResponse
+    public function history(Request $request, string $giftCardId): JsonResponse
+    {
+        try {
+            $history = $this->giftCardService->getTransactionHistory($giftCardId);
+
+            return response()->json([
+                'history' => $history,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to get transaction history',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel a gift card (provider admin only)
+     */
+    public function cancel(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'gift_card_id' => 'required|uuid',
-            'recipient_email' => 'required|email',
-            'message' => 'nullable|string',
+            'reason' => 'required|string',
         ]);
 
-        $salonId = $request->attributes->get('salon_id');
-        $customerId = $request->attributes->get('customer_id');
+        $performedBy = $request->attributes->get('user_id');
 
         try {
-            $giftCard = \App\Models\GiftCard::where('id', $validated['gift_card_id'])
-                ->where('purchased_by', $customerId)
-                ->where('status', 'active')
-                ->firstOrFail();
-
-            // Update gift card with recipient info
-            $giftCard->update([
-                'recipient_email' => $validated['recipient_email'],
-                'message' => $validated['message'] ?? $giftCard->message,
-                'sent_at' => now(),
-            ]);
-
-            // TODO: Send email notification to recipient
+            $giftCard = $this->giftCardService->cancelGiftCard(
+                $validated['gift_card_id'],
+                $validated['reason'],
+                $performedBy
+            );
 
             return response()->json([
-                'message' => 'Gift card sent successfully',
+                'message' => 'Gift card cancelled successfully',
                 'gift_card' => $giftCard,
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Failed to send gift card',
+                'message' => 'Failed to cancel gift card',
                 'error' => $e->getMessage(),
-            ], 500);
+            ], 400);
+        }
+    }
+
+    /**
+     * Adjust gift card balance (provider admin only)
+     */
+    public function adjust(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'gift_card_id' => 'required|uuid',
+            'amount' => 'required|numeric',
+            'reason' => 'required|string',
+        ]);
+
+        $performedBy = $request->attributes->get('user_id');
+
+        try {
+            $giftCard = $this->giftCardService->adjustBalance(
+                $validated['gift_card_id'],
+                $validated['amount'],
+                $validated['reason'],
+                $performedBy
+            );
+
+            return response()->json([
+                'message' => 'Gift card balance adjusted successfully',
+                'gift_card' => $giftCard,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to adjust gift card balance',
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Issue/activate a gift card (provider admin only)
+     */
+    public function issue(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'gift_card_id' => 'required|uuid',
+        ]);
+
+        $performedBy = $request->attributes->get('user_id');
+
+        try {
+            $giftCard = $this->giftCardService->issueGiftCard($validated['gift_card_id'], $performedBy);
+
+            return response()->json([
+                'message' => 'Gift card issued successfully',
+                'gift_card' => $giftCard,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to issue gift card',
+                'error' => $e->getMessage(),
+            ], 400);
         }
     }
 }

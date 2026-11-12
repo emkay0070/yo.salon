@@ -3,7 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Customer;
-use App\Models\Salon;
+use App\Models\Provider;
 use App\Services\BrandEmailService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,13 +15,13 @@ class WelcomeEmail extends Notification implements ShouldQueue
     use Queueable;
 
     protected $customer;
-    protected $salon;
+    protected $provider;
     protected $brandEmailService;
 
-    public function __construct(Customer $customer, Salon $salon)
+    public function __construct(Customer $customer, Provider $provider)
     {
         $this->customer = $customer;
-        $this->salon = $salon;
+        $this->provider = $provider;
         $this->brandEmailService = new BrandEmailService();
     }
 
@@ -32,7 +32,7 @@ class WelcomeEmail extends Notification implements ShouldQueue
 
     public function toMail($notifiable)
     {
-        $styles = $this->brandEmailService->generateEmailStyles($this->salon);
+        $styles = $this->brandEmailService->generateEmailStyles($this->provider);
         
         $content = $this->brandEmailService->getCard(
             sprintf(
@@ -47,28 +47,28 @@ class WelcomeEmail extends Notification implements ShouldQueue
                 '</ul>' .
                 '<p style="color: %s;">Get started by booking your first appointment today!</p>',
                 $styles['primary_color'],
-                $this->salon->name,
+                $this->provider->display_name,
                 $styles['text_primary'],
-                $this->salon->name,
+                $this->provider->display_name,
                 $styles['text_secondary'],
                 $styles['text_primary'],
                 $styles['text_secondary']
             ),
-            $this->salon
+            $this->provider
         );
 
         $button = $this->brandEmailService->getButton(
             'Book Your First Appointment',
             url('/portal/bookings/new'),
-            $this->salon
+            $this->provider
         );
 
         $fullContent = $content . '<div style="text-align: center; margin: 20px 0;">' . $button . '</div>';
 
-        $html = $this->brandEmailService->getEmailTemplate($fullContent, $this->salon);
+        $html = $this->brandEmailService->getEmailTemplate($fullContent, $this->provider);
 
         return (new MailMessage)
-            ->subject("Welcome to {$this->salon->name}!")
+            ->subject("Welcome to {$this->provider->display_name}!")
             ->html($html);
     }
 }

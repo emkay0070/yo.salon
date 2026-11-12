@@ -25,8 +25,4 @@ class AddPaymentActivity
         ]);
     }
 
-    public function __invoke(PaymentConfirmed $event)
-    {
-        return $this->handle($event);
-    }
 }

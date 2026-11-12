@@ -2,22 +2,22 @@
 
 namespace App\Services;
 
-use App\Models\Salon;
 use App\Models\WebsiteConfiguration;
 use App\Models\Provider;
+use App\Models\Location;
 
 class WebsiteConfigurationResolver
 {
     /**
-     * Resolve the effective website configuration for a salon
+     * Resolve the effective website configuration for a provider (and optional location)
      */
-    public function resolve(Salon $salon): array
+    public function resolve(Provider $provider, ?Location $location = null): array
     {
-        $config = $this->getConfiguration($salon);
+        $config = $this->getConfiguration($provider);
         
         return [
-            'salon' => $this->resolveSalonInfo($salon),
-            'brand' => $this->resolveBranding($salon, $config),
+            'salon' => $this->resolveContextInfo($provider, $location),
+            'brand' => $this->resolveBranding($provider, $config),
             'theme' => $this->resolveTheme($config),
             'sections' => $this->resolveSections($config),
             'navigation' => $this->resolveNavigation($config),
@@ -27,60 +27,52 @@ class WebsiteConfigurationResolver
     /**
      * Get the website configuration (custom or default)
      */
-    protected function getConfiguration(Salon $salon): ?WebsiteConfiguration
+    protected function getConfiguration(Provider $provider): ?WebsiteConfiguration
     {
-        // Try to get custom configuration
-        $config = WebsiteConfiguration::where('configurable_type', Salon::class)
-            ->where('configurable_id', $salon->id)
+        return WebsiteConfiguration::where('configurable_type', Provider::class)
+            ->where('configurable_id', $provider->id)
             ->where('is_active', true)
             ->first();
-
-        // If no custom config, check provider-level config
-        if (!$config && $salon->provider) {
-            $config = WebsiteConfiguration::where('configurable_type', Provider::class)
-                ->where('configurable_id', $salon->provider->id)
-                ->where('is_active', true)
-                ->first();
-        }
-
-        return $config;
     }
 
     /**
-     * Resolve salon information
+     * Resolve provider and location information
      */
-    protected function resolveSalonInfo(Salon $salon): array
+    protected function resolveContextInfo(Provider $provider, ?Location $location): array
     {
+        $address = $location?->address;
+        $city = $location?->city;
+
         return [
-            'id' => $salon->id,
-            'name' => $salon->name,
-            'slug' => $salon->slug,
-            'description' => $salon->description,
-            'logo' => $salon->logo_url ?? null,
-            'phone' => $salon->phone,
-            'email' => $salon->email,
-            'address' => $salon->address,
-            'city' => $salon->city,
-            'whatsapp' => $salon->whatsapp,
-            'lat' => $salon->lat,
-            'lng' => $salon->lng,
-            'opening_hours' => $salon->opening_hours ?? [],
+            'id' => $location?->id ?? $provider->id, // Frontend uses this ID for booking context
+            'name' => $location?->name ?? $provider->display_name,
+            'slug' => $location?->slug ?? $provider->slug,
+            'description' => $location?->description ?? $provider->description,
+            'logo' => $provider->logo_url,
+            'phone' => $location?->phone ?? $provider->phone,
+            'email' => $location?->email ?? $provider->email,
+            'address' => $address,
+            'city' => $city,
+            'whatsapp' => $location?->whatsapp,
+            'lat' => $location?->lat,
+            'lng' => $location?->lng,
+            'opening_hours' => [], // Should be resolved via AvailabilityEngine/ScheduleResolver in API response if needed
         ];
     }
 
     /**
      * Resolve branding information
      */
-    protected function resolveBranding(Salon $salon, ?WebsiteConfiguration $config): array
+    protected function resolveBranding(Provider $provider, ?WebsiteConfiguration $config): array
     {
-        $brandExperience = $salon->brandExperience;
+        $brandExperience = $provider->brandExperience;
 
         // Use custom colors from config if available, otherwise fall back to brand experience
         $customColors = $config ? json_decode($config->custom_colors, true) : null;
         $customFonts = $config ? json_decode($config->custom_fonts, true) : null;
 
         return [
-            'logo' => $config?->logo ?? $brandExperience?->logo ?? $salon->logo_url,
+            'logo' => $config?->logo ?? $provider->logo_url,
             'primary_color' => $customColors['primary'] ?? $brandExperience?->primary_color ?? '#FF622B',
             'secondary_color' => $customColors['secondary'] ?? $brandExperience?->secondary_color ?? '#FF8C5A',
             'accent_color' => $customColors['accent'] ?? $brandExperience?->accent_color ?? '#FFD700',
