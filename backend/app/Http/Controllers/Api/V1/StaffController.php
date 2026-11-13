@@ -198,9 +198,11 @@ class StaffController extends Controller
         // Get services offered by this staff member.
         // Since staff.id ≠ specialist.id in the new architecture,
         // we resolve the Specialist identity via SpecialistAssignment.
+        // staff_id is a unique FK to staff, so staff_id + provider_id is
+        // sufficient — do NOT constrain by location_id, as staff.location_id
+        // and assignment.location_id may legitimately differ (NULL vs set).
         $assignment = \App\Models\SpecialistAssignment::where('staff_id', $staff->id)
             ->where('provider_id', $staff->provider_id)
-            ->where('location_id', $staff->location_id)
             ->first();
 
         $services = collect();

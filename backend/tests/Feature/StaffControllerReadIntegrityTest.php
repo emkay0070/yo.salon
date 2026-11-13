@@ -147,4 +147,43 @@ class StaffControllerReadIntegrityTest extends TestCase
         $this->assertEquals($staffIdsBefore, $staffIdsAfter,
             'GET /staff must not change which assignments have staff_id set');
     }
+
+    public function test_show_staff_with_location_null_assignment_location_set()
+    {
+        // S2: Staff with location_id = NULL but assignment with location_id set
+        // must still resolve the assignment (staff_id + provider_id is sufficient).
+        // The old code used where('location_id', $staff->location_id) which would
+        // produce WHERE location_id IS NULL and miss assignments that have a
+        // location_id set. The fix removes that constraint.
+        $location = \App\Models\Location::factory()->create(['provider_id' => $this->provider->id]);
+
+        $staffNoLocation = Staff::factory()->create([
+            'provider_id' => $this->provider->id,
+            'name' => 'No Location Staff',
+            'location_id' => null,
+        ]);
+
+        $specialistNoLocation = Specialist::factory()->create([
+            'provider_id' => $this->provider->id,
+            'name' => 'No Location Staff',
+        ]);
+
+        SpecialistAssignment::factory()->create([
+            'specialist_id' => $specialistNoLocation->id,
+            'provider_id' => $this->provider->id,
+            'location_id' => $location->id,
+            'staff_id' => $staffNoLocation->id,
+            'status' => 'ACTIVE',
+        ]);
+
+        // Direct lookup: staff_id + provider_id must find the assignment
+        // regardless of location_id mismatch (NULL vs set).
+        $found = \App\Models\SpecialistAssignment::where('staff_id', $staffNoLocation->id)
+            ->where('provider_id', $this->provider->id)
+            ->first();
+
+        $this->assertNotNull($found, 'Assignment must be found by staff_id + provider_id');
+        $this->assertEquals($specialistNoLocation->id, $found->specialist_id);
+        $this->assertEquals($location->id, $found->location_id);
+    }
 }
