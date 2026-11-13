@@ -781,6 +781,12 @@ class BookingService
             return $this->resolveAsLateArrival($booking, $reasonCode, $actorType, $actorId, $options);
         }
 
+        // Handle COMPLETED_LATE specially - requires transition through in_progress
+        // to respect the state machine (confirmed -> in_progress -> completed)
+        if ($outcome === 'COMPLETED_LATE') {
+            return $this->resolveAsCompletedLate($booking, $reasonCode, $actorType, $actorId, $options);
+        }
+
         // Standard resolution flow
         return DB::transaction(function () use ($booking, $outcome, $reasonCode, $actorType, $actorId, $targetStatus, $options) {
             // Transition booking status using the authoritative method
@@ -1066,6 +1072,73 @@ class BookingService
                 'description' => 'Customer arrived after grace period expired',
                 'data' => [
                     'outcome' => 'CUSTOMER_ARRIVED',
+                    'reason_code' => $reasonCode,
+                    'resolution_id' => $resolution->id,
+                ],
+                'actor_type' => $actorType,
+                'actor_id' => $actorId,
+            ]);
+
+            return $booking->fresh(['location', 'customer', 'specialist', 'service', 'resolution']);
+        });
+    }
+
+    /**
+     * Handle COMPLETED_LATE outcome - transitions through in_progress to respect
+     * the state machine (confirmed -> in_progress -> completed).
+     *
+     * Used when a booking was confirmed but service was completed without proper
+     * check-in, or completed late after the appointment window.
+     */
+    private function resolveAsCompletedLate(
+        Booking $booking,
+        string $reasonCode,
+        ?string $actorType,
+        ?string $actorId,
+        array $options
+    ): Booking {
+        return DB::transaction(function () use ($booking, $reasonCode, $actorType, $actorId, $options) {
+            // Step 1: confirmed -> in_progress (start the session)
+            $this->transitionStatus(
+                $booking,
+                'in_progress',
+                $actorType,
+                $actorId,
+                'Session started for late completion'
+            );
+
+            // Step 2: in_progress -> completed (complete the session)
+            $this->transitionStatus(
+                $booking,
+                'completed',
+                $actorType,
+                $actorId,
+                'Session completed late'
+            );
+
+            // Set operational state to resolved
+            $booking->update(['operational_state' => 'resolved']);
+
+            // Create resolution record
+            $resolution = \App\Models\BookingResolution::create([
+                'booking_id' => $booking->id,
+                'outcome' => 'COMPLETED_LATE',
+                'reason_code' => $reasonCode,
+                'notes' => $options['notes'] ?? null,
+                'actor_type' => $actorType,
+                'actor_id' => $actorId,
+                'resolved_at' => now(),
+                'follow_up_required' => false,
+            ]);
+
+            // Create resolution activity
+            \App\Models\BookingActivity::create([
+                'booking_id' => $booking->id,
+                'type' => 'BOOKING_RESOLVED',
+                'title' => 'Booking completed late',
+                'description' => 'Booking was completed late without proper check-in',
+                'data' => [
+                    'outcome' => 'COMPLETED_LATE',
                     'reason_code' => $reasonCode,
                     'resolution_id' => $resolution->id,
                 ],
