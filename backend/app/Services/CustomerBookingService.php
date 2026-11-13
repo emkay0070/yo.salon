@@ -99,7 +99,7 @@ class CustomerBookingService
             }
         }
 
-        $booking = DB::transaction(function () use ($data, $location, $providerId, $service, $specialistId, $staffId) {
+        $booking = DB::transaction(function () use ($data, $location, $providerId, $service, $specialistId, $staffId, $locationId) {
             $customer = Customer::find($data['customer_id']);
 
             if (!$customer || !$service) {

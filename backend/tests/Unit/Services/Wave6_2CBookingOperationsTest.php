@@ -13,9 +13,12 @@ use App\Services\CustomerAvailabilityService;
 use App\Services\CustomerBookingService;
 use App\Services\CustomerSpecialistService;
 use App\Services\BookingConfigurationService;
+use App\Services\BookingConflictService;
+use App\Services\AvailabilityEngine;
 use App\Domain\Availability\DTOs\ProviderLocationContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -27,6 +30,23 @@ class Wave6_2CBookingOperationsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function makeBookingService(): CustomerBookingService
+    {
+        $conflicts = $this->createMock(BookingConflictService::class);
+        $conflicts->method('calculateOccupiedInterval')->willReturnCallback(
+            fn ($start, $end) => ['start' => $start, 'end' => $end]
+        );
+        $conflicts->method('hasIntervalConflict')->willReturn(false);
+        $conflicts->method('hasProviderLevelConflict')->willReturn(false);
+
+        return new CustomerBookingService(
+            $this->createMock(CustomerSpecialistService::class),
+            $this->createMock(BookingConfigurationService::class),
+            $conflicts,
+            $this->createMock(AvailabilityEngine::class)
+        );
+    }
+
     // -------------------------------------------------------------------------
     // 1. Booking Context
     // -------------------------------------------------------------------------
@@ -37,12 +57,9 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider = Provider::factory()->create();
         $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service  = Service::factory()->create(['price' => 100]);
+        $service  = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
-        $service_obj = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $service_obj = $this->makeBookingService();
 
         $booking = $service_obj->createBooking([
             'customer_id' => $customer->id,
@@ -61,12 +78,9 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider = Provider::factory()->create();
         $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service  = Service::factory()->create(['price' => 100]);
+        $service  = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
         $booking = $svc->createBooking([
             'customer_id' => $customer->id,
@@ -89,27 +103,21 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $providerB  = Provider::factory()->create();
         $locationB  = Location::factory()->create(['provider_id' => $providerB->id]);
         $customer   = Customer::factory()->create();
-        $service    = Service::factory()->create(['price' => 100]);
+        $service    = Service::factory()->create(['provider_id' => $providerA->id, 'price' => 100]);
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
-        // Booking with locationB's ID but expecting providerA — this should produce
-        // a booking whose provider_id is providerB, NOT providerA.
-        // The invariant is: booking.provider_id === location.provider_id always.
-        $booking = $svc->createBooking([
+        // A service owned by Provider A cannot be booked at Provider B's location.
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('Service does not belong to this provider.');
+
+        $svc->createBooking([
             'customer_id' => $customer->id,
             'salon_id'    => $locationB->id,
             'service_id'  => $service->id,
             'date'        => now()->addDay()->toDateString(),
             'time'        => '10:00:00',
         ]);
-
-        // provider_id must match the location's owning provider, NOT providerA
-        $this->assertEquals($providerB->id, $booking->provider_id);
-        $this->assertNotEquals($providerA->id, $booking->provider_id);
     }
 
     /** TC-4: Legacy $salonId input resolves correctly when it represents a Location ID */
@@ -118,12 +126,9 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider = Provider::factory()->create();
         $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service  = Service::factory()->create(['price' => 100]);
+        $service  = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
         // Pass $location->id as salon_id — this is the legacy parameter
         $booking = $svc->createBooking([
@@ -186,7 +191,7 @@ class Wave6_2CBookingOperationsTest extends TestCase
     {
         $provider  = Provider::factory()->create();
         $location  = Location::factory()->create(['provider_id' => $provider->id]);
-        $service   = Service::factory()->create();
+        $service   = Service::factory()->create(['provider_id' => $provider->id]);
 
         // Staff assigned to this specific location (direct DB insert, no Staff factory)
         $staffId = (string) Str::uuid();
@@ -198,6 +203,36 @@ class Wave6_2CBookingOperationsTest extends TestCase
             'active'      => true,
             'created_at'  => now(),
             'updated_at'  => now(),
+        ]);
+
+        // A Staff member is only bookable once linked to a Specialist that
+        // offers the requested Service (assignment + specialist_service pivot).
+        $specialistId = (string) Str::orderedUuid();
+        \DB::table('specialists')->insert([
+            'id'          => $specialistId,
+            'provider_id' => $provider->id,
+            'name'        => 'Test Specialist',
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        \DB::table('specialist_assignments')->insert([
+            'id'            => (string) Str::orderedUuid(),
+            'specialist_id' => $specialistId,
+            'provider_id'   => $provider->id,
+            'location_id'   => $location->id,
+            'staff_id'      => $staffId,
+            'status'        => 'active',
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        \DB::table('specialist_service')->insert([
+            'id'            => (string) Str::orderedUuid(),
+            'specialist_id' => $specialistId,
+            'service_id'    => $service->id,
+            'created_at'    => now(),
+            'updated_at'    => now(),
         ]);
 
         $availabilityService = new CustomerAvailabilityService();
@@ -218,7 +253,7 @@ class Wave6_2CBookingOperationsTest extends TestCase
     {
         $provider  = Provider::factory()->create();
         $location  = Location::factory()->create(['provider_id' => $provider->id]);
-        $service   = Service::factory()->create();
+        $service   = Service::factory()->create(['provider_id' => $provider->id]);
 
         // Staff with no location constraint (provider-level)
         $staffId = (string) Str::uuid();
@@ -254,7 +289,7 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider   = Provider::factory()->create();
         $locationA  = Location::factory()->create(['provider_id' => $provider->id]);
         $locationB  = Location::factory()->create(['provider_id' => $provider->id]);
-        $service    = Service::factory()->create();
+        $service    = Service::factory()->create(['provider_id' => $provider->id]);
 
         // Staff explicitly assigned to Location A only (direct DB insert)
         $staffAId = (string) Str::uuid();
@@ -292,7 +327,7 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider  = Provider::factory()->create();
         $location  = Location::factory()->create(['provider_id' => $provider->id]);
         $customer  = Customer::factory()->create();
-        $service   = Service::factory()->create(['price' => 100]);
+        $service   = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
         $specialistId = null;
 
@@ -318,10 +353,7 @@ class Wave6_2CBookingOperationsTest extends TestCase
             ]);
         }
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
         $bookingData = [
             'customer_id' => $customer->id,
@@ -352,12 +384,9 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $location1 = Location::factory()->create(['provider_id' => $provider->id]);
         $location2 = Location::factory()->create(['provider_id' => $provider->id]);
         $customer  = Customer::factory()->create();
-        $service   = Service::factory()->create(['price' => 100]);
+        $service   = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
         // Book at location 1
         $svc->createBooking([
@@ -387,12 +416,9 @@ class Wave6_2CBookingOperationsTest extends TestCase
         $provider = Provider::factory()->create();
         $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create();
-        $service  = Service::factory()->create(['price' => 100]);
+        $service  = Service::factory()->create(['provider_id' => $provider->id, 'price' => 100]);
 
-        $svc = new CustomerBookingService(
-            $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
-        );
+        $svc = $this->makeBookingService();
 
         $svc->createBooking([
             'customer_id' => $customer->id,

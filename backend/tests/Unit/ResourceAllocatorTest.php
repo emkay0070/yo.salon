@@ -9,6 +9,7 @@ use App\Models\ResourceAllocation;
 use App\Models\Service;
 use App\Models\Location;
 use App\Services\ResourceAllocator;
+use App\Services\BookingConflictService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -22,7 +23,7 @@ class ResourceAllocatorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->allocator = new ResourceAllocator();
+        $this->allocator = new ResourceAllocator(new BookingConflictService());
     }
 
     public function test_allocate_resources_count_one()

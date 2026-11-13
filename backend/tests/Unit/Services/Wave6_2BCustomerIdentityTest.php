@@ -16,9 +16,12 @@ use App\Services\CapabilityService;
 use App\Services\LoyaltyService;
 use App\Services\CustomerSpecialistService;
 use App\Services\BookingConfigurationService;
+use App\Services\BookingConflictService;
+use App\Services\AvailabilityEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class Wave6_2BCustomerIdentityTest extends TestCase
@@ -150,11 +153,22 @@ class Wave6_2BCustomerIdentityTest extends TestCase
         $provider = Provider::factory()->create();
         $location = Location::factory()->create(['provider_id' => $provider->id]);
         $customer = Customer::factory()->create(['phone' => '+5555555555']);
-        $service = Service::factory()->create(['price' => 100]);
+        $service = Service::factory()->create([
+            'provider_id' => $provider->id,
+            'price' => 100,
+        ]);
+
+        $conflicts = $this->createMock(BookingConflictService::class);
+        $conflicts->method('calculateOccupiedInterval')->willReturnCallback(
+            fn ($start, $end) => ['start' => $start, 'end' => $end]
+        );
+        $conflicts->method('hasProviderLevelConflict')->willReturn(false);
 
         $bookingService = new CustomerBookingService(
             $this->createMock(CustomerSpecialistService::class),
-            $this->createMock(BookingConfigurationService::class)
+            $this->createMock(BookingConfigurationService::class),
+            $conflicts,
+            $this->createMock(AvailabilityEngine::class)
         );
 
         $booking = $bookingService->createBooking([
