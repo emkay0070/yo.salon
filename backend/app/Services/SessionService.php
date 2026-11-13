@@ -53,8 +53,10 @@ class SessionService
             ]);
         }
 
-        // Concurrency check: specialist cannot have another active session
-        $activeSessionExists = BookingService::whereHas('booking', function ($q) use ($specialist) {
+        // Concurrency check: specialist cannot have another active session.
+        // Exclude the session being started — it must not conflict with itself.
+        $activeSessionExists = BookingService::where('id', '!=', $bookingService->id)
+            ->whereHas('booking', function ($q) use ($specialist) {
                 $q->where('specialist_id', $specialist->id);
             })
             ->where('session_status', 'in_progress')

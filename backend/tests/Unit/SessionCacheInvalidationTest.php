@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\Provider;
 use App\Models\Service;
 use App\Models\Specialist;
+use App\Models\SpecialistAccount;
 use App\Models\SpecialistAssignment;
 use App\Services\AvailabilityEngine;
 use App\Services\SessionService;
@@ -45,6 +46,13 @@ class SessionCacheInvalidationTest extends TestCase
             'location_id' => $location->id,
             'status' => 'ACTIVE',
         ]);
+        $account = SpecialistAccount::create([
+            'specialist_id' => $specialist->id,
+            'email' => "specialist-{$specialist->id}@example.com",
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
+
         $customer = Customer::factory()->create();
         $service = Service::factory()->create(['provider_id' => $provider->id, 'duration' => 60]);
 
@@ -75,6 +83,7 @@ class SessionCacheInvalidationTest extends TestCase
             'provider' => $provider,
             'location' => $location,
             'specialist' => $specialist,
+            'account' => $account,
             'service' => $service,
             'testDate' => $testDate,
         ];
@@ -82,7 +91,7 @@ class SessionCacheInvalidationTest extends TestCase
 
     public function test_cached_availability_is_invalidated_after_session_start()
     {
-        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
+        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'account' => $account, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
 
         // Query availability to populate cache
         $availability1 = $this->availabilityEngine->getAvailableSlots($provider->id, $location->id,
@@ -97,7 +106,7 @@ class SessionCacheInvalidationTest extends TestCase
         $this->assertNotNull($cachedBefore, 'Cache should be populated after first query');
 
         // Start the session
-        $this->sessionService->startSession($bookingService, $specialist);
+        $this->sessionService->startSession($bookingService, $account);
 
         // Verify cache is cleared
         $cachedAfter = Cache::get($cacheKey);
@@ -106,10 +115,10 @@ class SessionCacheInvalidationTest extends TestCase
 
     public function test_cached_availability_is_invalidated_after_session_complete()
     {
-        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
+        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'account' => $account, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
 
         // Start the session first
-        $this->sessionService->startSession($bookingService, $specialist);
+        $this->sessionService->startSession($bookingService, $account);
 
         // Query availability to populate cache with in-progress session
         $availability1 = $this->availabilityEngine->getAvailableSlots($provider->id, $location->id,
@@ -123,7 +132,7 @@ class SessionCacheInvalidationTest extends TestCase
         $this->assertNotNull(Cache::get($cacheKey), 'Cache should be populated after first query');
 
         // Complete the session
-        $this->sessionService->completeSession($bookingService, $specialist);
+        $this->sessionService->completeSession($bookingService, $account);
 
         // Verify cache is cleared
         $this->assertNull(Cache::get($cacheKey), 'Cache should be cleared after session complete');
@@ -131,7 +140,7 @@ class SessionCacheInvalidationTest extends TestCase
 
     public function test_all_four_availability_cache_variants_are_cleared()
     {
-        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
+        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'account' => $account, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
 
         // Populate all four cache variants
         $this->availabilityEngine->getAvailableSlots($provider->id, $location->id, $testDate, $booking->service_id, $booking->specialist_id);
@@ -141,9 +150,9 @@ class SessionCacheInvalidationTest extends TestCase
 
         // Verify all caches are populated
         $key1 = "availability:{$provider->id}:{$location->id}:{$testDate}:{$booking->service_id}:{$booking->specialist_id}";
-        $key2 = "availability:{$provider->id}:{$location->id}:{$testDate}:{$booking->service_id}";
-        $key3 = "availability:{$provider->id}:{$location->id}:{$testDate}:{$booking->specialist_id}";
-        $key4 = "availability:{$provider->id}:{$location->id}:{$testDate}";
+        $key2 = "availability:{$provider->id}:{$location->id}:{$testDate}:{$booking->service_id}:null";
+        $key3 = "availability:{$provider->id}:{$location->id}:{$testDate}:null:{$booking->specialist_id}";
+        $key4 = "availability:{$provider->id}:{$location->id}:{$testDate}:null:null";
 
         $this->assertNotNull(Cache::get($key1));
         $this->assertNotNull(Cache::get($key2));
@@ -151,7 +160,7 @@ class SessionCacheInvalidationTest extends TestCase
         $this->assertNotNull(Cache::get($key4));
 
         // Start the session
-        $this->sessionService->startSession($bookingService, $specialist);
+        $this->sessionService->startSession($bookingService, $account);
 
         // Verify all caches are cleared
         $this->assertNull(Cache::get($key1), 'Specific cache should be cleared');
@@ -162,7 +171,7 @@ class SessionCacheInvalidationTest extends TestCase
 
     public function test_cache_is_not_invalidated_on_session_start_failure()
     {
-        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
+        ['booking' => $booking, 'bookingService' => $bookingService, 'provider' => $provider, 'location' => $location, 'specialist' => $specialist, 'account' => $account, 'testDate' => $testDate] = $this->createConfirmedBookingWithSpecialist();
 
         // Query availability to populate cache
         $this->availabilityEngine->getAvailableSlots($provider->id, $location->id, $testDate, $booking->service_id, $booking->specialist_id);
@@ -177,9 +186,15 @@ class SessionCacheInvalidationTest extends TestCase
             'provider_id' => $booking->provider_id,
             'status' => 'ACTIVE',
         ]);
+        $wrongAccount = SpecialistAccount::create([
+            'specialist_id' => $wrongSpecialist->id,
+            'email' => "specialist-{$wrongSpecialist->id}@example.com",
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
 
         try {
-            $this->sessionService->startSession($bookingService, $wrongSpecialist);
+            $this->sessionService->startSession($bookingService, $wrongAccount);
             $this->fail('Should have thrown validation exception');
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Expected
