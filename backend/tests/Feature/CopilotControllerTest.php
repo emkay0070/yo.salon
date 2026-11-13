@@ -19,10 +19,9 @@ class CopilotControllerTest extends TestCase
         $user = User::factory()->create(['status' => 'active']);
 
         // Link user to provider
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
 
         // Create token
@@ -83,10 +82,9 @@ class CopilotControllerTest extends TestCase
         // Create user with provider
         $provider = Provider::factory()->create(['type' => 'salon', 'active' => true]);
         $user = User::factory()->create(['status' => 'active']);
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
         $token = $user->createToken('test-token')->plainTextToken;
 
@@ -104,10 +102,9 @@ class CopilotControllerTest extends TestCase
         // Create user with provider
         $provider = Provider::factory()->create(['type' => 'salon', 'active' => true]);
         $user = User::factory()->create(['status' => 'active']);
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
         $token = $user->createToken('test-token')->plainTextToken;
 
@@ -129,10 +126,9 @@ class CopilotControllerTest extends TestCase
         $user = User::factory()->create(['status' => 'active']);
 
         // Link user to provider
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
 
         // Create token
@@ -160,10 +156,9 @@ class CopilotControllerTest extends TestCase
         $user = User::factory()->create(['status' => 'active']);
 
         // Link user to provider
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
 
         // Create token

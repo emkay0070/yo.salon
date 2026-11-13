@@ -30,6 +30,7 @@ class PayoutReadinessTest extends TestCase
             'user_id'    => $this->user->id,
             'provider_id' => $this->provider->id,
             'role'       => 'manager',
+            'authority_scope' => 'provider_wide',
             'created_at' => now(),
             'updated_at' => now(),
         ]);

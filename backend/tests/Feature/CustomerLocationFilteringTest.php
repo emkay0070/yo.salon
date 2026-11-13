@@ -46,7 +46,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Create owner user
-        $this->ownerUser = User::factory()->create();
+        $this->ownerUser = User::factory()->create(['status' => 'active']);
         ProviderUser::factory()->create([
             'user_id' => $this->ownerUser->id,
             'provider_id' => $this->provider->id,
@@ -60,7 +60,9 @@ class CustomerLocationFilteringTest extends TestCase
      */
     public function test_provider_wide_list_includes_all_customers(): void
     {
-        $response = $this->actingAs($this->ownerUser)
+        $token = $this->ownerUser->createToken('customer-location-test')->plainTextToken;
+
+        $response = $this->withToken($token)
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers');
 
@@ -90,7 +92,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request customers for location1
-        $response = $this->actingAs($this->ownerUser)
+        $response = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location1->id,
@@ -123,7 +125,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request for location1
-        $response1 = $this->actingAs($this->ownerUser)
+        $response1 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location1->id,
@@ -134,7 +136,7 @@ class CustomerLocationFilteringTest extends TestCase
         $response1->assertJsonPath('customers.0.id', $this->customer1->id);
 
         // Request for location2
-        $response2 = $this->actingAs($this->ownerUser)
+        $response2 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location2->id,
@@ -159,7 +161,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request with location_filter=unassigned
-        $response = $this->actingAs($this->ownerUser)
+        $response = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers?location_filter=unassigned');
 
@@ -190,7 +192,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request for location1
-        $response1 = $this->actingAs($this->ownerUser)
+        $response1 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location1->id,
@@ -200,7 +202,7 @@ class CustomerLocationFilteringTest extends TestCase
         $response1->assertJsonCount(1, 'customers');
 
         // Request with location_filter=unassigned
-        $response2 = $this->actingAs($this->ownerUser)
+        $response2 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers?location_filter=unassigned');
 
@@ -214,14 +216,14 @@ class CustomerLocationFilteringTest extends TestCase
     {
         // Customer3 has no bookings
         // Request provider-wide
-        $response1 = $this->actingAs($this->ownerUser)
+        $response1 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers');
 
         $response1->assertJsonCount(3, 'customers');
 
         // Request for location1
-        $response2 = $this->actingAs($this->ownerUser)
+        $response2 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location1->id,
@@ -231,7 +233,7 @@ class CustomerLocationFilteringTest extends TestCase
         $response2->assertJsonCount(0, 'customers');
 
         // Request with location_filter=unassigned
-        $response3 = $this->actingAs($this->ownerUser)
+        $response3 = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers?location_filter=unassigned');
 
@@ -252,7 +254,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request for location1
-        $response = $this->actingAs($this->ownerUser)
+        $response = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders([
                 'X-Provider-Id' => $this->provider->id,
                 'X-Location-Id' => $this->location1->id,
@@ -274,7 +276,7 @@ class CustomerLocationFilteringTest extends TestCase
             'status' => 'completed',
         ]);
 
-        $response = $this->actingAs($this->ownerUser)
+        $response = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers');
 
@@ -316,7 +318,7 @@ class CustomerLocationFilteringTest extends TestCase
         ]);
 
         // Request customers for original provider
-        $response = $this->actingAs($this->ownerUser)
+        $response = $this->actingAs($this->ownerUser, 'sanctum')
             ->withHeaders(['X-Provider-Id' => $this->provider->id])
             ->getJson('/api/v1/customers');
 

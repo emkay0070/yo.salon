@@ -19,10 +19,9 @@ class AnalyticsControllerTest extends TestCase
         $user = User::factory()->create(['status' => 'active']);
 
         // Link user to provider
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
 
         // Create token
@@ -60,10 +59,9 @@ class AnalyticsControllerTest extends TestCase
         $user = User::factory()->create(['status' => 'active']);
 
         // Link user to provider
-        ProviderUser::factory()->create([
+        ProviderUser::factory()->owner()->create([
             'user_id' => $user->id,
             'provider_id' => $provider->id,
-            'role' => 'owner',
         ]);
 
         // Create token
