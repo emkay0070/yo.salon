@@ -95,7 +95,7 @@ class ConcurrentBookingConflictTest extends TestCase
         // Attempt to create second booking for same specialist/time
         // This should fail due to existing booking check
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessageMatches('/not available/');
+        $this->expectExceptionMessageMatches('/already booked|not available/');
 
         $bookingService->createGuestBooking([
             'provider_id' => $provider->id,

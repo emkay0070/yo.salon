@@ -76,6 +76,16 @@ class AvailabilityEnginePhase5Test extends TestCase
             'phone'       => '0700000001',
         ]);
 
+        // Independent-specialist preflight resolves the primary assignment.
+        SpecialistAssignment::create([
+            'id'          => Str::uuid(),
+            'specialist_id' => $specialist->id,
+            'provider_id' => $provider->id,
+            'location_id' => null,
+            'status'      => 'ACTIVE',
+            'is_primary'  => true,
+        ]);
+
         $service = Service::create([
             'id'          => Str::uuid(),
             'provider_id' => $provider->id,

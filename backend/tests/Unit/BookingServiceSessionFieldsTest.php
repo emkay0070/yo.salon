@@ -35,6 +35,7 @@ class BookingServiceSessionFieldsTest extends TestCase
             'service_id' => $service->id,
             'date' => '2026-12-01',
             'time' => '10:00:00',
+            'internal_booking' => true, // Bypass slot availability; this test covers persistence
         ]);
 
         $bookingServiceRecord = BookingService::where('booking_id', $booking->id)->first();
@@ -60,6 +61,7 @@ class BookingServiceSessionFieldsTest extends TestCase
             'service_id' => $service->id,
             'date' => '2026-12-01',
             'time' => '10:00:00',
+            'internal_booking' => true, // Bypass slot availability; this test covers persistence
         ]);
 
         $bookingServiceRecord = BookingService::where('booking_id', $booking->id)->first();
@@ -86,6 +88,7 @@ class BookingServiceSessionFieldsTest extends TestCase
             'service_id' => $service->id,
             'date' => '2026-12-01',
             'time' => '10:00:00',
+            'internal_booking' => true, // Bypass slot availability; this test covers persistence
         ]);
 
         $bookingServiceRecord = BookingService::where('booking_id', $booking->id)->first();
@@ -124,6 +127,7 @@ class BookingServiceSessionFieldsTest extends TestCase
             'service_id' => $service->id,
             'date' => '2026-12-01',
             'time' => '10:00:00',
+            'internal_booking' => true, // Bypass slot availability; this test covers persistence
         ]);
 
         $bookingServiceRecord = BookingService::where('booking_id', $booking->id)->first();
@@ -157,6 +161,7 @@ class BookingServiceSessionFieldsTest extends TestCase
             'service_id' => $service->id,
             'date' => '2026-12-01',
             'time' => '10:00:00',
+            'internal_booking' => true, // Bypass slot availability; this test covers persistence
         ]);
 
         $bookingServiceRecord = BookingService::where('booking_id', $booking->id)->first();
