@@ -263,7 +263,7 @@ class FinanceAnalyticsService
         $revenueByBooking = \DB::table('ledger_entries as le')
             ->join('journal_entries as je', 'le.journal_entry_id', '=', 'je.id')
             ->join('transactions as t', function ($join) {
-                $join->on('je.reference_id', '=', 't.id')
+                $join->on('je.reference_id', '=', \DB::raw('t.id::text'))
                       ->where('je.reference_type', '=', \App\Models\Transaction::class);
             })
             ->join('bookings as b', 't.booking_id', '=', 'b.id')
@@ -289,7 +289,7 @@ class FinanceAnalyticsService
             $feesByBooking = \DB::table('ledger_entries as le')
                 ->join('journal_entries as je', 'le.journal_entry_id', '=', 'je.id')
                 ->join('transactions as t', function ($join) {
-                    $join->on('je.reference_id', '=', 't.id')
+                    $join->on('je.reference_id', '=', \DB::raw('t.id::text'))
                           ->where('je.reference_type', '=', \App\Models\Transaction::class);
                 })
                 ->join('bookings as b', 't.booking_id', '=', 'b.id')
@@ -393,7 +393,7 @@ class FinanceAnalyticsService
         $revenueByCustomer = \DB::table('ledger_entries as le')
             ->join('journal_entries as je', 'le.journal_entry_id', '=', 'je.id')
             ->join('transactions as t', function ($join) {
-                $join->on('je.reference_id', '=', 't.id')
+                $join->on('je.reference_id', '=', \DB::raw('t.id::text'))
                       ->where('je.reference_type', '=', \App\Models\Transaction::class);
             })
             ->join('bookings as b', 't.booking_id', '=', 'b.id')
@@ -420,7 +420,7 @@ class FinanceAnalyticsService
             $feesByCustomer = \DB::table('ledger_entries as le')
                 ->join('journal_entries as je', 'le.journal_entry_id', '=', 'je.id')
                 ->join('transactions as t', function ($join) {
-                    $join->on('je.reference_id', '=', 't.id')
+                    $join->on('je.reference_id', '=', \DB::raw('t.id::text'))
                           ->where('je.reference_type', '=', \App\Models\Transaction::class);
                 })
                 ->join('bookings as b', 't.booking_id', '=', 'b.id')
@@ -468,7 +468,7 @@ class FinanceAnalyticsService
         $revenueByService = \DB::table('ledger_entries as le')
             ->join('journal_entries as je', 'le.journal_entry_id', '=', 'je.id')
             ->join('transactions as t', function ($join) {
-                $join->on('je.reference_id', '=', 't.id')
+                $join->on('je.reference_id', '=', \DB::raw('t.id::text'))
                       ->where('je.reference_type', '=', \App\Models\Transaction::class);
             })
             ->join('bookings as b', 't.booking_id', '=', 'b.id')

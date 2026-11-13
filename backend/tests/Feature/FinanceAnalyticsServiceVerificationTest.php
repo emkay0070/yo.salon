@@ -617,4 +617,87 @@ class FinanceAnalyticsServiceVerificationTest extends TestCase
         $this->assertEquals(100000, $assetDebits + $processingDebits, 
             'Balance invariant failed: Asset + Processing should equal Revenue');
     }
+
+    public function test_it_attributes_multiple_transactions_to_the_correct_booking()
+    {
+        $provider = Provider::factory()->create();
+        $location = Location::factory()->create(['provider_id' => $provider->id]);
+        $customer = Customer::factory()->create();
+
+        $paymentAccount = PaymentAccount::factory()->create([
+            'account_type' => PaymentAccount::TYPE_MANUAL,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create([
+            'provider_id' => $provider->id,
+            'type' => 'cash',
+            'payment_account_id' => $paymentAccount->id,
+        ]);
+
+        $bookingA = Booking::factory()->create([
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
+            'customer_id' => $customer->id,
+            'amount_due' => 30000,
+            'amount_paid' => 30000,
+        ]);
+
+        $bookingB = Booking::factory()->create([
+            'location_id' => $location->id,
+            'provider_id' => $provider->id,
+            'customer_id' => $customer->id,
+            'amount_due' => 20000,
+            'amount_paid' => 20000,
+        ]);
+
+        $transactions = [
+            Transaction::factory()->create([
+                'provider_id' => $provider->id,
+                'booking_id' => $bookingA->id,
+                'customer_id' => $customer->id,
+                'payment_method_id' => $paymentMethod->id,
+                'payment_account_id' => $paymentAccount->id,
+                'gross_amount' => 20000,
+                'gateway_fee' => 0,
+                'net_amount' => 20000,
+                'type' => 'payment',
+                'status' => 'paid',
+            ]),
+            Transaction::factory()->create([
+                'provider_id' => $provider->id,
+                'booking_id' => $bookingA->id,
+                'customer_id' => $customer->id,
+                'payment_method_id' => $paymentMethod->id,
+                'payment_account_id' => $paymentAccount->id,
+                'gross_amount' => 10000,
+                'gateway_fee' => 0,
+                'net_amount' => 10000,
+                'type' => 'payment',
+                'status' => 'paid',
+            ]),
+            Transaction::factory()->create([
+                'provider_id' => $provider->id,
+                'booking_id' => $bookingB->id,
+                'customer_id' => $customer->id,
+                'payment_method_id' => $paymentMethod->id,
+                'payment_account_id' => $paymentAccount->id,
+                'gross_amount' => 20000,
+                'gateway_fee' => 0,
+                'net_amount' => 20000,
+                'type' => 'payment',
+                'status' => 'paid',
+            ]),
+        ];
+
+        foreach ($transactions as $transaction) {
+            $this->journalPostingService->postForTransaction($transaction);
+        }
+
+        $facts = $this->financeAnalyticsService->getIntelligenceFinancialFacts($provider, $location);
+
+        $this->assertEquals(50000, $facts['totals']['gross_revenue']);
+        $this->assertArrayHasKey($bookingA->id, $facts['by_booking']);
+        $this->assertArrayHasKey($bookingB->id, $facts['by_booking']);
+        $this->assertEquals(30000, $facts['by_booking'][$bookingA->id]['gross_revenue']);
+        $this->assertEquals(20000, $facts['by_booking'][$bookingB->id]['gross_revenue']);
+    }
 }

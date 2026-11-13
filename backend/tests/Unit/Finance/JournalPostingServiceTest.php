@@ -12,6 +12,7 @@ use App\Domain\Finance\Journal\JournalPostingService;
 use App\Domain\Finance\PostingPolicies\PostingPolicyResolver;
 use App\Domain\Finance\FinancialTransaction;
 use App\Domain\Finance\Ledger\LedgerAccount;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class JournalPostingServiceTest extends TestCase
@@ -50,7 +51,7 @@ class JournalPostingServiceTest extends TestCase
         $this->service->postForTransaction($transaction);
 
         $financialTransaction = FinancialTransaction::where('reference_type', Transaction::class)
-            ->where('reference_id', $transaction->id)->first();
+            ->where('reference_id', (string) $transaction->id)->first();
             
         $this->assertNotNull($financialTransaction);
         
@@ -101,7 +102,7 @@ class JournalPostingServiceTest extends TestCase
         $this->service->postForTransaction($transaction);
 
         $financialTransaction = FinancialTransaction::where('reference_type', Transaction::class)
-            ->where('reference_id', $transaction->id)->first();
+            ->where('reference_id', (string) $transaction->id)->first();
             
         $journal = $financialTransaction->journalEntries->first();
         $this->assertEquals(30000, $journal->total_debit);
@@ -217,6 +218,200 @@ class JournalPostingServiceTest extends TestCase
         $revenueAccount->refresh();
         $this->assertEquals(30000, $revenueAccount->balance); // Unchanged
         
-        $this->assertEquals(1, FinancialTransaction::where('reference_type', Transaction::class)->where('reference_id', $transaction->id)->count());
+        $this->assertEquals(1, FinancialTransaction::where('reference_type', Transaction::class)->where('reference_id', (string) $transaction->id)->count());
+    }
+
+    public function test_bigint_transaction_id_is_stored_as_string_reference()
+    {
+        $booking = Booking::factory()->create(['amount_due' => 30000]);
+        $paymentMethod = PaymentMethod::factory()->create(['provider_id' => $this->provider->id, 'type' => 'cash']);
+
+        $transaction = Transaction::factory()->create([
+            'provider_id' => $this->provider->id,
+            'booking_id' => $booking->id,
+            'payment_method_id' => $paymentMethod->id,
+            'type' => 'payment',
+            'gross_amount' => 30000,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'net_amount' => 30000,
+            'currency' => 'UGX',
+        ]);
+
+        $this->assertIsInt($transaction->id);
+
+        $this->service->postForTransaction($transaction);
+
+        $expectedReference = (string) $transaction->id;
+        $financialTransaction = FinancialTransaction::forReference(Transaction::class, $expectedReference)->first();
+
+        $this->assertNotNull($financialTransaction);
+        $this->assertSame($expectedReference, $financialTransaction->reference_id);
+        $this->assertSame(Transaction::class, $financialTransaction->reference_type);
+
+        $journal = $financialTransaction->journalEntries()->first();
+        $this->assertNotNull($journal);
+        $this->assertSame($expectedReference, $journal->reference_id);
+
+        $ledgerEntry = $journal->ledgerEntries()->first();
+        $this->assertNotNull($ledgerEntry);
+        $this->assertSame($expectedReference, $ledgerEntry->reference_id);
+
+        $this->assertTrue($financialTransaction->reference->is($transaction));
+        $this->assertTrue($journal->reference->is($transaction));
+        $this->assertTrue($ledgerEntry->reference->is($transaction));
+    }
+
+    public function test_multiple_payments_and_refunds_for_one_booking_keep_separate_references()
+    {
+        $booking = Booking::factory()->create(['amount_due' => 50000]);
+        $paymentMethod = PaymentMethod::factory()->create(['provider_id' => $this->provider->id, 'type' => 'cash']);
+
+        $transactions = collect([
+            Transaction::factory()->create([
+                'provider_id' => $this->provider->id,
+                'booking_id' => $booking->id,
+                'payment_method_id' => $paymentMethod->id,
+                'type' => 'payment',
+                'gross_amount' => 20000,
+                'gateway_fee' => 0,
+                'platform_fee' => 0,
+                'net_amount' => 20000,
+                'currency' => 'UGX',
+            ]),
+            Transaction::factory()->create([
+                'provider_id' => $this->provider->id,
+                'booking_id' => $booking->id,
+                'payment_method_id' => $paymentMethod->id,
+                'type' => 'payment',
+                'gross_amount' => 30000,
+                'gateway_fee' => 0,
+                'platform_fee' => 0,
+                'net_amount' => 30000,
+                'currency' => 'UGX',
+            ]),
+            Transaction::factory()->create([
+                'provider_id' => $this->provider->id,
+                'booking_id' => $booking->id,
+                'payment_method_id' => $paymentMethod->id,
+                'type' => 'refund',
+                'gross_amount' => -5000,
+                'gateway_fee' => 0,
+                'platform_fee' => 0,
+                'net_amount' => -5000,
+                'currency' => 'UGX',
+            ]),
+        ]);
+
+        foreach ($transactions as $transaction) {
+            $this->service->postForTransaction($transaction);
+        }
+
+        $expectedReferences = $transactions->map(fn (Transaction $transaction) => (string) $transaction->id)->all();
+
+        $financialTransactions = FinancialTransaction::where('reference_type', Transaction::class)
+            ->whereIn('reference_id', $expectedReferences)
+            ->get();
+
+        $this->assertCount(3, $financialTransactions);
+        $this->assertCount(3, $financialTransactions->pluck('reference_id')->unique());
+        $this->assertEqualsCanonicalizing($expectedReferences, $financialTransactions->pluck('reference_id')->all());
+    }
+
+    public function test_booking_uuid_references_remain_valid_alongside_transaction_references()
+    {
+        $booking = Booking::factory()->create(['amount_due' => 30000]);
+        $paymentMethod = PaymentMethod::factory()->create(['provider_id' => $this->provider->id, 'type' => 'cash']);
+
+        $bookingFinancialTransaction = FinancialTransaction::createWithJournals(
+            type: 'revenue_distribution',
+            description: 'Booking allocation',
+            journalData: $this->balancedJournalData(),
+            referenceType: Booking::class,
+            referenceId: $booking->id
+        );
+
+        $transaction = Transaction::factory()->create([
+            'provider_id' => $this->provider->id,
+            'booking_id' => $booking->id,
+            'payment_method_id' => $paymentMethod->id,
+            'type' => 'payment',
+            'gross_amount' => 30000,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'net_amount' => 30000,
+            'currency' => 'UGX',
+        ]);
+
+        $this->service->postForTransaction($transaction);
+
+        $transactionFinancialTransaction = FinancialTransaction::forReference(
+            Transaction::class,
+            (string) $transaction->id
+        )->first();
+
+        $this->assertNotNull($bookingFinancialTransaction);
+        $this->assertNotNull($transactionFinancialTransaction);
+        $this->assertSame($booking->id, $bookingFinancialTransaction->reference_id);
+        $this->assertSame(Booking::class, $bookingFinancialTransaction->reference_type);
+        $this->assertTrue($bookingFinancialTransaction->reference->is($booking));
+        $this->assertSame((string) $transaction->id, $transactionFinancialTransaction->reference_id);
+    }
+
+    public function test_duplicate_financial_transaction_reference_is_rejected()
+    {
+        $transaction = Transaction::factory()->create([
+            'provider_id' => $this->provider->id,
+            'type' => 'payment',
+            'gross_amount' => 1000,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'net_amount' => 1000,
+            'currency' => 'UGX',
+        ]);
+
+        FinancialTransaction::createWithJournals(
+            type: 'payment',
+            description: 'First posting',
+            journalData: $this->balancedJournalData(),
+            referenceType: Transaction::class,
+            referenceId: (string) $transaction->id
+        );
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('duplicate key value violates unique constraint');
+
+        FinancialTransaction::createWithJournals(
+            type: 'payment',
+            description: 'Duplicate posting',
+            journalData: $this->balancedJournalData(),
+            referenceType: Transaction::class,
+            referenceId: (string) $transaction->id
+        );
+    }
+
+    private function balancedJournalData(): array
+    {
+        $cashAccount = LedgerAccount::getOrCreateFor(Provider::class, $this->provider->id, 'cash', 'UGX');
+        $revenueAccount = LedgerAccount::getOrCreateFor(Provider::class, $this->provider->id, 'revenue', 'UGX');
+
+        return [[
+            'type' => 'payment',
+            'description' => 'Test journal',
+            'movements' => [
+                [
+                    'ledger_account_id' => $cashAccount->id,
+                    'type' => 'debit',
+                    'amount' => 1000,
+                    'description' => 'Test debit',
+                ],
+                [
+                    'ledger_account_id' => $revenueAccount->id,
+                    'type' => 'credit',
+                    'amount' => 1000,
+                    'description' => 'Test credit',
+                ],
+            ],
+        ]];
     }
 }

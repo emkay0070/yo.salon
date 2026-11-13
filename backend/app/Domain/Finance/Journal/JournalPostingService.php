@@ -24,9 +24,13 @@ class JournalPostingService
      */
     public function postForTransaction(Transaction $transaction): void
     {
+        // The finance reference columns are polymorphic strings: they hold UUID
+        // references for other sources and the transactions bigint key as text.
+        $transactionId = (string) $transaction->id;
+
         // 1. Idempotency check
         if (FinancialTransaction::where('reference_type', Transaction::class)
-            ->where('reference_id', $transaction->id)
+            ->where('reference_id', $transactionId)
             ->exists()) {
             Log::info('Journal already posted for transaction', ['transaction_id' => $transaction->id]);
             return;
@@ -59,7 +63,7 @@ class JournalPostingService
         $this->assertBalance($movements);
 
         // 7. Post inside DB transaction
-        DB::transaction(function () use ($transaction, $movements) {
+        DB::transaction(function () use ($transaction, $transactionId, $movements) {
             $financialTransaction = FinancialTransaction::createWithJournals(
                 type: $transaction->type === 'refund' ? 'refund' : 'payment',
                 description: ucfirst($transaction->type) . " for booking #{$transaction->booking_id}",
@@ -71,7 +75,7 @@ class JournalPostingService
                     ]
                 ],
                 referenceType: Transaction::class,
-                referenceId: $transaction->id
+                referenceId: $transactionId
             );
 
 
