@@ -639,7 +639,7 @@ class BookingService
             'pending'         => ['confirmed', 'cancelled'],
             'pending_payment' => ['confirmed', 'cancelled'],
             'reserved'        => ['pending', 'pending_payment', 'confirmed', 'cancelled'],
-            'confirmed'       => ['arrived', 'in_progress', 'cancelled', 'no_show', 'rescheduled', 'completed'],
+            'confirmed'       => ['arrived', 'in_progress', 'cancelled', 'no_show', 'rescheduled'],
             'arrived'         => ['waiting', 'in_progress', 'cancelled', 'no_show'],
             'waiting'         => ['in_progress', 'cancelled', 'no_show'],
             'in_progress'     => ['completed'],

@@ -114,11 +114,6 @@ class StaffController extends Controller
                     ->whereNull('staff_id')
                     ->whereHas('specialist', fn($q) => $q->where('name', $member->name))
                     ->first();
-
-                // Opportunistically backfill so we don't hit this path again
-                if ($assignment) {
-                    $assignment->update(['staff_id' => $member->id]);
-                }
             }
 
             $member->specialist_id = $assignment?->specialist_id;
