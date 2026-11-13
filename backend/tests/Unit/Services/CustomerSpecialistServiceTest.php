@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Models\CustomerSpecialist;
 use App\Services\CustomerSpecialistService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class CustomerSpecialistServiceTest extends TestCase
@@ -61,14 +62,15 @@ class CustomerSpecialistServiceTest extends TestCase
         $service = Service::factory()->create(['provider_id' => $provider->id, 'price' => 50000]);
 
         // Create initial relationship
+        $oldBookingId = (string) Str::uuid();
         $existingRelationship = CustomerSpecialist::create([
             'customer_id' => $customer->id,
             'specialist_id' => $specialist->id,
             'provider_id' => $provider->id,
             'total_bookings' => 3,
             'total_spent' => 150000,
-            'first_booking_id' => 'old-booking-id',
-            'last_booking_id' => 'old-booking-id',
+            'first_booking_id' => $oldBookingId,
+            'last_booking_id' => $oldBookingId,
             'relationship_origin' => 'salon',
             'acquisition_source' => 'booking',
         ]);
@@ -90,7 +92,7 @@ class CustomerSpecialistServiceTest extends TestCase
             'provider_id' => $provider->id,
             'total_bookings' => 4, // 3 + 1
             'total_spent' => 200000, // 150000 + 50000
-            'first_booking_id' => 'old-booking-id', // Should not change
+            'first_booking_id' => $oldBookingId, // Should not change
             'last_booking_id' => $booking->id, // Should update
         ]);
     }
@@ -103,14 +105,15 @@ class CustomerSpecialistServiceTest extends TestCase
         $service = Service::factory()->create(['provider_id' => $provider->id, 'price' => 30000]);
 
         // Create relationship using direct DB insert to simulate composite key scenario
+        $initialBookingId = (string) Str::uuid();
         \DB::table('customer_specialist')->insert([
             'customer_id' => $customer->id,
             'specialist_id' => $specialist->id,
             'provider_id' => $provider->id,
             'total_bookings' => 1,
             'total_spent' => 30000,
-            'first_booking_id' => 'initial-booking',
-            'last_booking_id' => 'initial-booking',
+            'first_booking_id' => $initialBookingId,
+            'last_booking_id' => $initialBookingId,
             'relationship_origin' => 'salon',
             'acquisition_source' => 'booking',
             'created_at' => now(),

@@ -5,7 +5,7 @@ namespace Tests\Feature\Finance\Payout;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Domain\Finance\Settlement\Settlement;
-use App\Models\User;
+use App\Models\Specialist;
 use App\Models\Provider;
 use App\Models\PaymentMethod;
 use App\Models\PaymentProfile;
@@ -26,7 +26,7 @@ class ScheduledPayoutsTest extends TestCase
     public function test_it_dispatches_execute_job_for_eligible_settlements()
     {
         $provider = Provider::factory()->create();
-        $user = User::factory()->create();
+        $specialist = Specialist::factory()->create();
 
         // 1. Valid Provider config for MTN
         PaymentMethod::create([
@@ -42,8 +42,8 @@ class ScheduledPayoutsTest extends TestCase
 
         // 2. Valid recipient profile for MTN
         PaymentProfile::create([
-            'owner_type' => get_class($user),
-            'owner_id' => $user->id,
+            'owner_type' => get_class($specialist),
+            'owner_id' => $specialist->id,
             'method' => 'mtn',
             'provider' => 'mtn_collection',
             'phone_number' => '0770000000',
@@ -56,8 +56,8 @@ class ScheduledPayoutsTest extends TestCase
             'provider_id' => $provider->id,
             'payable_type' => get_class($provider),
             'payable_id' => $provider->id,
-            'recipient_type' => get_class($user),
-            'recipient_id' => $user->id,
+            'recipient_type' => get_class($specialist),
+            'recipient_id' => $specialist->id,
             'amount' => 500.00,
             'currency' => 'UGX',
             'status' => 'pending',
@@ -78,7 +78,7 @@ class ScheduledPayoutsTest extends TestCase
     public function test_it_skips_settlements_with_active_payouts()
     {
         $provider = Provider::factory()->create();
-        $user = User::factory()->create();
+        $specialist = Specialist::factory()->create();
 
         PaymentMethod::create([
             'provider_id' => $provider->id,
@@ -92,8 +92,8 @@ class ScheduledPayoutsTest extends TestCase
         ]);
 
         PaymentProfile::create([
-            'owner_type' => get_class($user),
-            'owner_id' => $user->id,
+            'owner_type' => get_class($specialist),
+            'owner_id' => $specialist->id,
             'method' => 'mtn',
             'provider' => 'mtn_collection',
             'phone_number' => '0770000000',
@@ -105,8 +105,8 @@ class ScheduledPayoutsTest extends TestCase
             'provider_id' => $provider->id,
             'payable_type' => get_class($provider),
             'payable_id' => $provider->id,
-            'recipient_type' => get_class($user),
-            'recipient_id' => $user->id,
+            'recipient_type' => get_class($specialist),
+            'recipient_id' => $specialist->id,
             'amount' => 500.00,
             'currency' => 'UGX',
             'status' => 'pending',
@@ -119,8 +119,8 @@ class ScheduledPayoutsTest extends TestCase
             'method' => 'mtn',
             'currency' => 'UGX',
             'status' => 'processing',
-            'recipient_type' => get_class($user),
-            'recipient_id' => $user->id,
+            'recipient_type' => get_class($specialist),
+            'recipient_id' => $specialist->id,
             'execution_mode' => 'automated',
         ]);
 

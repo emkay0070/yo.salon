@@ -5,7 +5,7 @@ namespace Tests\Unit\Finance;
 use App\Domain\Finance\Settlement\Settlement;
 use App\Domain\Finance\Payout\Payout;
 use App\Models\Provider;
-use App\Models\User;
+use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -17,14 +17,14 @@ class SettlementTest extends TestCase
     public function test_mark_as_paid_works_with_and_without_explicit_timestamp()
     {
         $provider = Provider::factory()->create();
-        $user = User::factory()->create();
+        $specialist = Specialist::factory()->create();
         
         $settlement1 = Settlement::create([
             'provider_id' => $provider->id,
             'payable_type' => 'App\Models\Provider',
             'payable_id' => $provider->id,
-            'recipient_type' => 'App\Models\User',
-            'recipient_id' => $user->id,
+            'recipient_type' => Specialist::class,
+            'recipient_id' => $specialist->id,
             'amount' => 10000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,
@@ -36,8 +36,8 @@ class SettlementTest extends TestCase
             'provider_id' => $provider->id,
             'payable_type' => 'App\Models\Provider',
             'payable_id' => $provider->id,
-            'recipient_type' => 'App\Models\User',
-            'recipient_id' => $user->id,
+            'recipient_type' => Specialist::class,
+            'recipient_id' => $specialist->id,
             'amount' => 20000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,
@@ -61,14 +61,14 @@ class SettlementTest extends TestCase
     public function test_payout_belongs_to_settlement_via_uuid()
     {
         $provider = Provider::factory()->create();
-        $user = User::factory()->create();
+        $specialist = Specialist::factory()->create();
         
         $settlement = Settlement::create([
             'provider_id' => $provider->id,
             'payable_type' => 'App\Models\Provider',
             'payable_id' => $provider->id,
-            'recipient_type' => 'App\Models\User',
-            'recipient_id' => $user->id,
+            'recipient_type' => Specialist::class,
+            'recipient_id' => $specialist->id,
             'amount' => 15000,
             'currency' => 'UGX',
             'status' => Settlement::STATUS_PENDING,
@@ -80,7 +80,7 @@ class SettlementTest extends TestCase
         // due to foreign key type mismatch.
         $payout = Payout::create([
             'settlement_id' => $settlement->id,
-            'recipient_type' => 'App\Models\User',
+            'recipient_type' => Specialist::class,
             'recipient_id' => $settlement->recipient_id,
             'amount' => 15000,
             'currency' => 'UGX',

@@ -10,6 +10,7 @@ use App\Domain\Finance\Settlement\Settlement;
 use App\Models\Provider;
 use App\Models\Specialist;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PeriodClosingServiceTest extends TestCase
@@ -64,7 +65,7 @@ class PeriodClosingServiceTest extends TestCase
             'compensatable_type' => Specialist::class,
             'compensatable_id' => $this->specialist->id,
             'source_type' => 'App\Models\Booking',
-            'source_id' => 'dummy',
+            'source_id' => (string) Str::uuid(),
             'compensation_policy_id' => $this->policy->id,
             'compensation_period_id' => $pastPeriod->id,
             'gross_amount' => 10000,
