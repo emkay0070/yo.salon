@@ -86,6 +86,7 @@ class ResourceAllocator
         if (!empty($requiredCapabilities)) {
             $query->whereHas('capabilities', function ($capabilityQuery) use ($requiredCapabilities) {
                 $capabilityQuery->whereIn('capability', $requiredCapabilities)
+                    ->select('resource_id')
                     ->groupBy('resource_id')
                     ->havingRaw('COUNT(DISTINCT capability) = ?', [count($requiredCapabilities)]);
             });

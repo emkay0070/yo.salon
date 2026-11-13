@@ -32,6 +32,7 @@ class ResourceCapabilityTest extends TestCase
         $resources = Resource::where('id', $resource->id)
             ->whereHas('capabilities', function ($query) {
                 $query->whereIn('capability', ['massage', 'facial'])
+                    ->select('resource_id')
                     ->groupBy('resource_id')
                     ->havingRaw('COUNT(DISTINCT capability) = ?', [2]);
             })
@@ -57,6 +58,7 @@ class ResourceCapabilityTest extends TestCase
         $resources = Resource::whereIn('id', [$resource1->id, $resource2->id])
             ->whereHas('capabilities', function ($query) {
                 $query->whereIn('capability', ['massage', 'facial'])
+                    ->select('resource_id')
                     ->groupBy('resource_id')
                     ->havingRaw('COUNT(DISTINCT capability) = ?', [2]);
             })
