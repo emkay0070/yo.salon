@@ -303,8 +303,21 @@ class CapabilityResolver
      */
     public function clearCache(string $providerId): void
     {
-        $pattern = "capability:*:{$providerId}:*";
-        Cache::forgetMatchingPattern($pattern);
+        // Cache keys are per resource. Pattern deletion is not available on
+        // every cache store (array, database, file), so forget the known keys
+        // explicitly. Resource codes come from plan entitlements plus the
+        // quota/credit resources handled by this service.
+        $resourceCodes = PlanEntitlement::query()
+            ->distinct()
+            ->pluck('resource_code')
+            ->merge(['STAFF_SEAT', 'BRANCH', 'STORAGE_GB', 'SMS', 'AI_REQUEST', 'EMAIL', 'WHATSAPP'])
+            ->unique();
+
+        foreach ($resourceCodes as $resourceCode) {
+            Cache::forget("capability:allows:{$providerId}:{$resourceCode}");
+            Cache::forget("capability:limit:{$providerId}:{$resourceCode}");
+            Cache::forget("capability:credits:{$providerId}:{$resourceCode}");
+        }
     }
 
     // ─────────────────────────────────────────────

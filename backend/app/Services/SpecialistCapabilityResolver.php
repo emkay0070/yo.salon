@@ -147,8 +147,12 @@ class SpecialistCapabilityResolver
      */
     public function clearCache(string $specialistId): void
     {
-        $pattern = "specialist_capability:*:{$specialistId}:*";
-        Cache::forgetMatchingPattern($pattern);
+        // Cache keys are per capability. Pattern deletion is not available on
+        // every cache store (array, database, file), so forget the known keys
+        // explicitly. getFreeCapabilities() enumerates every supported code.
+        foreach (array_keys($this->getFreeCapabilities()) as $featureCode) {
+            Cache::forget("specialist_capability:allows:{$specialistId}:{$featureCode}");
+        }
     }
 
     /**
@@ -158,8 +162,7 @@ class SpecialistCapabilityResolver
     private function getSubscriptionBySpecialist(string $specialistId): ?SpecialistSubscription
     {
         return SpecialistSubscription::where('specialist_id', $specialistId)
-            ->where('status', 'active')
-            ->orWhere('status', 'trialing')
+            ->whereIn('status', ['active', 'trialing'])
             ->first();
     }
 

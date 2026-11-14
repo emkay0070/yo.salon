@@ -141,8 +141,7 @@ class AddOnPurchaseController extends Controller
 
             if ($subscription) {
                 $providerId = $provider->provider_id ?? $provider->id;
-                $salon = $provider->salon;
-                
+
                 // Check if capacity record exists for this resource
                 $existingCapacity = ProviderCapacity::forProvider($providerId)
                     ->forResource($product->resource_code)
@@ -171,9 +170,7 @@ class AddOnPurchaseController extends Controller
                 }
 
                 // Clear capability cache so new capacity is reflected immediately
-                if ($salon) {
-                    $this->capabilityResolver->clearCache($salon->id);
-                }
+                $this->capabilityResolver->clearCache($providerId);
             }
 
             // ── Step 6: Log the purchase as a usage event ─────────────
