@@ -46,7 +46,12 @@ class BookingResource extends JsonResource
         
         return [
             'id' => $this->id,
-            
+
+            // Flat foreign keys for consumers that filter bookings by
+            // location/staff without loading the nested relations.
+            'location_id' => $this->location_id,
+            'staff_id' => $this->staff_id,
+
             // Canonical scheduled information (business-local)
             'scheduled' => [
                 'date' => $this->date?->format('Y-m-d'),
