@@ -71,36 +71,16 @@ class StaffController extends Controller
 
         $staff = $query->get();
 
-        // Filter to only staff with active specialist assignments (bookable specialists)
-        // This matches the public-facing booking flow behavior
-        // Uses two-pass lookup: direct staff_id match + name fallback for legacy data
-        $staffWithAssignments = $staff->filter(function ($member) use ($provider) {
-            // Pass 1: direct staff_id match (canonical path)
-            $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
-                ->whereIn('status', ['active', 'ACTIVE'])
-                ->where('staff_id', $member->id)
-                ->first();
-
-            // Pass 2: name-based fallback for legacy assignments where staff_id was never backfilled
-            if (!$assignment) {
-                $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
-                    ->whereIn('status', ['active', 'ACTIVE'])
-                    ->whereNull('staff_id')
-                    ->whereHas('specialist', fn($q) => $q->where('name', $member->name))
-                    ->first();
-            }
-
-            return $assignment !== null;
-        });
-
         // Append specialist_id from their active SpecialistAssignment for this provider.
         // This is needed by the Walk-in Modal to correctly set specialist_id on a booking.
-        // Staff with no active assignment (receptionists, managers) will have specialist_id = null.
+        // All staff are returned: staff without an active assignment (receptionists,
+        // managers, newly created members) are valid management records and the
+        // Walk-in Modal explicitly renders them as unassignable.
         //
         // Lookup strategy (two-pass for resilience):
         //   1. Direct: match SpecialistAssignment.staff_id = staff.id (canonical, post-migration)
         //   2. Name fallback: join through Specialist.name = staff.name (handles legacy rows with null staff_id)
-        $staff = $staffWithAssignments->map(function ($member) use ($provider) {
+        $staff = $staff->map(function ($member) use ($provider) {
             // Pass 1: direct staff_id match (canonical path)
             $assignment = \App\Models\SpecialistAssignment::where('provider_id', $provider->id)
                 ->whereIn('status', ['active', 'ACTIVE'])
