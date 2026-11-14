@@ -10,6 +10,7 @@ use App\Models\PlanEntitlement;
 use App\Models\BillingResource;
 use App\Services\SpecialistCapabilityResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class SpecialistCapabilityResolverTest extends TestCase
@@ -24,7 +25,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         $this->resolver = new SpecialistCapabilityResolver();
     }
 
-    /** @test */
+    #[Test]
     public function free_specialist_has_access_to_all_free_capabilities()
     {
         // Create a specialist without subscription (Free tier)
@@ -50,7 +51,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function free_specialist_does_not_have_access_to_pro_capabilities()
     {
         // Create a specialist without subscription (Free tier)
@@ -72,7 +73,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function pro_specialist_has_access_to_all_capabilities()
     {
         // Create specialist and Pro subscription
@@ -109,7 +110,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function cancelled_subscription_reverts_to_free_tier()
     {
         // Create specialist with cancelled subscription
@@ -134,7 +135,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         );
     }
 
-    /** @test */
+    #[Test]
     public function trialing_specialist_has_pro_access()
     {
         // Create specialist with trial subscription
@@ -155,7 +156,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         );
     }
 
-    /** @test */
+    #[Test]
     public function get_capabilities_summary_returns_free_tier_for_no_subscription()
     {
         $specialist = Specialist::factory()->create();
@@ -169,7 +170,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         $this->assertTrue($summary['features']['SPECIALIST_CALENDAR']);
     }
 
-    /** @test */
+    #[Test]
     public function get_capabilities_summary_returns_pro_tier_for_active_subscription()
     {
         $specialist = Specialist::factory()->create();
@@ -190,7 +191,7 @@ class SpecialistCapabilityResolverTest extends TestCase
         $this->assertTrue($summary['features']['SPECIALIST_CALENDAR']);
     }
 
-    /** @test */
+    #[Test]
     public function cache_is_cleared_on_capability_change()
     {
         $specialist = Specialist::factory()->create();
