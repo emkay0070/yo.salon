@@ -196,13 +196,39 @@ class SpecialistCapabilityResolverTest extends TestCase
     {
         $specialist = Specialist::factory()->create();
 
-        // First call should cache result
-        $this->assertTrue($this->resolver->allows($specialist->id, 'SPECIALIST_CALENDAR'));
+        // Cache the Free-tier answer first.
+        $this->assertFalse($this->resolver->allows($specialist->id, 'SPECIALIST_INTELLIGENCE'));
 
-        // Clear cache
+        // Upgrade to Pro while the Free-tier answer is still cached.
+        $proPlan = Plan::where('slug', 'specialist-pro')->firstOrFail();
+        SpecialistSubscription::factory()->create([
+            'specialist_id' => $specialist->id,
+            'plan_id' => $proPlan->id,
+            'status' => 'active',
+        ]);
+
+        // Without invalidation the stale false answer would be returned.
         $this->resolver->clearCache($specialist->id);
 
-        // Should still work after cache clear
-        $this->assertTrue($this->resolver->allows($specialist->id, 'SPECIALIST_CALENDAR'));
+        $this->assertTrue($this->resolver->allows($specialist->id, 'SPECIALIST_INTELLIGENCE'));
+    }
+
+    #[Test]
+    public function capability_lookup_is_scoped_to_the_requested_specialist()
+    {
+        $freeSpecialist = Specialist::factory()->create();
+        $trialingSpecialist = Specialist::factory()->create();
+        $proPlan = Plan::where('slug', 'specialist-pro')->firstOrFail();
+
+        SpecialistSubscription::factory()->create([
+            'specialist_id' => $trialingSpecialist->id,
+            'plan_id' => $proPlan->id,
+            'status' => 'trialing',
+            'trial_ends_at' => now()->addDays(14),
+        ]);
+
+        // Another specialist's trial must not leak Pro capabilities.
+        $this->assertFalse($this->resolver->allows($freeSpecialist->id, 'SPECIALIST_INTELLIGENCE'));
+        $this->assertTrue($this->resolver->allows($trialingSpecialist->id, 'SPECIALIST_INTELLIGENCE'));
     }
 }
