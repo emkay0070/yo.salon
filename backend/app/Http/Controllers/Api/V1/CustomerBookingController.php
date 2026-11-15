@@ -279,7 +279,7 @@ class CustomerBookingController extends Controller
     public function cancel(string $bookingId): JsonResponse
     {
         try {
-            $booking = $this->customerBookingService->cancelBooking($bookingId);
+            $booking = $this->bookingService->cancelBooking($bookingId);
 
             return response()->json([
                 'message' => 'Booking cancelled successfully',
