@@ -9,6 +9,7 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentRequest;
 use App\Models\Provider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class PaymentIntegrationTest extends TestCase
@@ -40,7 +41,11 @@ class PaymentIntegrationTest extends TestCase
         $this->paymentMethod = PaymentMethod::factory()->create([
             'provider_id' => $this->provider->id,
             'provider' => 'mtn_momo',
-            'type' => 'mobile_money'
+            'type' => 'mobile_money',
+            'merchant_id' => 'test-api-user',
+            'api_key' => 'test-api-key',
+            'api_subscription_key' => 'test-subscription-key',
+            'environment' => 'sandbox',
         ]);
 
         $this->paymentRequest = PaymentRequest::create([
@@ -65,7 +70,20 @@ class PaymentIntegrationTest extends TestCase
             'currency' => 'UGX',
         ];
 
-        // MTN doesn't mandate signature in this mock setup if validateWebhookSignature is permissive
+        // MTN callbacks are unsigned; the handler must confirm the final status
+        // with the MTN API instead of trusting the callback payload.
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/collection/token/*' => Http::response([
+                'access_token' => 'test-token',
+            ], 200),
+            'sandbox.momodeveloper.mtn.com/collection/v1_0/requesttopay/*' => Http::response([
+                'status' => 'SUCCESSFUL',
+                'financialTransactionId' => 'FT-987654',
+                'amount' => '5000',
+                'currency' => 'UGX',
+            ], 200),
+        ]);
+
         $response = $this->postJson('/api/v1/webhooks/mtn', $payload);
 
         $response->assertStatus(200);
@@ -120,6 +138,45 @@ class PaymentIntegrationTest extends TestCase
         $this->assertDatabaseHas('bookings', [
             'id' => $this->booking->id,
             'payment_status' => 'pending'
+        ]);
+    }
+
+    public function test_mtn_webhook_does_not_settle_while_provider_reports_pending(): void
+    {
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/collection/token/*' => Http::response([
+                'access_token' => 'test-token',
+            ], 200),
+            'sandbox.momodeveloper.mtn.com/collection/v1_0/requesttopay/*' => Http::response([
+                'status' => 'PENDING',
+                'amount' => '5000',
+                'currency' => 'UGX',
+            ], 200),
+        ]);
+
+        // The callback claims success, but MTN says the payment is still pending.
+        $response = $this->postJson('/api/v1/webhooks/mtn', [
+            'externalId' => 'MTN-12345',
+            'status' => 'SUCCESSFUL',
+            'financialTransactionId' => 'FT-987654',
+            'amount' => 5000,
+            'currency' => 'UGX',
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('payment_requests', [
+            'id' => $this->paymentRequest->id,
+            'status' => 'sent',
+        ]);
+
+        $this->assertDatabaseMissing('transactions', [
+            'booking_id' => $this->booking->id,
+        ]);
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $this->booking->id,
+            'payment_status' => 'pending',
         ]);
     }
 }
