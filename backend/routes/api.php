@@ -91,7 +91,7 @@ Route::prefix('v1')->group(function () {
     // Public webhook routes (no authentication required)
     Route::post('/webhooks/flutterwave', [WebhookController::class, 'handleFlutterwave']);
     Route::post('/webhooks/platform', [WebhookController::class, 'handlePlatformWebhook']);
-    Route::post('/webhooks/salon', [WebhookController::class, 'handleSalonWebhook']);
+    Route::post('/webhooks/salon', [WebhookController::class, 'handleBookingWebhook']);
     Route::post('/webhooks/mtn', [WebhookController::class, 'handleMTN']);
     
     // Disbursement webhooks
@@ -197,7 +197,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/goals/{goalId}/pause', [SpecialistPortalController::class, 'pauseGoal']);
             Route::post('/goals/{goalId}/complete', [SpecialistPortalController::class, 'completeGoal']);
             // Invitation CRUD
-            Route::post('/invitations', [SpecialistPortalController::class, 'createInvitation']);
+            Route::post('/invitations', [SpecialistPortalController::class, 'sendInvitation']);
             // Get Provider services for Specialist to attach (Employee/Contractor flow)
             Route::get('/craft/services/{providerSlug}', [SpecialistPortalController::class, 'getProviderServices']);
             // Attach an existing Provider service to the Specialist (Employee/Contractor flow)
@@ -360,10 +360,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/portal/availability/staff', [CustomerBookingController::class, 'availableStaff']);
             Route::post('/portal/bookings', [CustomerBookingController::class, 'store']);
             Route::get('/portal/bookings', [CustomerBookingController::class, 'index']);
-            Route::get('/portal/bookings/{id}', [CustomerBookingController::class, 'show']);
             Route::post('/portal/bookings/{id}/cancel', [CustomerBookingController::class, 'cancel']);
             Route::post('/portal/bookings/{id}/reschedule', [CustomerBookingController::class, 'reschedule']);
-            Route::get('/portal/bookings/{id}/reschedule-options', [CustomerBookingController::class, 'rescheduleOptions']);
 
             // Portal loyalty
             Route::get('/portal/loyalty/balance', [LoyaltyController::class, 'getBalance']);
@@ -416,7 +414,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/portal/gift-cards/purchase', [GiftCardController::class, 'purchase']);
             Route::get('/portal/gift-cards/purchased', [GiftCardController::class, 'purchased']);
             Route::get('/portal/gift-cards/redeemed', [GiftCardController::class, 'redeemed']);
-            Route::post('/portal/gift-cards/send', [GiftCardController::class, 'send']);
             
             // Portal specialist relationships
             Route::get('/portal/specialists/followed', [CustomerSpecialistController::class, 'followed']);
@@ -648,7 +645,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/payment-methods/{paymentMethod}/verify-credentials', [PaymentMethodController::class, 'verifyCredentials'])->middleware('throttle:10,1');
 
         // Payment Requests
-        Route::apiResource('payment-requests', PaymentRequestController::class)->except(['update'])->middleware('throttle:60,1');
+        Route::apiResource('payment-requests', PaymentRequestController::class)->except(['update', 'destroy'])->middleware('throttle:60,1');
         Route::post('/payment-requests', [PaymentRequestController::class, 'store'])->middleware('throttle:20,1');
         Route::patch('/payment-requests/{paymentRequest}/status', [PaymentRequestController::class, 'updateStatus'])->middleware('throttle:30,1');
         Route::post('/payment-requests/{paymentRequest}/cancel', [PaymentRequestController::class, 'cancel'])->middleware('throttle:20,1');
@@ -656,7 +653,7 @@ Route::prefix('v1')->group(function () {
 
         // Transactions — payment-rail/event records (who paid, when, how)
         Route::get('/transactions/summary', [TransactionController::class, 'summary'])->middleware('throttle:60,1');
-        Route::apiResource('transactions', TransactionController::class)->middleware('throttle:60,1');
+        Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'show'])->middleware('throttle:60,1');
 
         // Ledger — financial truth (double-entry journal, LedgerEntry records)
         Route::get('/providers/{provider}/ledger', [LedgerController::class, 'index'])->middleware('throttle:60,1');
@@ -697,15 +694,15 @@ Route::prefix('v1')->group(function () {
         // Payments — Salon (B2C - Customer Booking Payments)
         Route::prefix('payments/salon')->group(function () {
             Route::post('/initialize', [BookingPaymentController::class, 'initializeBookingPayment']);
-            Route::post('/verify', [BookingPaymentController::class, 'verifySalonPayment']);
+            Route::post('/verify', [BookingPaymentController::class, 'verifyBookingPayment']);
             Route::post('/manual', [BookingPaymentController::class, 'recordManualPayment']);
-            Route::post('/refund', [BookingPaymentController::class, 'refundSalonPayment']);
+            Route::post('/refund', [BookingPaymentController::class, 'refundBookingPayment']);
             Route::get('/bookings/{bookingId}/status', [BookingPaymentController::class, 'getBookingPaymentStatus']);
         });
 
 
         // Payments — Settlements
-        Route::apiResource('settlements', SettlementController::class)->except(['destroy']);
+        Route::apiResource('settlements', SettlementController::class)->only(['index', 'show']);
 
         // Membership
         Route::get('/membership', [MembershipController::class, 'index']);
@@ -764,7 +761,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/features/suggestions', [FeatureFlagController::class, 'suggestions']);
         
         // Offers (admin)
-        Route::apiResource('offers', OfferController::class);
+        Route::apiResource('offers', OfferController::class)->except(['show']);
         
         // Loyalty (admin/internal)
         Route::post('/loyalty/award', [LoyaltyController::class, 'award']);
