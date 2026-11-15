@@ -89,10 +89,12 @@ class ExecutePayoutJob implements ShouldQueue
                 }
 
                 $payoutService->initiatePayout(
-                    $settlement,
-                    $this->amount,
-                    $this->method,
-                    'automated'
+                    settlement: $settlement,
+                    amount: $this->amount,
+                    method: $this->method,
+                    recipientType: $settlement->recipient_type,
+                    recipientId: $settlement->recipient_id,
+                    executionMode: 'automated'
                 );
             }
         } catch (\Exception $e) {

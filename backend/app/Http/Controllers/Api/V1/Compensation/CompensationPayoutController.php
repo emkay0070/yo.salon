@@ -78,6 +78,8 @@ class CompensationPayoutController extends CompensationController
                 settlement:    $settlement,
                 amount:        (float) $validated['amount'],
                 method:        $validated['method'],
+                recipientType: $settlement->recipient_type,
+                recipientId:   $settlement->recipient_id,
                 executionMode: $validated['execution_mode'],
                 payload:       [
                     'provider'           => $validated['provider'] ?? null,

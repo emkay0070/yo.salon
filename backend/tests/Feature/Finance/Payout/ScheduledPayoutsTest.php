@@ -11,6 +11,9 @@ use App\Models\PaymentMethod;
 use App\Models\PaymentProfile;
 use App\Jobs\ProcessScheduledPayouts;
 use App\Jobs\ExecutePayoutJob;
+use App\Domain\Finance\Payout\Payout;
+use App\Domain\Finance\Payout\PayoutService;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
 class ScheduledPayoutsTest extends TestCase
@@ -130,5 +133,62 @@ class ScheduledPayoutsTest extends TestCase
 
         // Assert job was NOT dispatched
         Queue::assertNotPushed(ExecutePayoutJob::class);
+    }
+
+    public function test_execute_job_passes_settlement_recipient_to_initiate_payout()
+    {
+        $provider = Provider::factory()->create();
+        $specialist = Specialist::factory()->create();
+
+        PaymentMethod::create([
+            'provider_id' => $provider->id,
+            'display_name' => 'MTN Mobile Money',
+            'provider' => 'mtn_disbursement',
+            'is_active' => true,
+            'api_subscription_key' => 'test-sub-key',
+            'api_key' => 'test-api-key',
+            'merchant_id' => 'test-merchant',
+            'environment' => 'sandbox',
+        ]);
+
+        PaymentProfile::create([
+            'owner_type' => get_class($specialist),
+            'owner_id' => $specialist->id,
+            'method' => 'mtn',
+            'provider' => 'mtn_collection',
+            'phone_number' => '0770000000',
+            'network' => 'mtn',
+            'is_verified' => true,
+        ]);
+
+        $settlement = Settlement::create([
+            'provider_id' => $provider->id,
+            'payable_type' => get_class($provider),
+            'payable_id' => $provider->id,
+            'recipient_type' => get_class($specialist),
+            'recipient_id' => $specialist->id,
+            'amount' => 500.00,
+            'currency' => 'UGX',
+            'status' => 'pending',
+            'scheduled_for' => now()->subDay(),
+        ]);
+
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/disbursement/token/*' => Http::response([
+                'access_token' => 'mock_token',
+            ], 200),
+            'sandbox.momodeveloper.mtn.com/disbursement/v1_0/transfer*' => Http::response([], 202),
+        ]);
+
+        $job = new ExecutePayoutJob($settlement->id, 500.0, 'mtn');
+        $job->handle(app(PayoutService::class));
+
+        $payout = Payout::where('settlement_id', $settlement->id)->first();
+
+        $this->assertNotNull($payout, 'ExecutePayoutJob did not create a payout.');
+        $this->assertEquals(get_class($specialist), $payout->recipient_type);
+        $this->assertEquals($specialist->id, $payout->recipient_id);
+        $this->assertEquals('automated', $payout->execution_mode);
+        $this->assertEquals(Payout::STATUS_PROCESSING, $payout->status);
     }
 }
