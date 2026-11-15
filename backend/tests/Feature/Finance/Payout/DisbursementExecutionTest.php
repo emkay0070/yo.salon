@@ -104,6 +104,16 @@ class DisbursementExecutionTest extends TestCase
             'status' => 'processing',
         ]);
 
+        // MTN disbursement callbacks are unsigned; the payout may only complete
+        // when the provider API confirms the final status.
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/disbursement/token/*' => Http::response(['access_token' => 'mock_token'], 200),
+            'sandbox.momodeveloper.mtn.com/disbursement/v1_0/transfer/*' => Http::response([
+                'status' => 'SUCCESSFUL',
+                'financialTransactionId' => 'MTN-TXN-999',
+            ], 200),
+        ]);
+
         $payload = [
             'externalId' => 'OUT-12345678',
             'status' => 'SUCCESSFUL',
@@ -127,6 +137,13 @@ class DisbursementExecutionTest extends TestCase
             'status' => 'processing',
         ]);
 
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/disbursement/token/*' => Http::response(['access_token' => 'mock_token'], 200),
+            'sandbox.momodeveloper.mtn.com/disbursement/v1_0/transfer/*' => Http::response([
+                'status' => 'FAILED',
+            ], 200),
+        ]);
+
         $payload = [
             'externalId' => 'OUT-12345678',
             'status' => 'FAILED',
@@ -140,5 +157,60 @@ class DisbursementExecutionTest extends TestCase
 
         $this->payout->refresh();
         $this->assertEquals('failed', $this->payout->status);
+    }
+
+    public function test_forged_success_webhook_cannot_complete_a_pending_transfer()
+    {
+        $this->payout->update([
+            'reference' => 'OUT-12345678',
+            'status' => 'processing',
+        ]);
+
+        // The callback claims success, but MTN still reports PENDING.
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/disbursement/token/*' => Http::response(['access_token' => 'mock_token'], 200),
+            'sandbox.momodeveloper.mtn.com/disbursement/v1_0/transfer/*' => Http::response([
+                'status' => 'PENDING',
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/v1/webhooks/disbursement/mtn', [
+            'externalId' => 'OUT-12345678',
+            'status' => 'SUCCESSFUL',
+        ], [
+            'X-Signature' => 'mock_signature'
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->payout->refresh();
+        $this->assertEquals('processing', $this->payout->status);
+    }
+
+    public function test_webhook_does_not_complete_payout_when_status_cannot_be_verified()
+    {
+        $this->payout->update([
+            'reference' => 'OUT-12345678',
+            'status' => 'processing',
+        ]);
+
+        Http::fake([
+            'sandbox.momodeveloper.mtn.com/disbursement/token/*' => Http::response(['access_token' => 'mock_token'], 200),
+            'sandbox.momodeveloper.mtn.com/disbursement/v1_0/transfer/*' => Http::response([
+                'error' => 'provider unavailable',
+            ], 500),
+        ]);
+
+        $response = $this->postJson('/api/v1/webhooks/disbursement/mtn', [
+            'externalId' => 'OUT-12345678',
+            'status' => 'SUCCESSFUL',
+        ], [
+            'X-Signature' => 'mock_signature'
+        ]);
+
+        $response->assertStatus(200);
+
+        $this->payout->refresh();
+        $this->assertEquals('processing', $this->payout->status);
     }
 }

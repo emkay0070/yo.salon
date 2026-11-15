@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Finance\Payout\Payout;
+use App\Models\PaymentMethod;
 use App\Services\Payments\Factories\DisbursementProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -46,7 +47,7 @@ class DisbursementWebhookController extends Controller
             $normalized = $provider->handleWebhook($payload, $signature);
             
             $reference = $normalized['reference'] ?? null;
-            $status = $normalized['status'] ?? 'processing'; // completed, failed, processing
+            $payloadStatus = $normalized['status'] ?? 'processing'; // completed, failed, processing
 
             if (!$reference) {
                 Log::warning("Disbursement Webhook missing reference [{$providerName}]");
@@ -64,6 +65,24 @@ class DisbursementWebhookController extends Controller
                 return response()->json(['message' => 'Payout not found'], 404);
             }
 
+            // MTN disbursement callbacks are not signed. Confirm the final
+            // status with the provider API before mutating the payout; a forged
+            // callback must not be able to complete a transfer that never ran.
+            $status = $providerName === 'mtn'
+                ? $this->verifyMtnStatus($payout, $reference)
+                : $payloadStatus;
+
+            if ($status === null) {
+                Log::warning("Disbursement Webhook status could not be confirmed [{$providerName}]", [
+                    'reference' => $reference,
+                    'payout_id' => $payout->id,
+                ]);
+
+                return response()->json([
+                    'message' => 'Webhook received; provider status not confirmed',
+                ], 200);
+            }
+
             if ($status === 'completed') {
                 $payout->markAsCompleted($reference);
                 Log::info("Disbursement Payout Completed", ['payout_id' => $payout->id]);
@@ -77,5 +96,61 @@ class DisbursementWebhookController extends Controller
             Log::error("Disbursement Webhook Error [{$providerName}]: " . $e->getMessage());
             return response()->json(['message' => 'Internal server error'], 500);
         }
+    }
+
+    /**
+     * Resolve the authoritative MTN status for a payout reference.
+     * Returns null when the status cannot be verified.
+     */
+    private function verifyMtnStatus(Payout $payout, string $reference): ?string
+    {
+        $settlement = $payout->settlement;
+        $payable = $settlement?->payable;
+
+        if (!$payable) {
+            Log::warning('Disbursement webhook payout has no payable settlement', [
+                'payout_id' => $payout->id,
+            ]);
+            return null;
+        }
+
+        $providerId = $payable->provider_id ?? $payable->id;
+
+        $config = PaymentMethod::where('provider_id', $providerId)
+            ->where('provider', 'mtn_disbursement')
+            ->where('is_active', true)
+            ->first();
+
+        if (!$config) {
+            Log::warning('MTN disbursement configuration not found for webhook verification', [
+                'payout_id' => $payout->id,
+                'provider_id' => $providerId,
+            ]);
+            return null;
+        }
+
+        $provider = DisbursementProviderFactory::make('mtn');
+
+        if (method_exists($provider, 'setCredentials')) {
+            $provider->setCredentials([
+                'api_subscription_key' => $config->api_subscription_key,
+                'api_key'              => $config->api_key,
+                'merchant_id'          => $config->merchant_id,
+                'environment'          => $config->environment,
+            ]);
+        }
+
+        $result = $provider->checkStatus($reference);
+
+        if (!$result->success) {
+            Log::warning('MTN disbursement status verification failed', [
+                'payout_id' => $payout->id,
+                'reference' => $reference,
+                'message' => $result->message,
+            ]);
+            return null;
+        }
+
+        return $result->status;
     }
 }
