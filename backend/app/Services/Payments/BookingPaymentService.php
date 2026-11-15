@@ -258,11 +258,27 @@ class BookingPaymentService
                     'message' => 'Payment verification failed',
                 ];
             }
+
+            // A successful provider API call is not the same as a completed
+            // payment: MTN returns HTTP 200 with status PENDING/FAILED. Only a
+            // terminal successful status may create a transaction.
+            $verifiedStatus = strtolower((string) ($verificationResult['status'] ?? ''));
+            if (!in_array($verifiedStatus, ['successful', 'completed', 'paid', 'succeeded'], true)) {
+                return [
+                    'success' => false,
+                    'status' => $verifiedStatus ?: 'pending',
+                    'message' => 'Payment has not completed successfully',
+                ];
+            }
         }
 
         $result = DB::transaction(function () use ($verificationResult, $reference) {
-            // Find payment request by provider reference
-            $paymentRequest = PaymentRequest::where('provider_reference', $reference)->first();
+            // Find payment request by provider reference. Lock the row so two
+            // concurrent webhook/verification calls cannot both create a
+            // completed transaction for the same payment.
+            $paymentRequest = PaymentRequest::where('provider_reference', $reference)
+                ->lockForUpdate()
+                ->first();
 
             if (!$paymentRequest) {
                 throw new \Exception('Payment request not found for this reference');
@@ -533,18 +549,41 @@ class BookingPaymentService
             throw new \Exception('Transaction is not completed');
         }
 
+        if ($transaction->type !== 'payment') {
+            throw new \Exception('Only captured payments can be refunded');
+        }
+
+        // Refund against the net amount the customer actually paid, and never
+        // allow cumulative refunds to exceed it.
+        $alreadyRefunded = (float) ($transaction->metadata['refunded_amount'] ?? 0);
+        $refundable = abs((float) $transaction->net_amount) - $alreadyRefunded;
+
+        if ($refundable <= 0) {
+            throw new \Exception('Transaction has already been fully refunded');
+        }
+
+        $refundAmount = $amount ?? $refundable;
+
+        if ($refundAmount <= 0 || $refundAmount > $refundable) {
+            throw new \Exception('Refund amount exceeds the remaining refundable amount');
+        }
+
         // For manual payments, just create a refund transaction
-        if (str_starts_with($transaction->provider_reference, 'MANUAL-')) {
-            return $this->createRefundTransaction($transaction, $amount);
+        if (str_starts_with((string) $transaction->provider_reference, 'MANUAL-')) {
+            return $this->createRefundTransaction($transaction, $refundAmount);
         }
 
         // For digital payments, use provider
         $paymentMethod = PaymentMethod::find($transaction->payment_method_id);
         $provider = $this->getProvider($paymentMethod);
-        $refundResult = $provider->refundPayment($transaction->provider_reference, $amount);
+        $refundResult = $provider->refundPayment($transaction->provider_reference, $refundAmount);
 
         if ($refundResult['success']) {
-            $this->createRefundTransaction($transaction, $amount, $refundResult['reference']);
+            return $this->createRefundTransaction(
+                $transaction,
+                $refundAmount,
+                $refundResult['reference'] ?? null
+            );
         }
 
         return $refundResult;
@@ -554,45 +593,61 @@ class BookingPaymentService
      * Create a refund transaction record.
      *
      * @param Transaction $originalTransaction
-     * @param float|null $amount
+     * @param float $refundAmount
      * @param string|null $providerReference
      * @return array
      */
     private function createRefundTransaction(
         Transaction $originalTransaction,
-        ?float $amount = null,
+        float $refundAmount,
         ?string $providerReference = null
     ): array {
-        $refundAmount = $amount ?? $originalTransaction->net_amount;
+        $refundTransaction = DB::transaction(function () use ($originalTransaction, $refundAmount, $providerReference) {
+            // Lock the original row so concurrent refunds cannot both pass the
+            // remaining-amount check and over-refund the customer.
+            $original = Transaction::whereKey($originalTransaction->id)->lockForUpdate()->firstOrFail();
 
-        $refundTransaction = Transaction::create([
-            'provider_id' => $originalTransaction->provider_id,
-            'booking_id' => $originalTransaction->booking_id,
-            'customer_id' => $originalTransaction->customer_id,
-            'payment_method_id' => $originalTransaction->payment_method_id,
-            'payment_account_id' => $originalTransaction->payment_account_id,
-            'type' => 'refund',
-            'status' => 'completed',
-            'gross_amount' => -$refundAmount,
-            'gateway_fee' => 0,
-            'platform_fee' => 0,
-            'tax_amount' => 0,
-            'net_amount' => -$refundAmount,
-            'currency' => 'UGX',
-            'internal_reference' => 'REF-' . strtoupper(Str::random(10)),
-            'provider_reference' => $providerReference ?? 'MANUAL-REF-' . strtoupper(Str::random(8)),
-            'paid_at' => now(),
-            'notes' => 'Refund for transaction ' . $originalTransaction->internal_reference,
-        ]);
+            $alreadyRefunded = (float) ($original->metadata['refunded_amount'] ?? 0);
+            $refundable = abs((float) $original->net_amount) - $alreadyRefunded;
 
-        // Update original transaction metadata
-        $originalTransaction->update([
-            'metadata' => array_merge($originalTransaction->metadata ?? [], [
-                'refunded' => true,
-                'refund_transaction_id' => $refundTransaction->id,
-                'refund_amount' => $refundAmount,
-            ]),
-        ]);
+            if ($refundAmount <= 0 || $refundAmount > $refundable + 0.001) {
+                throw new \Exception('Refund amount exceeds the remaining refundable amount');
+            }
+
+            $refundTransaction = Transaction::create([
+                'provider_id' => $original->provider_id,
+                'booking_id' => $original->booking_id,
+                'customer_id' => $original->customer_id,
+                'payment_method_id' => $original->payment_method_id,
+                'payment_account_id' => $original->payment_account_id,
+                'type' => 'refund',
+                'status' => 'completed',
+                'gross_amount' => -$refundAmount,
+                'gateway_fee' => 0,
+                'platform_fee' => 0,
+                'tax_amount' => 0,
+                'net_amount' => -$refundAmount,
+                'currency' => 'UGX',
+                'internal_reference' => 'REF-' . strtoupper(Str::random(10)),
+                'provider_reference' => $providerReference ?? 'MANUAL-REF-' . strtoupper(Str::random(8)),
+                'paid_at' => now(),
+                'notes' => 'Refund for transaction ' . $original->internal_reference,
+            ]);
+
+            $totalRefunded = $alreadyRefunded + $refundAmount;
+
+            // Update original transaction metadata
+            $original->update([
+                'metadata' => array_merge($original->metadata ?? [], [
+                    'refunded' => $totalRefunded >= abs((float) $original->net_amount) - 0.001,
+                    'refund_transaction_id' => $refundTransaction->id,
+                    'refund_amount' => $refundAmount,
+                    'refunded_amount' => $totalRefunded,
+                ]),
+            ]);
+
+            return $refundTransaction;
+        });
 
         // Dispatch RefundConfirmed event to trigger Finance domain processing
         // Skip in testing environment to prevent finance domain listener errors from aborting test transaction

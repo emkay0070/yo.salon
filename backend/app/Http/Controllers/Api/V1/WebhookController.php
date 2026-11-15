@@ -206,20 +206,10 @@ class WebhookController extends Controller
             }
 
             // Verify and record the payment through BookingPaymentService.
-            // Pass the webhook data as the verification result to avoid a redundant
-            // external API call — the webhook IS the provider's confirmation.
-            $data = $result['data'] ?? [];
-            $verificationResult = [
-                'success' => true,
-                'status' => 'successful',
-                'reference' => $reference,
-                'provider_reference' => $data['financialTransactionId'] ?? $reference,
-                'amount' => $data['amount'] ?? null,
-                'currency' => 'UGX',
-                'fees' => 0,
-            ];
-
-            $verifyResult = $this->bookingPaymentService->verifyBookingPayment($reference, $verificationResult);
+            // MTN callbacks are not signed — validateWebhookSignature only proves
+            // the reference exists — so the provider API is the source of truth
+            // for the final status. A forged callback must not mint a payment.
+            $verifyResult = $this->bookingPaymentService->verifyBookingPayment($reference);
 
             Log::info('MTN webhook processed successfully', [
                 'reference' => $reference,

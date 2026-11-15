@@ -129,7 +129,7 @@ class MTNMomoService implements PaymentProviderInterface
             'Authorization' => "Bearer {$token}",
             'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
             'X-Reference-Id' => $reference,
-            'X-Target-Environment' => config('services.mtn.environment', 'sandbox'),
+            'X-Target-Environment' => $this->environment ?? 'sandbox',
         ])->post("{$this->baseUrl}/collection/v1_0/requesttopay", $payload);
 
         if ($response->failed()) {
@@ -175,7 +175,7 @@ class MTNMomoService implements PaymentProviderInterface
         $response = Http::withHeaders([
             'Authorization' => "Bearer {$token}",
             'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
-            'X-Target-Environment' => config('services.mtn.environment', 'sandbox'),
+            'X-Target-Environment' => $this->environment ?? 'sandbox',
         ])->get("{$this->baseUrl}/collection/v1_0/requesttopay/{$transactionId}");
 
         if ($response->failed()) {
@@ -205,6 +205,67 @@ class MTNMomoService implements PaymentProviderInterface
             'message' => "Payment status: {$status}",
             'raw_response' => $data,
         ])->toArray();
+    }
+
+    /**
+     * Refund a captured MTN MoMo payment.
+     *
+     * MTN accepts an asynchronous refund request and answers 202. The refund
+     * reference is the X-Reference-Id used for the request.
+     */
+    public function refundPayment(string $reference, ?float $amount = null): array
+    {
+        $token = $this->getAccessToken();
+
+        if ($amount === null || $amount <= 0) {
+            return PaymentResponseDTO::failure(
+                'MTN MoMo refunds require an explicit positive amount'
+            )->toArray();
+        }
+
+        $refundReference = (string) \Illuminate\Support\Str::uuid();
+
+        $payload = [
+            'amount' => number_format($amount, 2, '.', ''),
+            'currency' => 'UGX',
+            'externalId' => $refundReference,
+            'payerMessage' => 'Refund',
+            'payeeNote' => 'Yo.Salon refund',
+        ];
+
+        Log::info('MTN MoMo: Requesting refund', [
+            'transaction_reference' => $reference,
+            'refund_reference' => $refundReference,
+            'amount' => $amount,
+        ]);
+
+        $response = Http::withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
+            'X-Reference-Id' => $refundReference,
+            'X-Target-Environment' => $this->environment ?? 'sandbox',
+        ])->post("{$this->baseUrl}/collection/v1_0/requesttopay/{$reference}/refund", $payload);
+
+        if ($response->failed()) {
+            Log::error('MTN MoMo: Refund request failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'transaction_reference' => $reference,
+            ]);
+
+            return PaymentResponseDTO::failure(
+                'Failed to request refund',
+                $response->json()
+            )->toArray();
+        }
+
+        return [
+            'success' => true,
+            'reference' => $refundReference,
+            'amount_refunded' => $amount,
+            'status' => 'pending',
+            'data' => $response->json() ?? [],
+        ];
     }
 
     /**
@@ -303,7 +364,7 @@ class MTNMomoService implements PaymentProviderInterface
             'Authorization' => "Bearer {$token}",
             'Ocp-Apim-Subscription-Key' => $this->subscriptionKey,
             'X-Reference-Id' => $reference,
-            'X-Target-Environment' => config('services.mtn.environment', 'sandbox'),
+            'X-Target-Environment' => $this->environment ?? 'sandbox',
         ])->post("{$this->baseUrl}/collection/v1_0/requesttopay", $payload);
 
         if ($response->failed()) {

@@ -20,6 +20,13 @@ interface PaymentProviderInterface
     public function verifyPayment(string $reference): array;
 
     /**
+     * Refund a captured payment. A null amount means a full refund.
+     *
+     * @return array{success: bool, reference?: string|null, amount_refunded?: float|null, status?: string, message?: string}
+     */
+    public function refundPayment(string $reference, ?float $amount = null): array;
+
+    /**
      * Attempt to collect payment for a finalized, frozen invoice.
      *
      * The provider decides HOW to collect based on the payment method:

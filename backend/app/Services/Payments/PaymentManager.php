@@ -17,6 +17,7 @@ class PaymentManager
         // The billing engine selects the right provider based on the salon's
         // configured PaymentMethod — it never hardcodes a provider name.
         $this->registerProvider('mtn_momo',    new MTNMomoService());
+        $this->registerProvider('mtn',         new MTNMomoService()); // legacy stored provider name
         $this->registerProvider('flutterwave', new FlutterwaveProvider());
         $this->registerProvider('airtel',      new AirtelProvider());
     }
