@@ -18,6 +18,11 @@ class BookingPaymentController extends Controller
         $this->bookingPaymentService = $bookingPaymentService;
     }
 
+    private function providerId(): ?string
+    {
+        return auth()->user()?->currentProvider()?->id;
+    }
+
     /**
      * Initialize payment for a booking.
      * This is used when customers pay for their appointments.
@@ -36,6 +41,21 @@ class BookingPaymentController extends Controller
         ]);
 
         try {
+            $providerId = $this->providerId();
+
+            $booking = Booking::find($validated['booking_id']);
+            if (!$booking || $booking->provider_id !== $providerId) {
+                return response()->json(['success' => false, 'message' => 'Booking not found'], 404);
+            }
+
+            $paymentMethod = \App\Models\PaymentMethod::where('id', $validated['payment_method_id'])
+                ->where('provider_id', $providerId)
+                ->first();
+
+            if (!$paymentMethod) {
+                return response()->json(['success' => false, 'message' => 'Payment method not found'], 404);
+            }
+
             $result = $this->bookingPaymentService->initializeBookingPayment(
                 $validated['booking_id'],
                 $validated['payment_method_id'],
@@ -80,6 +100,14 @@ class BookingPaymentController extends Controller
         ]);
 
         try {
+            $paymentRequest = \App\Models\PaymentRequest::where('provider_reference', $validated['reference'])
+                ->where('provider_id', $this->providerId())
+                ->first();
+
+            if (!$paymentRequest) {
+                return response()->json(['success' => false, 'message' => 'Payment request not found'], 404);
+            }
+
             $result = $this->bookingPaymentService->verifyBookingPayment($validated['reference']);
 
             return response()->json($result);
@@ -116,6 +144,20 @@ class BookingPaymentController extends Controller
         ]);
 
         try {
+            $providerId = $this->providerId();
+
+            $location = \App\Models\Location::find($validated['location_id']);
+            if (!$location || $location->provider_id !== $providerId) {
+                return response()->json(['success' => false, 'message' => 'Location not found'], 404);
+            }
+
+            if (!empty($validated['booking_id'])) {
+                $booking = Booking::find($validated['booking_id']);
+                if (!$booking || $booking->provider_id !== $providerId) {
+                    return response()->json(['success' => false, 'message' => 'Booking not found'], 404);
+                }
+            }
+
             $result = $this->bookingPaymentService->recordManualPayment($validated);
 
             return response()->json([
@@ -150,6 +192,14 @@ class BookingPaymentController extends Controller
         ]);
 
         try {
+            $transaction = \App\Models\Transaction::where('id', $validated['transaction_id'])
+                ->where('provider_id', $this->providerId())
+                ->first();
+
+            if (!$transaction) {
+                return response()->json(['success' => false, 'message' => 'Transaction not found'], 404);
+            }
+
             $result = $this->bookingPaymentService->refundBookingPayment(
                 $validated['transaction_id'],
                 $validated['amount'] ?? null
@@ -179,7 +229,14 @@ class BookingPaymentController extends Controller
     public function getBookingPaymentStatus(string $bookingId): JsonResponse
     {
         try {
-            $booking = Booking::with(['paymentRequest', 'transactions'])->findOrFail($bookingId);
+            $booking = Booking::with(['paymentRequest', 'transactions'])
+                ->where('id', $bookingId)
+                ->where('provider_id', $this->providerId())
+                ->first();
+
+            if (!$booking) {
+                return response()->json(['success' => false, 'message' => 'Booking not found'], 404);
+            }
 
             return response()->json([
                 'booking_id' => $booking->id,
