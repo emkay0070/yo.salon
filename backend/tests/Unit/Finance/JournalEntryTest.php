@@ -3,6 +3,7 @@
 namespace Tests\Unit\Finance;
 
 use Tests\TestCase;
+use App\Domain\Finance\FinancialTransaction;
 use App\Domain\Finance\Journal\JournalEntry;
 use App\Domain\Finance\Ledger\LedgerAccount;
 use App\Models\Provider;
@@ -54,6 +55,115 @@ class JournalEntryTest extends TestCase
                 ],
             ]
         );
+    }
+
+    public function test_journal_entry_rolls_back_when_a_ledger_account_is_missing()
+    {
+        $provider = Provider::factory()->create();
+        $account = LedgerAccount::create([
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
+            'account_type' => 'revenue',
+            'currency' => 'UGX',
+            'balance' => 0,
+        ]);
+
+        try {
+            JournalEntry::createWithEntries(
+                type: 'test',
+                description: 'Atomic journal',
+                movements: [
+                    [
+                        'ledger_account_id' => $account->id,
+                        'type' => 'debit',
+                        'amount' => 100,
+                    ],
+                    [
+                        'ledger_account_id' => (string) \Illuminate\Support\Str::uuid(),
+                        'type' => 'credit',
+                        'amount' => 100,
+                    ],
+                ]
+            );
+
+            $this->fail('Missing ledger account must abort the journal.');
+        } catch (\Exception $e) {
+            $this->assertStringContainsString('Ledger account not found', $e->getMessage());
+        }
+
+        $this->assertDatabaseCount('journal_entries', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertEquals(0, $account->fresh()->balance);
+    }
+
+    public function test_financial_transaction_rolls_back_all_journals_when_one_fails()
+    {
+        $provider = Provider::factory()->create();
+        $account1 = LedgerAccount::create([
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
+            'account_type' => 'revenue',
+            'currency' => 'UGX',
+            'balance' => 0,
+        ]);
+        $account2 = LedgerAccount::create([
+            'owner_type' => Provider::class,
+            'owner_id' => $provider->id,
+            'account_type' => 'receivable',
+            'currency' => 'UGX',
+            'balance' => 0,
+        ]);
+
+        try {
+            FinancialTransaction::createWithJournals(
+                type: 'test',
+                description: 'Atomic financial transaction',
+                journalData: [
+                    [
+                        'type' => 'payment',
+                        'description' => 'Valid journal',
+                        'movements' => [
+                            [
+                                'ledger_account_id' => $account1->id,
+                                'type' => 'debit',
+                                'amount' => 100,
+                            ],
+                            [
+                                'ledger_account_id' => $account2->id,
+                                'type' => 'credit',
+                                'amount' => 100,
+                            ],
+                        ],
+                    ],
+                    [
+                        'type' => 'payment',
+                        'description' => 'Invalid journal',
+                        'movements' => [
+                            [
+                                'ledger_account_id' => $account1->id,
+                                'type' => 'debit',
+                                'amount' => 50,
+                            ],
+                            [
+                                'ledger_account_id' => $account2->id,
+                                'type' => 'credit',
+                                'amount' => 40,
+                            ],
+                        ],
+                    ],
+                ]
+            );
+
+            $this->fail('An unbalanced journal must abort the whole financial transaction.');
+        } catch (\Exception $e) {
+            $this->assertStringContainsString('must balance', $e->getMessage());
+        }
+
+        $this->assertDatabaseCount('financial_transactions', 0);
+        $this->assertDatabaseCount('journal_entries', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertEquals(0, $account1->fresh()->balance);
+        $this->assertEquals(0, $account2->fresh()->balance);
     }
 
     public function test_journal_entry_creates_ledger_entries()

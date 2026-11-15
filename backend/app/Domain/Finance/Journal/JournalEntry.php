@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -111,57 +112,59 @@ class JournalEntry extends Model
         }
 
         // Create the journal entry
-        $journal = self::create([
-            'journal_number' => self::generateJournalNumber(),
-            'type' => $type,
-            'description' => $description,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'total_debit' => $totalDebit,
-            'total_credit' => $totalCredit,
-            'status' => 'posted',
-            'posted_at' => now(),
-        ]);
-
-        // Create ledger entries for each movement
-        // Each movement represents a debit or credit to a specific account
-        foreach ($movements as $movement) {
-            $ledgerAccount = \App\Domain\Finance\Ledger\LedgerAccount::find($movement['ledger_account_id']);
-            
-            if (!$ledgerAccount) {
-                throw new \Exception("Ledger account not found: {$movement['ledger_account_id']}");
-            }
-
-            // Calculate balance after this movement
-            // Debit decreases balance, credit increases balance
-            $balanceAfter = $movement['type'] === 'debit' 
-                ? $ledgerAccount->balance - $movement['amount']
-                : $ledgerAccount->balance + $movement['amount'];
-
-            // Create the ledger entry
-            // LedgerEntry has immutability guards - cannot be updated/deleted
-            \App\Domain\Finance\Ledger\LedgerEntry::create([
-                'journal_entry_id' => $journal->id,
-                'ledger_account_id' => $movement['ledger_account_id'],
-                'type' => $movement['type'],
-                'amount' => $movement['amount'],
-                'balance_after' => $balanceAfter,
-                'description' => $movement['description'] ?? $description,
+        return DB::transaction(function () use ($type, $description, $movements, $referenceType, $referenceId, $totalDebit, $totalCredit) {
+            $journal = self::create([
+                'journal_number' => self::generateJournalNumber(),
+                'type' => $type,
+                'description' => $description,
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
-                'metadata' => $movement['metadata'] ?? [],
+                'total_debit' => $totalDebit,
+                'total_credit' => $totalCredit,
+                'status' => 'posted',
+                'posted_at' => now(),
             ]);
 
-            // Update ledger account balance
-            // Using increment/decrement for atomic operations
-            if ($movement['type'] === 'debit') {
-                $ledgerAccount->decrement('balance', $movement['amount']);
-            } else {
-                $ledgerAccount->increment('balance', $movement['amount']);
-            }
-        }
+            // Create ledger entries for each movement
+            // Each movement represents a debit or credit to a specific account
+            foreach ($movements as $movement) {
+                $ledgerAccount = \App\Domain\Finance\Ledger\LedgerAccount::find($movement['ledger_account_id']);
 
-        return $journal;
+                if (!$ledgerAccount) {
+                    throw new \Exception("Ledger account not found: {$movement['ledger_account_id']}");
+                }
+
+                // Calculate balance after this movement
+                // Debit decreases balance, credit increases balance
+                $balanceAfter = $movement['type'] === 'debit'
+                    ? $ledgerAccount->balance - $movement['amount']
+                    : $ledgerAccount->balance + $movement['amount'];
+
+                // Create the ledger entry
+                // LedgerEntry has immutability guards - cannot be updated/deleted
+                \App\Domain\Finance\Ledger\LedgerEntry::create([
+                    'journal_entry_id' => $journal->id,
+                    'ledger_account_id' => $movement['ledger_account_id'],
+                    'type' => $movement['type'],
+                    'amount' => $movement['amount'],
+                    'balance_after' => $balanceAfter,
+                    'description' => $movement['description'] ?? $description,
+                    'reference_type' => $referenceType,
+                    'reference_id' => $referenceId,
+                    'metadata' => $movement['metadata'] ?? [],
+                ]);
+
+                // Update ledger account balance
+                // Using increment/decrement for atomic operations
+                if ($movement['type'] === 'debit') {
+                    $ledgerAccount->decrement('balance', $movement['amount']);
+                } else {
+                    $ledgerAccount->increment('balance', $movement['amount']);
+                }
+            }
+
+            return $journal;
+        });
     }
 
     /**

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -78,53 +79,61 @@ class FinancialTransaction extends Model
      */
     public static function createWithJournals(string $type, string $description, array $journalData, ?string $referenceType = null, ?string $referenceId = null): self
     {
-        // Step 1: Create the financial transaction wrapper
-        // This provides a single point of reference for reconciliation
-        $transaction = self::create([
-            'transaction_number' => self::generateTransactionNumber(),
-            'type' => $type,
-            'description' => $description,
-            'reference_type' => $referenceType,
-            'reference_id' => $referenceId,
-            'total_amount' => 0, // Will be calculated from journals below
-            'currency' => 'UGX',
-            'status' => 'posted',
-            'posted_at' => now(),
-        ]);
+        // The wrapper, every journal and every ledger movement must commit or
+        // roll back together. JournalPostingService used to wrap this call, but
+        // RevenueDistributionEngine and direct callers did not, so a failure in
+        // the second journal could leave a half-posted financial transaction.
+        $transaction = DB::transaction(function () use ($type, $description, $journalData, $referenceType, $referenceId) {
+            // Step 1: Create the financial transaction wrapper
+            // This provides a single point of reference for reconciliation
+            $transaction = self::create([
+                'transaction_number' => self::generateTransactionNumber(),
+                'type' => $type,
+                'description' => $description,
+                'reference_type' => $referenceType,
+                'reference_id' => $referenceId,
+                'total_amount' => 0, // Will be calculated from journals below
+                'currency' => 'UGX',
+                'status' => 'posted',
+                'posted_at' => now(),
+            ]);
 
-        $totalAmount = 0;
+            $totalAmount = 0;
 
-        // Step 2: Create each journal entry
-        // Each journal represents a group of related ledger movements
-        foreach ($journalData as $journal) {
-            // JournalEntry::createWithEntries handles balance validation
-            // and creates all ledger entries atomically
-            $journalEntry = \App\Domain\Finance\Journal\JournalEntry::createWithEntries(
-                type: $journal['type'],
-                description: $journal['description'],
-                movements: $journal['movements'],
-                referenceType: $referenceType,
-                referenceId: $referenceId
-            );
+            // Step 2: Create each journal entry
+            // Each journal represents a group of related ledger movements
+            foreach ($journalData as $journal) {
+                // JournalEntry::createWithEntries handles balance validation
+                // and creates all ledger entries atomically
+                $journalEntry = \App\Domain\Finance\Journal\JournalEntry::createWithEntries(
+                    type: $journal['type'],
+                    description: $journal['description'],
+                    movements: $journal['movements'],
+                    referenceType: $referenceType,
+                    referenceId: $referenceId
+                );
 
-            // Associate journal with this transaction
-            $journalEntry->financialTransaction()->associate($transaction);
-            $journalEntry->save();
+                // Associate journal with this transaction
+                $journalEntry->financialTransaction()->associate($transaction);
+                $journalEntry->save();
 
-            // Accumulate total amount from journal credits
-            $totalAmount += $journalEntry->total_credit;
-        }
+                // Accumulate total amount from journal credits
+                $totalAmount += $journalEntry->total_credit;
+            }
 
-        // Step 3: Update transaction with calculated total
-        $transaction->update(['total_amount' => $totalAmount]);
+            // Step 3: Update transaction with calculated total
+            $transaction->update(['total_amount' => $totalAmount]);
 
-        // Step 4: Dispatch event for other domains to listen
-        // This enables analytics, notifications, and audit trails
+            return $transaction;
+        });
+
+        // Step 4: Dispatch the event only after the journal is committed so
+        // listeners never observe a transaction that later rolled back.
         event(new \App\Domain\Finance\Events\FinancialTransactionPosted(
             transactionId: $transaction->id,
             transactionNumber: $transaction->transaction_number,
-            type: $type,
-            totalAmount: $totalAmount,
+            type: $transaction->type,
+            totalAmount: (float) $transaction->total_amount,
             currency: 'UGX',
             referenceType: $referenceType,
             referenceId: $referenceId,
