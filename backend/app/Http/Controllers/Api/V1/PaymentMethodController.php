@@ -125,11 +125,20 @@ class PaymentMethodController extends Controller
 
     public function show(PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->ensureProviderOwns($paymentMethod);
+
         return response()->json($paymentMethod->load('provider'));
+    }
+
+    private function ensureProviderOwns(PaymentMethod $paymentMethod): void
+    {
+        abort_unless($paymentMethod->provider_id === auth()->user()?->currentProvider()?->id, 404);
     }
 
     public function update(Request $request, PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->ensureProviderOwns($paymentMethod);
+
         $validated = $request->validate([
             'display_name'           => 'sometimes|string|max:100',
             'account_name'           => 'nullable|string|max:100',
@@ -167,8 +176,9 @@ class PaymentMethodController extends Controller
             }
         }
 
-        // Use direct database update to avoid decryption errors on existing corrupted encrypted data
-        PaymentMethod::where('id', $paymentMethod->id)->update($updateData);
+        // Use the model (not the query builder) so the encrypted casts are
+        // applied. A query-builder update would persist raw provider secrets.
+        $paymentMethod->fill($updateData)->save();
 
         // Reload the model to get fresh data
         $paymentMethod->refresh();
@@ -178,6 +188,8 @@ class PaymentMethodController extends Controller
 
     public function destroy(PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->ensureProviderOwns($paymentMethod);
+
         $paymentMethod->update(['is_active' => false]); // Soft-disable, don't delete (preserve history)
         return response()->json(['message' => 'Payment method deactivated.']);
     }
@@ -188,6 +200,8 @@ class PaymentMethodController extends Controller
      */
     public function verifyCredentials(Request $request, PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->ensureProviderOwns($paymentMethod);
+
         $validated = $request->validate([
             'merchant_id'          => 'required|string|max:100',
             'api_key'              => 'required|string',
