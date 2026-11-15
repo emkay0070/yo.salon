@@ -292,8 +292,7 @@ class PayoutServiceTest extends TestCase
     }
 
     public function test_it_moves_settlement_to_paid_only_when_remaining_is_zero()
-    {
-        // Full payout case
+    {        // Full payout case
         $fullSettlement = $this->createSettlementFor(40000);
         $this->service->initiatePayout(
             settlement: $fullSettlement,
@@ -319,5 +318,23 @@ class PayoutServiceTest extends TestCase
         $partSettlement->refresh();
         $this->assertEquals(Settlement::STATUS_PARTIALLY_PAID, $partSettlement->status,
             'Partial payout should flip settlement to partially_paid, not paid.');
+    }
+
+    public function test_it_rejects_payout_for_cancelled_settlement()
+    {
+        $settlement = $this->createSettlementFor(10000);
+        $settlement->update(['status' => Settlement::STATUS_CANCELLED]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('cancelled settlement');
+
+        $this->service->initiatePayout(
+            settlement: $settlement,
+            amount: 10000,
+            method: 'cash',
+            recipientType: $settlement->recipient_type,
+            recipientId: $settlement->recipient_id,
+            executionMode: 'manual'
+        );
     }
 }

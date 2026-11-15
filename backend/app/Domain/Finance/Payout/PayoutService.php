@@ -57,6 +57,13 @@ class PayoutService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            // A cancelled obligation is no longer payable. Without this guard a
+            // cancelled settlement with no payouts still has its full remaining
+            // amount, so a payout could be initiated against it.
+            if ($lockedSettlement->status === Settlement::STATUS_CANCELLED) {
+                throw new RuntimeException('Cannot initiate a payout for a cancelled settlement.');
+            }
+
             $pendingAndCompleted = (clone $lockedSettlement->payouts())
                 ->whereIn('status', [
                     Payout::STATUS_PENDING,
