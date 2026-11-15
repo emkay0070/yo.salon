@@ -146,4 +146,67 @@ class PeriodClosingServiceTest extends TestCase
         $this->assertEquals($period->id, $earning->source_id);
         $this->assertEquals(Earning::STATUS_PAYABLE, $earning->status);
     }
+
+    public function test_zero_value_period_is_voided_without_a_settlement()
+    {
+        $period = CompensationPeriod::create([
+            'compensatable_type' => Specialist::class,
+            'compensatable_id' => $this->specialist->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
+            'compensation_policy_id' => $this->policy->id,
+            'period_start' => now()->subMonth()->startOfMonth(),
+            'period_end' => now()->subMonth()->endOfMonth(),
+            'status' => CompensationPeriod::STATUS_OPEN,
+            'gross_amount' => 0,
+            'payable_amount' => 0,
+        ]);
+
+        $this->service->closePeriod($period);
+
+        $period->refresh();
+        $this->assertEquals(CompensationPeriod::STATUS_VOIDED, $period->status);
+        $this->assertNull($period->settlement_id);
+        $this->assertDatabaseCount('settlements', 0);
+    }
+
+    public function test_negative_payable_is_rejected_instead_of_creating_a_negative_settlement()
+    {
+        $period = CompensationPeriod::create([
+            'compensatable_type' => Specialist::class,
+            'compensatable_id' => $this->specialist->id,
+            'provider_type' => Provider::class,
+            'provider_id' => $this->provider->id,
+            'compensation_policy_id' => $this->policy->id,
+            'period_start' => now()->subMonth()->startOfMonth(),
+            'period_end' => now()->subMonth()->endOfMonth(),
+            'status' => CompensationPeriod::STATUS_OPEN,
+            'gross_amount' => 1000,
+            'adjustments_total' => -1500,
+            'payable_amount' => -500,
+        ]);
+
+        Earning::create([
+            'compensatable_type' => Specialist::class,
+            'compensatable_id' => $this->specialist->id,
+            'source_type' => 'App\Models\Booking',
+            'source_id' => (string) Str::uuid(),
+            'compensation_policy_id' => $this->policy->id,
+            'compensation_period_id' => $period->id,
+            'gross_amount' => 1000,
+            'status' => Earning::STATUS_INCLUDED,
+        ]);
+
+        try {
+            $this->service->closePeriod($period);
+            $this->fail('Closing a negative payable must not create a settlement.');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('payable amount is -500', $e->getMessage());
+        }
+
+        $period->refresh();
+        $this->assertEquals(CompensationPeriod::STATUS_OPEN, $period->status);
+        $this->assertNull($period->settlement_id);
+        $this->assertDatabaseCount('settlements', 0);
+    }
 }

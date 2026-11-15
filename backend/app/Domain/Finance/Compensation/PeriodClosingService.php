@@ -53,23 +53,41 @@ class PeriodClosingService
     public function closePeriod(CompensationPeriod $period, ?int $closedByUserId = null): void
     {
         DB::transaction(function () use ($period, $closedByUserId) {
+            // Lock the period row so two concurrent closes cannot both observe
+            // `open` and create duplicate settlements (and duplicate payables).
+            $period = CompensationPeriod::whereKey($period->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             if ($period->status !== CompensationPeriod::STATUS_OPEN) {
                 throw new \LogicException("Cannot close period: status is '{$period->status}'.");
             }
 
             // 1. Generate base salary earnings if applicable
             $this->generateSalaryEarnings($period);
+            $period->recalculate();
 
-            // 2. Lock the period
-            $period->beginClosing();
+            // 2. If nothing is owed, void the period while it is still open.
+            //    (void() only accepts an open period.) Never create a zero or
+            //    negative settlement: it can never be paid and corrupts payables.
+            $payable = (float) $period->payable_amount;
 
-            // If nothing is owed, we can just void the period
-            if ($period->payable_amount <= 0 && $period->activeEarnings()->count() === 0) {
-                $period->void();
-                return;
+            if ($payable <= 0) {
+                if ($period->activeEarnings()->count() === 0) {
+                    $period->void();
+                    return;
+                }
+
+                throw new \LogicException(
+                    "Cannot close period: payable amount is {$payable} despite active earnings. "
+                    . 'Resolve the adjustments before closing.'
+                );
             }
 
-            // 3. Create the Settlement obligation
+            // 3. Lock the period
+            $period->beginClosing();
+
+            // 4. Create the Settlement obligation
             $settlement = Settlement::create([
                 'provider_id'     => $period->provider_id,
                 'payable_type'    => $period->provider_type,
@@ -89,10 +107,10 @@ class PeriodClosingService
                 ],
             ]);
 
-            // 4. Finalize period state
+            // 5. Finalize period state
             $period->markAsClosed($settlement->id, $closedByUserId);
 
-            // 5. Mark all active earnings as payable
+            // 6. Mark all active earnings as payable
             $period->activeEarnings()->update([
                 'status'        => Earning::STATUS_PAYABLE,
                 'settlement_id' => $settlement->id,
