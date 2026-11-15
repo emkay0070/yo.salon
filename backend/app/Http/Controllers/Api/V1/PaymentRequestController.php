@@ -10,6 +10,7 @@ use App\Services\Payments\PaymentManager;
 use App\Services\Payments\PaymentRoutingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -25,6 +26,21 @@ class PaymentRequestController extends Controller
         $this->paymentManager = $paymentManager;
         $this->paymentRoutingService = $paymentRoutingService;
     }
+
+    private function providerId(): ?string
+    {
+        return auth()->user()?->currentProvider()?->id;
+    }
+
+    /**
+     * Payment requests are tenant-owned. Route model binding alone would let
+     * any authenticated provider read or mutate another provider's request.
+     */
+    private function ensureProviderOwns(PaymentRequest $paymentRequest): void
+    {
+        abort_unless($paymentRequest->provider_id === $this->providerId(), 404);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $providerId = auth()->user()->currentProvider()?->id;
@@ -75,7 +91,7 @@ class PaymentRequestController extends Controller
         }
 
         // IDEMPOTENCY CHECK: Check for existing pending payment request for same booking
-        if ($validated['booking_id']) {
+        if (!empty($validated['booking_id'])) {
             $existingRequest = PaymentRequest::where('booking_id', $validated['booking_id'])
                 ->where('status', 'pending')
                 ->where('expires_at', '>', now())
@@ -104,15 +120,44 @@ class PaymentRequestController extends Controller
             $paymentMethodId = $pm->id;
         }
 
-        // Get payment method to determine provider
-        $paymentMethod = $paymentMethodId ? \App\Models\PaymentMethod::find($paymentMethodId) : null;
+        // Get payment method to determine provider. A provider may only use its
+        // own payment methods (and therefore its own credentials).
+        $paymentMethod = $paymentMethodId
+            ? \App\Models\PaymentMethod::where('id', $paymentMethodId)
+                ->where('provider_id', $providerId)
+                ->first()
+            : null;
+
+        if ($paymentMethodId && !$paymentMethod) {
+            return response()->json(['message' => 'Payment method not found'], 404);
+        }
+
         $providerName = $paymentMethod?->provider ?? 'mtn_momo'; // Default to MTN
+        if ($providerName === 'mtn') {
+            $providerName = 'mtn_momo';
+        }
+
+        // A provider may only attach its own customers to a payment request.
+        if (!empty($validated['customer_id'])) {
+            $ownsCustomer = \App\Models\Provider::whereKey($providerId)
+                ->whereHas('customers', fn ($q) => $q->whereKey($validated['customer_id']))
+                ->exists();
+
+            if (!$ownsCustomer) {
+                return response()->json(['message' => 'Customer not found'], 404);
+            }
+        }
 
         // VALIDATE AMOUNT: Backend should calculate amount, not trust frontend
         $calculatedAmount = $validated['amount'];
-        if ($validated['booking_id']) {
+        if (!empty($validated['booking_id'])) {
             $booking = Booking::with(['services', 'location'])->find($validated['booking_id']);
             if ($booking) {
+                // A provider may only create payment requests for its own bookings.
+                if ($booking->provider_id !== $providerId) {
+                    return response()->json(['message' => 'Booking not found'], 404);
+                }
+
                 // Derive provider from location since Booking no longer has salon relationship
                 $providerModel = $booking->location ? \App\Models\Provider::where('id', $booking->provider_id)->first() : null;
                 $serviceTotal = 0;
@@ -214,6 +259,8 @@ class PaymentRequestController extends Controller
 
     public function show(PaymentRequest $paymentRequest): JsonResponse
     {
+        $this->ensureProviderOwns($paymentRequest);
+
         return response()->json($paymentRequest->load(['booking', 'customer', 'paymentMethod']));
     }
 
@@ -223,6 +270,8 @@ class PaymentRequestController extends Controller
      */
     public function checkStatus(PaymentRequest $paymentRequest): JsonResponse
     {
+        $this->ensureProviderOwns($paymentRequest);
+
         // Only return current status from database
         // Webhook is the source of truth for payment status
         return response()->json([
@@ -231,58 +280,34 @@ class PaymentRequestController extends Controller
     }
 
     /**
-     * Handle provider webhook callbacks — customer approved or declined.
-     * In production, this would be called by the payment provider's webhook.
+     * Update non-settlement lifecycle state only.
+     *
+     * A payment becomes "paid" exclusively through provider verification or the
+     * manual-payment path. Allowing an authenticated tenant to set `paid` here
+     * would mint a completed transaction without any money being collected.
      */
     public function updateStatus(Request $request, PaymentRequest $paymentRequest): JsonResponse
     {
+        $this->ensureProviderOwns($paymentRequest);
+
         $validated = $request->validate([
-            'status'             => 'required|in:approved,expired,cancelled,paid',
+            'status'             => 'required|in:failed,cancelled,expired',
             'provider_reference' => 'nullable|string',
         ]);
+
+        if (in_array($paymentRequest->status, ['paid', 'successful'], true)) {
+            return response()->json(['message' => 'Settled payment requests cannot be updated.'], 422);
+        }
 
         $paymentRequest->update([
             'status'             => $validated['status'],
             'provider_reference' => $validated['provider_reference'] ?? $paymentRequest->provider_reference,
-            'completed_at'       => in_array($validated['status'], ['paid', 'cancelled', 'expired']) ? now() : null,
+            'completed_at'       => now(),
         ]);
 
-        // If paid, create a completed transaction and mark booking as paid
-        if ($validated['status'] === 'paid') {
-            $paymentMethod = \App\Models\PaymentMethod::find($paymentRequest->payment_method_id);
-            $fees = $this->feeEngine->calculateFees((float) $paymentRequest->amount, $paymentMethod);
-            
-            // Determine payment account
-            $paymentAccount = $paymentMethod ? $this->paymentRoutingService->determinePaymentAccount($paymentMethod) : null;
-
-            $transaction = \App\Models\Transaction::create([
-                'provider_id'        => $paymentRequest->provider_id,
-                'booking_id'         => $paymentRequest->booking_id,
-                'customer_id'        => $paymentRequest->customer_id,
-                'payment_method_id'  => $paymentRequest->payment_method_id,
-                'payment_account_id' => $paymentAccount?->id,
-                'type'               => 'payment',
-                'status'             => 'completed',
-                'gross_amount'       => $fees['gross_amount'],
-                'gateway_fee'        => $fees['gateway_fee'],
-                'platform_fee'       => $fees['platform_fee'],
-                'tax_amount'         => $fees['tax_amount'],
-                'net_amount'         => $fees['net_amount'],
-                'currency'           => 'UGX',
-                'internal_reference' => 'TXN-' . strtoupper(Str::random(10)),
-                'provider_reference' => $validated['provider_reference'] ?? null,
-                'paid_at'            => now(),
-            ]);
-
-            if ($paymentRequest->booking_id) {
-                Booking::where('id', $paymentRequest->booking_id)
-                    ->update(['payment_status' => 'paid']);
-            }
-
-            return response()->json([
-                'payment_request' => $paymentRequest->fresh(),
-                'transaction'     => $transaction,
-            ]);
+        if ($paymentRequest->booking_id && $validated['status'] === 'cancelled') {
+            Booking::where('id', $paymentRequest->booking_id)
+                ->update(['payment_status' => 'unpaid']);
         }
 
         return response()->json($paymentRequest->fresh());
@@ -293,6 +318,8 @@ class PaymentRequestController extends Controller
      */
     public function cancel(PaymentRequest $paymentRequest): JsonResponse
     {
+        $this->ensureProviderOwns($paymentRequest);
+
         if (!in_array($paymentRequest->status, ['pending', 'sent'])) {
             return response()->json(['message' => 'Only pending or sent requests can be cancelled.'], 422);
         }
