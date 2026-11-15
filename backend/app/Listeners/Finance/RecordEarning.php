@@ -76,6 +76,12 @@ class RecordEarning
     {
         $settlement = Settlement::create([
             'provider_id'      => $policy->provider_id,
+            'payable_type'     => $policy->provider_type,
+            'payable_id'       => $policy->provider_id,
+            'recipient_type'   => $earning->compensatable_type,
+            'recipient_id'     => $earning->compensatable_id,
+            'reference_type'   => Earning::class,
+            'reference_id'     => $earning->id,
             'amount'          => $earning->gross_amount,
             'currency'        => $earning->currency,
             'status'          => Settlement::STATUS_PENDING,

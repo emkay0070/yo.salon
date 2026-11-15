@@ -79,6 +79,15 @@ class RecordEarningListenerTest extends TestCase
         $this->assertNotNull($settlement);
         $this->assertEquals(12000.0, $settlement->amount);
         $this->assertEquals($earning->settlement_id, $settlement->id);
+
+        // The settlement must be payable: the provider owes it to the earning
+        // entity, and the source document is retained for reconciliation.
+        $this->assertEquals(Provider::class, $settlement->payable_type);
+        $this->assertEquals($this->provider->id, $settlement->payable_id);
+        $this->assertEquals(Specialist::class, $settlement->recipient_type);
+        $this->assertEquals($this->specialist->id, $settlement->recipient_id);
+        $this->assertEquals(Earning::class, $settlement->reference_type);
+        $this->assertEquals($earning->id, $settlement->reference_id);
     }
 
     public function test_period_policy_adds_to_open_period()

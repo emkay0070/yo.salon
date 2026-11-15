@@ -16,7 +16,7 @@ class SettlementController extends Controller
         }
 
         $query = \App\Domain\Finance\Settlement\Settlement::where('provider_id', $provider->id)
-            ->with(['recipient', 'period', 'payouts']);
+            ->with(['recipient', 'payable', 'payouts']);
 
         if ($request->has('status')) {
             $query->where('status', $request->query('status'));
@@ -37,7 +37,7 @@ class SettlementController extends Controller
         }
 
         $settlement = \App\Domain\Finance\Settlement\Settlement::where('provider_id', $provider->id)
-            ->with(['recipient', 'period', 'earnings', 'payouts'])
+            ->with(['recipient', 'payable', 'earnings', 'payouts'])
             ->findOrFail($id);
 
         return response()->json($settlement);

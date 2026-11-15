@@ -43,6 +43,8 @@ class Settlement extends Model
         'currency',
         'status',
         'reference',
+        'reference_type',
+        'reference_id',
         'scheduled_for',
         'completed_at',
         'notes',
@@ -78,6 +80,22 @@ class Settlement extends Model
     public function recipient()
     {
         return $this->morphTo();
+    }
+
+    /**
+     * The entity that caused this settlement (CompensationPeriod, Earning, ...)
+     */
+    public function reference()
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * Earnings included in this settlement (period-based compensation).
+     */
+    public function earnings(): HasMany
+    {
+        return $this->hasMany(\App\Domain\Finance\Compensation\Earning::class, 'settlement_id');
     }
 
     /**
