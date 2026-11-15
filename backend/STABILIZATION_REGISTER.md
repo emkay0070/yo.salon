@@ -6,7 +6,7 @@ after the behavior is reproduced or verified in code and covered by a test.
 
 - Last updated: 2026-11-15
 - Branch: `main`
-- HEAD at last full-suite run: `518e452`
+- HEAD at last full-suite run: `e138adb`
 - Test database: `yo_salon_test` only. Production `yo_salon` is never touched.
 
 ## Suite progression
@@ -15,7 +15,8 @@ after the behavior is reproduced or verified in code and covered by a test.
 |---|---:|---:|---:|---:|---:|
 | `d61a70e` (stabilization baseline) | 764 | 702 | 1 | 50 failures / 11 errors | 1 |
 | `0632920` (capabilities clean) | 774 | 773 | 1 | 0 | 0 |
-| `518e452` (payments clean, current) | 783 | 782 | 1 | 0 | 0 |
+| `518e452` (payments clean) | 783 | 782 | 1 | 0 | 0 |
+| `e138adb` (settlement/payout/ledger clean, current) | 794 | 793 | 1 | 0 | 0 |
 
 The single skip is an intentionally skipped test, not a dormant/undiscovered
 test. PHPUnit is 12.5.33; `/** @test */` metadata is not honored, so new tests
@@ -122,22 +123,23 @@ isolated (see Open Items).
 Flutterwave webhook routing was reported as broken in the audit but was not
 confirmed: booking and platform payments carry distinct `metadata.type` values.
 
-## Read-only audit still to verify: settlements, payouts and ledger
+## Settlements, payouts and ledger (verified)
 
-The second deep audit produced these findings. They are **not yet confirmed in
-code** and no settlement/payout code has been changed yet.
+The second deep audit findings were reproduced in code and fixed. No production
+deployment was involved; every fix is covered by regression tests and the full
+suite remains clean.
 
-| ID | Reported finding | Status |
-|---|---|---|
-| P-01 | `ExecutePayoutJob` calls `PayoutService` with missing arguments (`ArgumentCountError`). | To verify |
-| P-02 | Disbursement webhook can be forged. | To verify |
-| P-03 | Payout/settlement code references nonexistent relations or columns. | To verify |
-| P-04 | Negative settlements are accepted. | To verify |
-| P-05 | Duplicate period close is possible. | To verify |
-| P-06 | Cancelled settlements remain payable. | To verify |
-| P-07 | Journal posting is non-atomic with settlement/payout state changes. | To verify |
+| ID | Finding | Verdict | Resolution | Commit |
+|---|---|---|---|---|
+| P-01 | `ExecutePayoutJob` passed `'automated'` as the fourth positional argument into `PayoutService::initiatePayout()`, which expects six named arguments; `recipientType`/`recipientId` were never sent. | Confirmed | Both call sites (`ExecutePayoutJob`, `CompensationPayoutController`) now pass `recipientType`/`recipientId` explicitly from the settlement. Regression: `ManualPayoutTest` and `ScheduledPayoutsTest` assert the payout's recipient and execution mode. | `29691a2` |
+| P-02 | MTN disbursement callbacks are unsigned; the webhook handler treated the callback payload as proof of completion, so a forged callback could complete a payout that never ran. | Confirmed | The handler re-queries MTN via the provider's configured credentials; only a provider-confirmed `completed`/`failed` mutates the payout. Unverifiable callbacks leave the payout untouched. Regression: forged/pending/failed verification tests in `DisbursementExecutionTest`. | `1957027` |
+| P-03 | `SettlementController` eager-loaded nonexistent `period`/`earnings` relations, returning 500; `Settlement` was missing `payable`/`reference`/`earnings` relations. | Confirmed | Added `reference()` morphTo and `earnings()` HasMany relations, retained `reference_type`/`reference_id` fillable, and updated the controller to load `payable`, `earnings` and `payouts`. Regression: `SettlementApiTest`. | `ef6e0cb` |
+| P-04 | Negative payables could be closed into settlements that can never be paid. | Confirmed | Period closing now rejects negative payables with a `LogicException` and keeps the period open. Regression: `test_negative_payable_is_rejected...`. | `b4c3c34` |
+| P-05 | Concurrent period closes could both observe `open` and create duplicate settlements/payables. | Confirmed | Close now locks the period row with `lockForUpdate()` before checking status and creating the settlement. Regression: covered by period close tests. | `b4c3c34` |
+| P-06 | A cancelled settlement with no payouts still had its full remaining amount, so a payout could be initiated against a cancelled obligation. | Confirmed | `PayoutService::initiatePayout()` guards the locked settlement status and throws for cancelled settlements. Regression: `test_it_rejects_payout_for_cancelled_settlement`. | `c575e97` |
+| P-07 | `FinancialTransaction::createWithJournals()` and `JournalEntry::createWithEntries()` wrote wrapper/journals/ledger movements without a transaction, so a later failure could leave a half-posted financial transaction; the posted event fired before commit. | Confirmed | Both creation paths now run inside `DB::transaction()`, roll back entirely on failure, and dispatch `FinancialTransactionPosted` only after commit. Regression: `test_financial_transaction_rolls_back_all_journals_when_one_fails` and ledger-entry rollback test. | `e138adb` |
 
-Each will be reproduced or dismissed before a fix is written.
+Immediate settlements are now complete: payable/recipient/reference are populated when an immediate earning creates a settlement (`RecordEarning`), and `SettlementController` exposes the real relations. Zero-value periods are voided while still open without creating a settlement. Carry-forward/write-off policy for closed-negative periods remains isolated (see Open Items).
 
 ## Open items requiring a business/architecture decision
 
@@ -149,8 +151,7 @@ Each will be reproduced or dismissed before a fix is written.
 2. **Partial-refund fee policy.** Refunds are capped at captured net amount and
    accumulate correctly. Whether gateway/platform fees should be returned in
    part or in full is a product policy decision.
-3. **Zero/negative payables.** Whether a payable may be zero or negative (and
-   how it is displayed) needs a finance policy decision.
+3. **Zero/negative payables.** Code now rejects negative payables at period close and voids zero-value periods without creating settlements. Whether a zero/negative payable may still be *displayed* to users (and how) is a product display-policy decision.
 4. **Multi-session start.** See F-16.
 5. **`staff_id` population in newer assignment flows.** See F-08.
 6. **Refund initiation vs. provider confirmation.** MTN refunds are
@@ -168,5 +169,5 @@ Each will be reproduced or dismissed before a fix is written.
 | Capabilities | provider/specialist capability resolvers, add-on purchase, invoice service | Cache invalidation, schema, subscription precedence |
 | Payments | `PaymentRequestController`, `PaymentMethodController`, `BookingPaymentController`, `WebhookController`, `BookingPaymentService`, `MTN/Flutterwave/Airtel` providers | Full read-only audit; verified defects fixed |
 | Routes | `routes/api.php` and every controller action target | 425 routes, 0 broken targets |
-| Settlements/payouts/ledger | `PayoutService`, `ExecutePayoutJob`, settlement/ledger services | Read-only audit done; code verification in progress |
+| Settlements/payouts/ledger | `PayoutService`, `ExecutePayoutJob`, settlement/ledger services | Verified: fixed payout initiation args, cancelled-settlement guard, period close locks, MTN disbursement re-verification, atomic journal posting, settlement relations; regression tests added |
 | Platform admin | `Admin\PlatformPaymentController`, `ScheduleMigrationController` | Blocked on missing platform-admin concept |
