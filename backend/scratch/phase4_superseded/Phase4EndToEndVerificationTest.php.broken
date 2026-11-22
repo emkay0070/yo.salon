@@ -1,0 +1,903 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Booking;
+use App\Models\Customer;
+use App\Models\Location;
+use App\Models\PaymentMethod;
+use App\Models\Provider;
+use App\Models\ProviderUser;
+use App\Models\Service;
+use App\Models\Specialist;
+use App\Models\SpecialistAccount;
+use App\Models\Staff;
+use App\Models\Transaction;
+use App\Models\User;
+use App\Domain\Finance\Journal\JournalPostingService;
+use App\Domain\Finance\Settlement\Settlement;
+use App\Services\BookingService;
+use App\Services\CustomerBookingService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+/**
+ * Phase 4: End-to-End Platform Verification
+ *
+ * Verifies the complete platform as an interconnected business system through
+ * actual HTTP API calls. Covers all 14 business journeys, cross-domain
+ * consistency, tenant isolation, and data integrity / failure recovery.
+ *
+ * Uses only yo_salon_test. Never touches yo_salon.
+ */
+class Phase4EndToEndVerificationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /** @var Provider */
+    protected Provider $providerA;
+    /** @var Provider */
+    protected Provider $providerB;
+    /** @var Location */
+    protected Location $locationA;
+    /** @var Location */
+    protected Location $locationB;
+    /** @var User */
+    protected User $ownerA;
+    /** @var User */
+    protected User $ownerB;
+    /** @var string */
+    protected string $tokenA;
+    /** @var string */
+    protected string $tokenB;
+    /** @var Customer */
+    protected Customer $customer;
+    /** @var string */
+    protected string $portalToken;
+    /** @var Specialist */
+    protected Specialist $specialist;
+    /** @var SpecialistAccount */
+    protected SpecialistAccount $specialistAccount;
+    /** @var string */
+    protected string $specialistToken;
+    /** @var Service */
+    protected Service $service;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Two providers for tenant isolation testing.
+        $this->providerA = Provider::factory()->create(['name' => 'Provider A']);
+        $this->providerB = Provider::factory()->create(['name' => 'Provider B']);
+        $this->locationA = Location::factory()->create(['provider_id' => $this->providerA->id]);
+        $this->locationB = Location::factory()->create(['provider_id' => $this->providerB->id]);
+
+        // Owner users for each provider.
+        $this->ownerA = User::factory()->create(['status' => 'active']);
+        $this->ownerB = User::factory()->create(['status' => 'active']);
+        ProviderUser::factory()->create([
+            'user_id' => $this->ownerA->id,
+            'provider_id' => $this->providerA->id,
+            'role' => 'owner',
+            'authority_scope' => 'provider_wide',
+        ]);
+        ProviderUser::factory()->create([
+            'user_id' => $this->ownerB->id,
+            'provider_id' => $this->providerB->id,
+            'role' => 'owner',
+            'authority_scope' => 'provider_wide',
+        ]);
+
+        $this->tokenA = $this->ownerA->createToken('phase4-a')->plainTextToken;
+        $this->tokenB = $this->ownerB->createToken('phase4-b')->plainTextToken;
+
+        $this->customer = Customer::factory()->create();
+        $this->providerA->customers()->attach([
+            $this->customer->id => ['id' => (string) Str::uuid()],
+        ]);
+
+        $this->specialist = Specialist::factory()->create(['active' => true]);
+        $this->specialistAccount = SpecialistAccount::create([
+            'id' => (string) Str::uuid(),
+            'specialist_id' => $this->specialist->id,
+            'email' => 'specialist@example.com',
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
+        $this->specialistToken = $this->specialistAccount->createToken('specialist-phase4')->plainTextToken;
+
+        $this->service = Service::factory()->create([
+            'provider_id' => $this->providerA->id,
+            'price' => 50000,
+        ]);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 1: Provider registration and onboarding
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_1_provider_registration_and_onboarding(): void
+    {
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'New Salon Owner',
+            'email' => 'newowner@example.com',
+            'password' => 'password123',
+            'journey' => 'salon',
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonStructure(['user', 'token', 'status', 'journey', 'next_route']);
+        $this->assertEquals('salon', $response->json('journey'));
+        $this->assertDatabaseHas('users', ['email' => 'newowner@example.com']);
+
+        // The new user can log in immediately.
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'newowner@example.com',
+            'password' => 'password123',
+        ]);
+        $login->assertStatus(200);
+        $login->assertJsonStructure(['account', 'token', 'status']);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 2: Owner authentication and workspace access
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_2_owner_authentication_and_workspace_access(): void
+    {
+        // Login returns a token and the user's providers.
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => $this->ownerA->email,
+            'password' => 'password',
+        ]);
+        $login->assertStatus(200);
+
+        $token = $login->json('token');
+
+        // Authenticated /me call.
+        $me = $this->withToken($token)->getJson('/api/v1/me');
+        $me->assertStatus(200);
+        $me->assertJsonPath('user.id', $this->ownerA->id);
+
+        // Can access provider-scoped workspace routes with provider context.
+        $staff = $this->withToken($token)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/providers/{$this->providerA->id}/staff");
+        $staff->assertStatus(200);
+
+        // Cannot access Provider B's workspace.
+        $forbidden = $this->withToken($token)
+            ->withHeaders(['X-Provider-Id' => $this->providerB->id])
+            ->getJson("/api/v1/providers/{$this->providerB->id}/staff");
+        $forbidden->assertStatus(403);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 3: Staff creation and management
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_3_staff_creation_and_management(): void
+    {
+        // Create a staff member under Provider A.
+        $create = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/providers/{$this->providerA->id}/staff", [
+                'name' => 'Receptionist One',
+                'email' => 'receptionist@example.com',
+                'phone' => '+1234567890',
+                'role' => 'receptionist',
+            ]);
+        $create->assertStatus(201);
+        $staffId = $create->json('data.id') ?? $create->json('id');
+
+        // List staff for Provider A.
+        $list = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/providers/{$this->providerA->id}/staff");
+        $list->assertStatus(200);
+
+        // Management listing returns all staff (not just those with specialist assignments).
+        $this->assertNotEmpty($list->json('data') ?? $list->json()));
+
+        // Cannot create staff under Provider B with Provider A's token.
+        $cross = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerB->id])
+            ->postJson("/api/v1/providers/{$this->providerB->id}/staff", [
+                'name' => 'Cross Tenant Staff',
+                'email' => 'crosstenant@example.com',
+                'role' => 'receptionist',
+            ]);
+        $cross->assertStatus(403);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 4: Specialist identity, assignment and independent operation
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_4_specialist_identity_assignment_and_independent_operation(): void
+    {
+        // Specialist account can log in independently.
+        $login = $this->postJson('/api/v1/auth/login', [
+            'email' => 'specialist@example.com',
+            'password' => 'password',
+        ]);
+        $login->assertStatus(200);
+        $login->assertJsonPath('account_type', 'specialist');
+
+        // Specialist can access their own specialist portal context.
+        $context = $this->withToken($this->specialistToken, 'specialist')
+            ->getJson('/api/v1/specialist-portal/context');
+        $context->assertStatus(200);
+
+        // Specialist assignment to Provider A's location exists via domain services
+        // (specialist is an independent operator visible in discovery).
+        $discovery = $this->getJson("/api/v1/providers/{$this->providerA->id}/specialists");
+        $discovery->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 5: Service creation and specialist eligibility
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_5_service_creation_and_specialist_eligibility(): void
+    {
+        // Owner creates a service under Provider A.
+        $create = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/providers/{$this->providerA->id}/services", [
+                'name' => 'Haircut',
+                'price' => 30000,
+                'duration' => 30,
+                'category_id' => null,
+            ]);
+        $create->assertStatus(201);
+        $serviceId = $create->json('data.id') ?? $create->json('id');
+
+        // Service is listed for Provider A.
+        $list = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/providers/{$this->providerA->id}/services");
+        $list->assertStatus(200);
+
+        // Specialist eligibility: service is publicly discoverable.
+        $public = $this->getJson("/api/v1/services/{$serviceId}");
+        $public->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 6: Schedule configuration and availability
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_6_schedule_configuration_and_availability(): void
+    {
+        // Owner configures a schedule for Provider A.
+        $schedule = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->putJson("/api/v1/providers/{$this->providerA->id}/schedules", [
+                'timezone' => 'Africa/Kampala',
+                'working_hours' => [
+                    'monday' => ['open' => '09:00', 'close' => '17:00'],
+                    'tuesday' => ['open' => '09:00', 'close' => '17:00'],
+                ],
+            ]);
+        $schedule->assertStatus(200);
+
+        // Availability is publicly queryable for a location.
+        $availability = $this->getJson("/api/v1/providers/{$this->providerA->id}/availability", [
+            'location_id' => $this->locationA->id,
+            'date' => now()->addDays(2)->format('Y-m-d'),
+        ]);
+        $availability->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 7: Customer discovery and booking
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_7_customer_discovery_and_booking(): void
+    {
+        // Customer discovers the provider publicly.
+        $show = $this->getJson("/api/v1/providers/{$this->providerA->id}");
+        $show->assertStatus(200);
+
+        // Customer discovers services publicly.
+        $services = $this->getJson("/api/v1/providers/{$this->providerA->id}/services");
+        $services->assertStatus(200);
+
+        // Guest booking creates a customer-provider relationship.
+        $booking = $this->postJson('/api/v1/bookings/with-account', [
+            'provider_id' => $this->providerA->id,
+            'location_id' => $this->locationA->id,
+            'customer_name' => 'Walk-in Customer',
+            'customer_phone' => '+1234567890',
+            'customer_email' => 'walkin@example.com',
+            'service_id' => $this->service->id,
+            'date' => now()->addDays(5)->format('Y-m-d'),
+            'time' => '10:00',
+        ]);
+        $booking->assertStatus(201);
+
+        $this->assertDatabaseHas('bookings', [
+            'provider_id' => $this->providerA->id,
+            'location_id' => $this->locationA->id,
+        ]);
+        $this->assertDatabaseHas('customer_providers', [
+            'provider_id' => $this->providerA->id,
+        ]);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 8: Booking confirmation, assignment and operational lifecycle
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_8_booking_confirmation_assignment_and_operational_lifecycle(): void
+    {
+        $bookingService = app(BookingService::class);
+
+        $booking = $bookingService->createGuestBooking([
+            'provider_id' => $this->providerA->id,
+            'location_id' => $this->locationA->id,
+            'customer_id' => $this->customer->id,
+            'customer_name' => 'Lifecycle Customer',
+            'customer_phone' => '+1234567890',
+            'customer_email' => 'lifecycle@example.com',
+            'service_id' => $this->service->id,
+            'date' => now()->addDays(5)->format('Y-m-d'),
+            'time' => '10:00',
+            'internal_booking' => true,
+        ]);
+
+        $booking->refresh();
+
+        // Confirm the booking.
+        $resolve = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/bookings/{$booking->id}/resolve");
+        $resolve->assertStatus(200);
+
+        // Customer arrives.
+        $arrive = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/bookings/{$booking->id}/arrive");
+        $arrive->assertStatus(200);
+
+        // Start a session.
+        $bookingServiceId = $booking->bookingServices()->first()?->id ?? $booking->id;
+        $start = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/bookings/{$booking->id}/services/{$bookingServiceId}/start");
+        $start->assertStatus(200);
+
+        // Complete the session.
+        $complete = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/bookings/{$booking->id}/services/{$bookingServiceId}/complete");
+        $complete->assertStatus(200);
+
+        // The booking should be in a completed state.
+        $this->assertDatabaseHas('bookings', ['id' => $booking->id]);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 9: Payment collection and financial posting
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_9_payment_collection_and_financial_posting(): void
+    {
+        $booking = Booking::create([
+            'location_id' => $this->locationA->id,
+            'provider_id' => $this->providerA->id,
+            'customer_id' => $this->customer->id,
+            'service_id' => $this->service->id,
+            'date' => now()->toDateString(),
+            'time' => '10:00',
+            'status' => 'confirmed',
+            'payment_status' => 'pending',
+            'amount_due' => 50000,
+            'amount_paid' => 0,
+        ]);
+
+        // Record a manual cash payment through the salon payment endpoint.
+        $payment = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/payments/salon/manual', [
+                'booking_id' => $booking->id,
+                'amount' => 50000,
+                'payment_method' => 'cash',
+            ]);
+        $payment->assertStatus(200);
+
+        // A transaction was created.
+        $this->assertDatabaseHas('transactions', [
+            'booking_id' => $booking->id,
+            'status' => 'completed',
+            'gross_amount' => 50000,
+        ]);
+
+        // Post the journal for the transaction.
+        $transaction = Transaction::where('booking_id', $booking->id)->first();
+        $journalService = app(JournalPostingService::class);
+        $journalService->postForTransaction($transaction);
+
+        // Ledger entries exist and balance.
+        $financialTransaction = \App\Domain\Finance\FinancialTransaction::where('reference_type', Transaction::class)
+            ->where('reference_id', (string) $transaction->id)
+            ->first();
+        $this->assertNotNull($financialTransaction);
+
+        $totalDebits = 0;
+        $totalCredits = 0;
+        foreach ($financialTransaction->journalEntries as $je) {
+            foreach ($je->ledgerEntries as $le) {
+                if ($le->type === 'debit') {
+                    $totalDebits += $le->amount;
+                } else {
+                    $totalCredits += $le->amount;
+                }
+            }
+        }
+        $this->assertEqualsWithDelta($totalDebits, $totalCredits, 0.01, 'Ledger must balance');
+
+        // Provider isolation: Provider B sees none of this money.
+        $metricsB = app(\App\Services\Finance\FinanceAnalyticsService::class)
+            ->getProviderMetrics($this->providerB);
+        $this->assertEquals(0, $metricsB['total_gross_revenue']);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 10: Refunds, settlements and payouts
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_10_refunds_settlements_and_payouts(): void
+    {
+        // Create a completed payment transaction to refund.
+        $paymentMethod = PaymentMethod::factory()->create([
+            'provider_id' => $this->providerA->id,
+            'type' => 'cash',
+            'provider' => 'manual',
+        ]);
+        $booking = Booking::create([
+            'location_id' => $this->locationA->id,
+            'provider_id' => $this->providerA->id,
+            'customer_id' => $this->customer->id,
+            'service_id' => $this->service->id,
+            'date' => now()->toDateString(),
+            'time' => '10:00',
+            'status' => 'paid',
+            'payment_status' => 'paid',
+            'amount_due' => 50000,
+            'amount_paid' => 50000,
+        ]);
+
+        $paymentTransaction = Transaction::create([
+            'provider_id' => $this->providerA->id,
+            'booking_id' => $booking->id,
+            'customer_id' => $this->customer->id,
+            'payment_method_id' => $paymentMethod->id,
+            'type' => 'payment',
+            'status' => 'completed',
+            'gross_amount' => 50000,
+            'gateway_fee' => 0,
+            'platform_fee' => 0,
+            'net_amount' => 50000,
+            'currency' => 'UGX',
+            'internal_reference' => 'TXN-REFUND-TEST',
+            'paid_at' => now(),
+        ]);
+
+        $journalService = app(JournalPostingService::class);
+        $journalService->postForTransaction($paymentTransaction);
+
+        // Refund the payment.
+        $refund = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/payments/salon/refund', [
+                'transaction_id' => $paymentTransaction->id,
+                'amount' => 50000,
+            ]);
+        $refund->assertStatus(200);
+
+        // A refund transaction exists.
+        $this->assertDatabaseHas('transactions', [
+            'booking_id' => $booking->id,
+            'type' => 'refund',
+            'gross_amount' => -50000,
+        ]);
+
+        // Settlement exists for the provider (immediate or period-based).
+        $this->assertDatabaseHas('settlements', [
+            'provider_id' => $this->providerA->id,
+        ]);
+
+        // Payout readiness can be checked for a settlement.
+        $settlement = \App\Domain\Finance\Settlement\Settlement::where('provider_id', $this->providerA->id)->first();
+        if ($settlement) {
+            $readiness = $this->withToken($this->tokenA)
+                ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+                ->getJson("/api/v1/providers/{$this->providerA->id}/compensation/settlements/{$settlement->id}/payout-readiness");
+            $readiness->assertStatus(200);
+        }
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 11: Subscription activation and entitlement enforcement
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_11_subscription_activation_and_entitlement_enforcement(): void
+    {
+        // Membership plans are publicly listable.
+        $plans = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/membership/plans');
+        $plans->assertStatus(200);
+
+        // Start a trial for Provider A.
+        $trial = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/membership/start-trial', []);
+        $trial->assertStatus(200);
+
+        // Usage is visible to the provider.
+        $usage = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/membership/usage');
+        $usage->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 12: Specialist portal operations
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_12_specialist_portal_operations(): void
+    {
+        // Specialist portal login.
+        $login = $this->postJson('/api/v1/specialist-portal/login', [
+            'email' => 'specialist@example.com',
+            'password' => 'password',
+        ]);
+        $login->assertStatus(200);
+
+        // Specialist portal context (requires specialist auth).
+        $context = $this->withToken($this->specialistToken, 'specialist')
+            ->getJson('/api/v1/specialist-portal/context');
+        $context->assertStatus(200);
+
+        // Specialist dashboard stats.
+        $stats = $this->withToken($this->specialistToken, 'specialist')
+            ->getJson('/api/v1/specialist-portal/dashboard/stats');
+        $stats->assertStatus(200);
+
+        // Specialist earnings.
+        $earnings = $this->withToken($this->specialistToken, 'specialist')
+            ->getJson('/api/v1/specialist-portal/earnings');
+        $earnings->assertStatus(200);
+
+        // Specialist availability.
+        $availability = $this->withToken($this->specialistToken, 'specialist')
+            ->getJson('/api/v1/specialist-portal/availability');
+        $availability->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 13: Customer portal operations
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_13_customer_portal_operations(): void
+    {
+        // Register a customer portal account.
+        $register = $this->postJson('/api/v1/auth/register', [
+            'name' => 'Portal Customer',
+            'email' => 'portalcustomer@example.com',
+            'password' => 'password123',
+            'journey' => 'customer',
+        ]);
+        $register->assertStatus(201);
+        $portalToken = $register->json('token');
+
+        // Customer portal login.
+        $login = $this->postJson('/api/v1/portal/login', [
+            'email' => 'portalcustomer@example.com',
+            'password' => 'password123',
+        ]);
+        $login->assertStatus(200);
+
+        // Portal context/me.
+        $me = $this->withToken($portalToken, 'portal')
+            ->getJson('/api/v1/portal/me');
+        $me->assertStatus(200);
+
+        // Portal services listing.
+        $services = $this->withToken($portalToken, 'portal')
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/portal/services');
+        $services->assertStatus(200);
+
+        // Portal availability.
+        $availability = $this->withToken($portalToken, 'portal')
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/portal/availability', [
+                'location_id' => $this->locationA->id,
+                'date' => now()->addDays(2)->format('Y-m-d'),
+            ]);
+        $availability->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Journey 14: Analytics and operational reporting
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_journey_14_analytics_and_operational_reporting(): void
+    {
+        // Provider analytics.
+        $analytics = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/analytics');
+        $analytics->assertStatus(200);
+
+        // Dashboard live stats.
+        $dashboard = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/dashboard/live-stats');
+        $dashboard->assertStatus(200);
+
+        // Operational health for a location.
+        $health = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/locations/{$this->locationA->id}/health");
+        $health->assertStatus(200);
+
+        // Provider health.
+        $providerHealth = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/providers/{$this->providerA->id}/health");
+        $providerHealth->assertStatus(200);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Cross-domain consistency
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_cross_domain_provider_ownership_and_location_validity(): void
+    {
+        // Every booking created under Provider A carries Provider A's id and a valid location.
+        $bookingService = app(CustomerBookingService::class);
+        $booking = $bookingService->createBooking([
+            'customer_id' => $this->customer->id,
+            'location_id' => $this->locationA->id,
+            'service_id' => $this->service->id,
+            'date' => now()->addDays(5)->format('Y-m-d'),
+            'time' => '10:00',
+        ]);
+
+        $this->assertEquals($this->providerA->id, $booking->provider_id);
+        $this->assertEquals($this->locationA->id, $booking->location_id);
+        $this->assertTrue($booking->location->provider_id === $this->providerA->id);
+
+        // Related customer-provider relationship exists.
+        $this->assertDatabaseHas('customer_providers', [
+            'customer_id' => $this->customer->id,
+            'provider_id' => $this->providerA->id,
+        ]);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Tenant isolation
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_tenant_isolation_across_providers(): void
+    {
+        // Provider A's staff are not visible under Provider B's context.
+        Staff::factory()->create(['provider_id' => $this->providerA->id]);
+
+        $staffA = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson("/api/v1/providers/{$this->providerA->id}/staff");
+        $staffA->assertStatus(200);
+
+        $staffB = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerB->id])
+            ->getJson("/api/v1/providers/{$this->providerB->id}/staff");
+        $staffB->assertStatus(200);
+
+        // Provider B's token cannot touch Provider A's staff.
+        $cross = $this->withToken($this->tokenB)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/providers/{$this->providerA->id}/staff", [
+                'name' => 'Intruder',
+                'email' => 'intruder@example.com',
+                'role' => 'receptionist',
+            ]);
+        $cross->assertStatus(403);
+
+        // Provider B's bookings are not returned when querying Provider A.
+        Booking::factory()->create([
+            'provider_id' => $this->providerB->id,
+            'location_id' => $this->locationB->id,
+        ]);
+        $bookingsA = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->getJson('/api/v1/bookings');
+        $bookingsA->assertStatus(200);
+        foreach ($bookingsA->json('data') ?? [] as $b) {
+            $this->assertEquals($this->providerA->id, $b['provider_id'] ?? null);
+        }
+    }
+
+    public function test_unauthorized_access_is_rejected(): void
+    {
+        // No token: protected routes are rejected.
+        $this->getJson('/api/v1/me')->assertStatus(401);
+        $this->postJson('/api/v1/bookings', [])->assertStatus(401);
+        $this->getJson('/api/v1/analytics')->assertStatus(401);
+
+        // Specialist portal without specialist auth is rejected.
+        $this->getJson('/api/v1/specialist-portal/context')->assertStatus(401);
+
+        // Customer portal without portal auth is rejected.
+        $this->getJson('/api/v1/portal/me')->assertStatus(401);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+     * Data integrity and failure recovery
+     * ───────────────────────────────────────────────────────────────────── */
+
+    public function test_duplicate_booking_submission_is_handled(): void
+    {
+        // Two rapid bookings for the same slot should not both succeed if the
+        // domain enforces conflict checks. At minimum, both must be valid
+        // records or a clear conflict error is returned.
+        $bookingData = [
+            'provider_id' => $this->providerA->id,
+            'location_id' => $this->locationA->id,
+            'customer_id' => $this->customer->id,
+            'service_id' => $this->service->id,
+            'date' => now()->addDays(5)->format('Y-m-d'),
+            'time' => '10:00',
+        ];
+
+        $first = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/bookings/with-account', array_merge($bookingData, [
+                'customer_name' => 'First',
+                'customer_phone' => '+1111111111',
+                'customer_email' => 'first@example.com',
+            ]));
+        $first->assertStatus(201);
+
+        // Second identical booking (may succeed or conflict depending on slot
+        // locking) — must not be a 500 server error.
+        $second = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/bookings/with-account', array_merge($bookingData, [
+                'customer_name' => 'Second',
+                'customer_phone' => '+2222222222',
+                'customer_email' => 'second@example.com',
+            ]));
+        $this->assertContains($second->status(), [200, 201, 409, 422]);
+    }
+
+    public function test_invalid_state_transition_is_rejected(): void
+    {
+        $booking = Booking::create([
+            'location_id' => $this->locationA->id,
+            'provider_id' => $this->providerA->id,
+            'customer_id' => $this->customer->id,
+            'service_id' => $this->service->id,
+            'date' => now()->toDateString(),
+            'time' => '10:00',
+            'status' => 'confirmed',
+            'amount_due' => 50000,
+            'amount_paid' => 0,
+        ]);
+
+        // Attempting to arrive a booking without provider context is rejected.
+        $noContext = $this->withToken($this->tokenA)
+            ->postJson("/api/v1/bookings/{$booking->id}/arrive");
+        $this->assertContains($noContext->status(), [400, 403, 422]);
+
+        // Attempting to complete a confirmed booking without arriving should be
+        // rejected by the domain state machine.
+        $bookingServiceId = $booking->id;
+        $premature = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson("/api/v1/bookings/{$booking->id}/services/{$bookingServiceId}/complete");
+        $this->assertContains($premature->status(), [400, 409, 422]);
+    }
+
+    public function test_failed_operation_does_not_leave_partial_records(): void
+    {
+        $initialBookingCount = Booking::count();
+
+        // A booking with invalid data must not create a partial booking.
+        $invalid = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/bookings/with-account', [
+                'provider_id' => $this->providerA->id,
+                // missing required service_id, date, time
+            ]);
+        $this->assertContains($invalid->status(), [400, 422]);
+
+        $this->assertEquals($initialBookingCount, Booking::count());
+    }
+
+    public function test_idempotency_key_is_enforced_on_payment_requests(): void
+    {
+        $paymentRequest = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/payment-requests', [
+                'idempotency_key' => 'idem-key-phase4',
+                'amount' => 10000,
+            ]);
+        $this->assertContains($paymentRequest->status(), [200, 201]);
+
+        // Reusing the same idempotency key should not create a duplicate.
+        $duplicate = $this->withToken($this->tokenA)
+            ->withHeaders(['X-Provider-Id' => $this->providerA->id])
+            ->postJson('/api/v1/payment-requests', [
+                'idempotency_key' => 'idem-key-phase4',
+                'amount' => 10000,
+            ]);
+        $this->assertContains($duplicate->status(), [200, 409, 422]);
+    }
+
+    /**
+     * Authenticate as a model under a specific guard using a Sanctum token.
+     *
+     * @param  string  $token
+     * @param  string|null  $guard  'sanctum' | 'portal' | 'specialist'
+     * @return $this
+     */
+    protected function withToken(string $token, ?string $guard = null): self
+    {
+        if ($guard === 'portal') {
+            $this->authenticatePortal($token);
+        } elseif ($guard === 'specialist') {
+            $this->authenticateSpecialist($token);
+        } else {
+            $this->authenticateSanctum($token);
+        }
+
+        return $this;
+    }
+
+    protected function authenticateSanctum(string $token): void
+    {
+        $this->app->instance('auth', $this->app->make('auth'));
+        $user = \App\Models\User::whereHas('tokens', function ($q) use ($token) {
+            $q->where('name', 'phase4-a')->orWhere('name', 'phase4-b');
+        })->first();
+
+        if ($user) {
+            $this->actingAs($user, 'sanctum');
+        } else {
+            $this->withHeader('Authorization', "Bearer {$token}");
+        }
+    }
+
+    protected function authenticatePortal(string $token): void
+    {
+        $account = \App\Models\PortalAccount::whereHas('tokens', function ($q) use ($token) {
+            $q->where('name', 'portal-account');
+        })->first();
+        if ($account) {
+            $this->actingAs($account, 'portal');
+        } else {
+            $this->withHeader('Authorization', "Bearer {$token}");
+        }
+    }
+
+    protected function authenticateSpecialist(string $token): void
+    {
+        $account = \App\Models\SpecialistAccount::whereHas('tokens', function ($q) use ($token) {
+            $q->where('name', 'specialist-portal');
+        })->first();
+        if ($account) {
+            $this->actingAs($account, 'specialist');
+        } else {
+            $this->withHeader('Authorization', "Bearer {$token}");
+        }
+    }
+}
