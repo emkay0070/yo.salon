@@ -117,21 +117,22 @@ class AvailabilityEngine
         ?string $specialistId,
         int $slotGranularity,
     ): AvailabilityResult {
-        $provider = Provider::findOrFail($ctx->providerId);
+        $provider = Provider::with('providerType')->findOrFail($ctx->providerId);
         $location = $ctx->locationId ? \App\Models\Location::find($ctx->locationId) : null;
         $service  = $serviceId   ? Service::findOrFail($serviceId)   : null;
         $specialist = $specialistId ? Specialist::findOrFail($specialistId) : null;
 
         // For independent_specialist providers without an explicit specialistId,
         // auto-resolve the primary assignment to use AssignmentSchedule
+        $providerTypeKey = $provider->providerTypeKey();
+
         \Log::info('AvailabilityEngine: Provider type check', [
             'provider_id' => $ctx->providerId,
-            'provider_type' => $provider->type,
+            'provider_type' => $providerTypeKey,
             'specialistId_input' => $specialistId,
-            'TYPE_SPECIALIST_const' => Provider::TYPE_SPECIALIST,
         ]);
 
-        if ($provider->type === Provider::TYPE_SPECIALIST && !$specialistId) {
+        if ($providerTypeKey === Provider::TYPE_SPECIALIST && !$specialistId) {
             \Log::info('AvailabilityEngine: Entering independent_specialist branch', [
                 'provider_id' => $ctx->providerId,
             ]);
@@ -1065,11 +1066,12 @@ class AvailabilityEngine
         $codes   = [];
         $dayName = Carbon::parse($date)->format('l');
 
-        $provider = Provider::find($ctx->providerId);
+        $provider = Provider::with('providerType')->find($ctx->providerId);
+        $providerTypeKey = $provider?->providerTypeKey();
 
         \Log::info('preflightByContext: start', [
             'provider_id' => $ctx->providerId,
-            'provider_type' => $provider->type,
+            'provider_type' => $providerTypeKey,
             'day_of_week' => $dayName,
             'specialistId' => $specialistId,
         ]);
@@ -1085,7 +1087,7 @@ class AvailabilityEngine
         }
 
         // For independent_specialist providers, check AssignmentSchedule instead of ProviderSchedule
-        if ($provider->type === Provider::TYPE_SPECIALIST) {
+        if ($providerTypeKey === Provider::TYPE_SPECIALIST) {
             \Log::info('preflightByContext: independent_specialist branch');
             $primaryAssignment = \App\Models\SpecialistAssignment::where('provider_id', $ctx->providerId)
                 ->where('is_primary', true)
@@ -1173,8 +1175,16 @@ class AvailabilityEngine
             }
         }
 
-        // Subscription check is provider-level
-        $subscriptionOk = \App\Models\Subscription::where('provider_id', $ctx->providerId)
+        // Subscription check is organization-level with provider fallback
+        $provider = \App\Models\Provider::find($ctx->providerId);
+        $subscriptionOk = \App\Models\Subscription::where(function ($q) use ($ctx, $provider) {
+            if ($provider && $provider->organization_id) {
+                $q->where('organization_id', $provider->organization_id)
+                  ->orWhere('provider_id', $ctx->providerId);
+            } else {
+                $q->where('provider_id', $ctx->providerId);
+            }
+        })
             ->where(fn($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', now()))
             ->where('status', '!=', 'cancelled')
             ->exists();

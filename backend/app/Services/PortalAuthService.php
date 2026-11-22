@@ -66,18 +66,28 @@ class PortalAuthService
                 ]);
             }
 
-            // Resolve existing customer by phone (primary identifier)
-            $customer = $this->customerResolver->findByPhone($phone);
+            // R-3: Resolve customer by phone WITHIN this Provider's scope only (never globally)
+            $lookupPhones = PhoneNormalizer::lookupValues($phone);
+            $customer = \App\Models\Customer::whereIn('phone', $lookupPhones)
+                ->whereHas('providers', function ($q) use ($providerId) {
+                    $q->where('providers.id', $providerId);
+                })
+                ->first();
 
-            // If not found by phone, try email
-            if (!$customer && isset($data['email'])) {
-                $customer = $this->customerResolver->findByEmail($data['email']);
+            // If not found by phone, try email within the same Provider scope
+            if (!$customer && !empty($data['email'])) {
+                $customer = \App\Models\Customer::where('email', $data['email'])
+                    ->whereHas('providers', function ($q) use ($providerId) {
+                        $q->where('providers.id', $providerId);
+                    })
+                    ->first();
             }
 
-            // Customer must exist - authentication cannot create customers
+            // Customer must exist AND be associated with this Provider.
+            // Registration cannot create customers or attach globally-matched identities.
             if (!$customer) {
                 throw ValidationException::withMessages([
-                    'phone' => ['No customer found with this phone or email. Please complete a booking or visit the salon first.'],
+                    'phone' => ['No customer found associated with this salon. Please complete a booking or use an invitation link first.'],
                 ]);
             }
 
@@ -88,17 +98,8 @@ class PortalAuthService
                 ]);
             }
 
-            // Check if customer has relationship with this provider
-            $hasProviderRelationship = $customer->providers()->where('provider_id', $providerId)->exists();
-
-            if (!$hasProviderRelationship) {
-                // Create new provider relationship for existing customer
-                $customer->providers()->attach($providerId, [
-                    'id' => (string) Str::uuid(),
-                    'visits' => 0,
-                    'joined_at' => now(),
-                ]);
-            }
+            // The customer is confirmed to be associated with this Provider (lookup was scoped).
+            // No cross-Provider attachment is performed.
 
             // Create and link portal account
             $portalAccount = PortalAccount::create([
@@ -112,7 +113,7 @@ class PortalAuthService
                 'customer' => $customer,
                 'location' => $locationId ? \App\Models\Location::find($locationId) : null,
                 'is_new_customer' => false,
-                'is_new_provider_relationship' => !$hasProviderRelationship,
+                'is_new_provider_relationship' => false,
             ];
         });
     }

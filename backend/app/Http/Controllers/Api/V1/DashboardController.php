@@ -7,33 +7,41 @@ use App\Models\Booking;
 use App\Models\Provider;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use App\Services\OperationalAnalyticsService;
 use App\Services\Finance\FinanceAnalyticsService;
 use App\Services\BookingService;
+use App\Services\ProviderTypeContext;
 
 class DashboardController extends Controller
 {
     protected OperationalAnalyticsService $operationalAnalyticsService;
     protected FinanceAnalyticsService $financeAnalyticsService;
     protected BookingService $bookingService;
+    protected ProviderTypeContext $providerTypeContext;
 
     public function __construct(
         OperationalAnalyticsService $operationalAnalyticsService,
         FinanceAnalyticsService $financeAnalyticsService,
-        BookingService $bookingService
+        BookingService $bookingService,
+        ProviderTypeContext $providerTypeContext
     ) {
         $this->operationalAnalyticsService = $operationalAnalyticsService;
         $this->financeAnalyticsService = $financeAnalyticsService;
         $this->bookingService = $bookingService;
+        $this->providerTypeContext = $providerTypeContext;
     }
 
-    public function liveStats(): JsonResponse
+    public function liveStats(Request $request): JsonResponse
     {
-        $provider = auth()->user()->currentProvider();
+        $this->providerTypeContext->resolveFromRequest($request);
+        $provider = $this->providerTypeContext->getProvider();
         if (!$provider) {
             return response()->json(['message' => 'No provider associated with your account'], 403);
         }
+
+        $providerTypeContext = $this->providerTypeContext->toArray();
 
         // Process auto-approvals during polling (idempotent, safe to call frequently)
         $autoApprovalResult = $this->bookingService->processAutoApprovals($provider->id);
@@ -67,6 +75,9 @@ class DashboardController extends Controller
 
         // Include auto-approval stats in response for transparency
         $stats['auto_approvals'] = $autoApprovalResult;
+
+        // Include provider type context (additive, preserves existing fields)
+        $stats['provider_type'] = $providerTypeContext;
 
         return response()->json($stats);
     }

@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Provider\ProviderTypeRegistry;
 use App\Services\PlanService;
 use App\Services\SubscriptionService;
 use App\Services\BillingService;
 use App\Services\UsageService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 
 class MembershipController extends Controller
 {
@@ -53,7 +55,32 @@ class MembershipController extends Controller
 
     public function plans(Request $request): JsonResponse
     {
-        $providerType = $request->query('provider_type', 'salon');
+        $providerType = $request->query('provider_type');
+
+        if ($providerType === null || $providerType === '') {
+            // No explicit discovery type: resolve from the authenticated
+            // Provider context instead of defaulting to salon.
+            $provider = $request->attributes->get('provider')
+                ?: auth()->user()?->currentProvider();
+            $providerType = $provider?->providerTypeKey();
+        }
+
+        if (!$providerType) {
+            throw ValidationException::withMessages([
+                'provider_type' => [
+                    'A valid provider_type is required when no Provider context is available.',
+                ],
+            ]);
+        }
+
+        if (!app(ProviderTypeRegistry::class)->isSupported($providerType)) {
+            throw ValidationException::withMessages([
+                'provider_type' => [
+                    sprintf('Provider type "%s" is not supported.', $providerType),
+                ],
+            ]);
+        }
+
         $plans = $this->planService->getActivePlansByProvider($providerType);
 
         return response()->json([

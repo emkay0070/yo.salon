@@ -55,4 +55,26 @@ class SpecialistAccount extends Authenticatable
     {
         $this->update(['last_login_at' => now()]);
     }
+
+    public function organizationMemberships()
+    {
+        return $this->hasMany(OrganizationMembership::class, 'specialist_account_id');
+    }
+
+    public function organizations()
+    {
+        return $this->belongsToMany(Organization::class, 'organization_memberships', 'specialist_account_id', 'organization_id')
+            ->withPivot('role', 'status')
+            ->withTimestamps();
+    }
+
+    public function ownedOrganizations()
+    {
+        return $this->hasMany(Organization::class, 'owner_specialist_account_id');
+    }
+
+    public function currentOrganization(): ?Organization
+    {
+        return $this->ownedOrganizations()->where('status', Organization::STATUS_ACTIVE)->first();
+    }
 }

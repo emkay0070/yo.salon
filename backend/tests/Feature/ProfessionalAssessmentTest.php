@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Organization;
 use App\Models\ProfessionalAssessment;
 use App\Models\Customer;
 use App\Models\Specialist;
@@ -28,9 +29,12 @@ class ProfessionalAssessmentTest extends TestCase
         parent::setUp();
 
         // Create provider
+        $org = Organization::factory()->create();
         $this->provider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $org->id,
             'name' => 'Test Provider',
+            'type' => 'salon',
             'display_name' => 'Test Provider Display',
             'slug' => 'test-provider',
             'active' => true,
@@ -176,9 +180,12 @@ class ProfessionalAssessmentTest extends TestCase
     public function test_assessment_provider_isolation()
     {
         // Create another provider
+        $otherOrg = Organization::factory()->create();
         $otherProvider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $otherOrg->id,
             'name' => 'Other Provider',
+            'type' => 'salon',
             'display_name' => 'Other Provider Display',
             'slug' => 'other-provider',
             'active' => true,

@@ -80,16 +80,30 @@ class CustomerSpecialistService
     }
 
     /**
-     * Determine relationship origin based on provider type
+     * Determine relationship origin based on provider type.
+     *
+     * @throws \InvalidArgumentException When the provider is unknown or its type is not registered.
      */
     protected function determineRelationshipOrigin(string $providerId): string
     {
-        $provider = \App\Models\Provider::find($providerId);
+        $provider = \App\Models\Provider::with('providerType')->find($providerId);
         if (!$provider) {
-            return CustomerSpecialist::ORIGIN_SALON; // Default fallback
+            throw new \InvalidArgumentException(sprintf(
+                'Provider %s not found; cannot determine relationship origin.',
+                $providerId
+            ));
         }
 
-        $definition = app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type);
+        $typeKey = $provider->providerTypeKey();
+
+        if ($typeKey === null) {
+            throw new \InvalidArgumentException(sprintf(
+                'Provider %s has no resolvable Provider Type; cannot determine relationship origin.',
+                $providerId
+            ));
+        }
+
+        $definition = app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($typeKey);
         if ($definition->isIndependent) {
             return CustomerSpecialist::ORIGIN_INDEPENDENT;
         }

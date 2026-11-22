@@ -393,7 +393,7 @@ function PlanCard({ plan, isCurrent, onSelect }: { plan: Plan; isCurrent: boolea
 export default function SalonMembershipPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerTypeContext } = useRole();
   const routes = providerRoutes(providerSlug);
   const queryClient = useQueryClient();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -451,10 +451,19 @@ export default function SalonMembershipPage({ params }: { params: Promise<{ slug
     retry: false,
   });
 
-  // Fetch all plans
+  // Fetch all plans for the server-resolved Provider Type. Never guess a
+  // fallback type when the authenticated context is unresolved.
+  const providerType = providerTypeContext?.provider_type ?? null;
+
   const { data: plansData } = useQuery({
-    queryKey: ['plans', activeProvider?.provider_type],
-    queryFn: () => apiClient.getMembershipPlans(activeProvider?.provider_type || 'salon'),
+    queryKey: ['plans', providerType],
+    queryFn: () => {
+      if (!providerType) {
+        throw new Error('Provider type is not available in the current context.');
+      }
+      return apiClient.getMembershipPlans(providerType);
+    },
+    enabled: !!providerType,
   });
 
   // Change plan mutation

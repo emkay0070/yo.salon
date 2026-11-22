@@ -31,6 +31,17 @@ class FloorController extends Controller
     ) {}
 
     /**
+     * Whether the given booking belongs to the caller's provider context.
+     * Prevents cross-tenant operational mutations through booking routes.
+     */
+    private function bookingBelongsToProvider(Request $request, Booking $booking): bool
+    {
+        $providerId = $request->attributes->get('provider_id');
+
+        return $providerId !== null && $booking->provider_id === $providerId;
+    }
+
+    /**
      * POST /bookings/{booking}/arrive
      *
      * Mark a confirmed booking as arrived.
@@ -39,6 +50,10 @@ class FloorController extends Controller
      */
     public function arrive(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         try {
             $actor = $request->user();
 
@@ -90,6 +105,10 @@ class FloorController extends Controller
      */
     public function wait(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $validated = $request->validate([
             'queue_position' => 'nullable|integer|min:1',
         ]);
@@ -130,6 +149,10 @@ class FloorController extends Controller
      */
     public function startSession(Request $request, Booking $booking, string $bookingServiceId): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $bookingService = BookingServiceModel::with(['booking', 'booking.location', 'service'])
             ->where('booking_id', $booking->id)
             ->findOrFail($bookingServiceId);
@@ -157,6 +180,10 @@ class FloorController extends Controller
      */
     public function completeSession(Request $request, Booking $booking, string $bookingServiceId): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $bookingService = BookingServiceModel::with(['booking', 'booking.location', 'service'])
             ->where('booking_id', $booking->id)
             ->findOrFail($bookingServiceId);

@@ -110,8 +110,8 @@ class BookingService
         $availabilityEngine = app(AvailabilityEngine::class);
         
         // For independent_specialist providers without specialist_id, auto-resolve primary assignment
-        $provider = \App\Models\Provider::find($providerId);
-        if ($provider && $provider->type === \App\Models\Provider::TYPE_SPECIALIST && !$specialistId) {
+        $provider = \App\Models\Provider::with('providerType')->find($providerId);
+        if ($provider && $provider->hasProviderType(\App\Models\Provider::TYPE_SPECIALIST) && !$specialistId) {
             $primaryAssignment = \App\Models\SpecialistAssignment::where('provider_id', $providerId)
                 ->where('is_primary', true)
                 ->whereIn('status', ['ACTIVE', 'active'])
@@ -224,15 +224,30 @@ class BookingService
             if (!empty($data['customer_id'])) {
                 // Existing CRM customer — look up directly
                 $customer = Customer::findOrFail($data['customer_id']);
+                if (!$customer->providers()->where('providers.id', $providerId)->exists()) {
+                    throw new \Illuminate\Auth\Access\AuthorizationException(
+                        'Customer is not associated with the active Provider.'
+                    );
+                }
             } elseif (!empty($data['customer_phone'])) {
-                // Phone provided — find-or-create a real CRM customer
-                $customer = Customer::firstOrCreate(
-                    ['phone' => $data['customer_phone']],
-                    [
+                // FIND-CRIT-04 / R-2: Check if customer already exists within the active Provider context.
+                // A customer record belonging exclusively to another Provider must NEVER be disclosed
+                // or silently attached through unverified phone matching.
+                $lookupPhones = \App\Services\PhoneNormalizer::lookupValues($data['customer_phone']);
+                $customer = Customer::whereIn('phone', $lookupPhones)
+                    ->whereHas('providers', function ($q) use ($providerId) {
+                        $q->where('providers.id', $providerId);
+                    })
+                    ->first();
+
+                // If not already associated with this Provider, create a new customer record for this Provider
+                if (!$customer) {
+                    $customer = Customer::create([
                         'name'  => $data['customer_name'] ?? 'Customer',
+                        'phone' => $data['customer_phone'],
                         'email' => $data['customer_email'] ?? null,
-                    ]
-                );
+                    ]);
+                }
             } else {
                 // No identity provided — create an isolated, provider-scoped guest.
                 // This is the correct path for anonymous walk-ins.
@@ -356,15 +371,39 @@ class BookingService
 
             // Resolve or create customer (business event)
             if (!empty($data['customer_id'])) {
+                // FIND-CRIT-03: When a staff member supplies a customer_id, verify the customer
+                // is already associated with the requesting Provider. Provider A must not silently
+                // attach Provider B's exclusive customer. Existence is not authorization.
+                // Note: the portal/public booking path does NOT supply customer_id from staff;
+                // it resolves the customer from the authenticated portal account or phone lookup.
                 $customer = Customer::findOrFail($data['customer_id']);
+                if (!$customer->providers()->where('providers.id', $providerId)->exists()) {
+                    throw new \Illuminate\Auth\Access\AuthorizationException(
+                        'Customer is not associated with the active Provider.'
+                    );
+                }
             } else {
-                $customer = Customer::firstOrCreate(
-                    ['phone' => $data['customer_phone']],
-                    [
-                        'name' => $data['customer_name'],
+                // FIND-CRIT-04 / R-2: Check if customer already exists within the active Provider context.
+                // An unverified phone number from public/external booking must NEVER match a customer
+                // belonging exclusively to another Provider.
+                $customer = null;
+                if (!empty($data['customer_phone'])) {
+                    $lookupPhones = \App\Services\PhoneNormalizer::lookupValues($data['customer_phone']);
+                $customer = Customer::whereIn('phone', $lookupPhones)
+                        ->whereHas('providers', function ($q) use ($providerId) {
+                            $q->where('providers.id', $providerId);
+                        })
+                        ->first();
+                }
+
+                // If not found within active Provider, create a new customer record for this Provider
+                if (!$customer) {
+                    $customer = Customer::create([
+                        'name'  => $data['customer_name'] ?? 'Customer',
+                        'phone' => $data['customer_phone'] ?? null,
                         'email' => $data['customer_email'] ?? null,
-                    ]
-                );
+                    ]);
+                }
             }
 
             // Ensure customer has provider relationship (domain integrity)
@@ -482,8 +521,12 @@ class BookingService
             ));
 
             // Create portal account if requested and customer doesn't have one
+            // FIND-CRIT-04 / R-2: Prevent Account Takeover.
+            // Never bind attacker-supplied credentials to an existing customer record
+            // without verified identity authentication. Only newly created customers from
+            // this transaction may have a portal account created directly.
             $portalAccount = null;
-            if (!empty($data['create_account']) && !$customer->hasPortalAccount()) {
+            if (!empty($data['create_account']) && $customer->wasRecentlyCreated && !$customer->hasPortalAccount()) {
                 $portalAccount = PortalAccount::create([
                     'customer_id' => $customer->id,
                     'email' => $data['account_email'] ?? $data['customer_email'],

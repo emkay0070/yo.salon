@@ -25,6 +25,22 @@ class SpecialistAssessmentController extends Controller
             return response()->json(['message' => 'Customer not found'], 404);
         }
 
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        // before exposing grooming profile, assessments or notes.
+        $providerId = request()->attributes->get('provider_id');
+        if (!$providerId && auth('specialist')->check()) {
+            $specialist = auth('specialist')->user()?->specialist;
+            $providerId = $specialist?->assignments()
+                ->whereIn('provider_id', function ($q) use ($customerId) {
+                    $q->select('provider_id')->from('customer_providers')->where('customer_id', $customerId);
+                })
+                ->value('provider_id');
+        }
+
+        if (!$providerId || !$customer->providers()->where('providers.id', $providerId)->exists()) {
+            return response()->json(['message' => 'Customer not found'], 404);
+        }
+
         $groomingProfile = $customer->groomingProfile;
         $assessments = ProfessionalAssessment::byCustomer($customerId)
             ->with(['specialist', 'provider', 'location'])
@@ -79,6 +95,32 @@ class SpecialistAssessmentController extends Controller
             'metadata' => 'nullable|array',
         ]);
 
+        // FIND-CRIT-03: Resolve provider context from server-side middleware attributes.
+        // The salon_id (location) must belong to the active Provider; never trust a
+        // provider_id from the request body.
+        $providerId = request()->attributes->get('provider_id');
+        if (!$providerId && auth('specialist')->check()) {
+            $specialist = auth('specialist')->user()?->specialist;
+            $providerId = $specialist?->assignments()
+                ->where(function ($q) use ($validated) {
+                    $q->where('location_id', $validated['salon_id'])
+                      ->orWhere('provider_id', $validated['salon_id']);
+                })
+                ->value('provider_id')
+                ?? $specialist?->assignments()->value('provider_id');
+        }
+
+        if (!$providerId) {
+            return response()->json(['message' => 'No provider context associated with this request'], 403);
+        }
+
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        // before persisting any assessment. Existence validation is not authorization.
+        $customer = Customer::find($validated['customer_id']);
+        if (!$customer || !$customer->providers()->where('providers.id', $providerId)->exists()) {
+            return response()->json(['message' => 'Customer not found or not associated with your Provider'], 403);
+        }
+
         // Validate against reference data if available
         if (isset($validated['observed_hair_type'])) {
             $validTypes = ReferenceData::byCategory('hair_type')->active()->pluck('value')->toArray();
@@ -101,10 +143,11 @@ class SpecialistAssessmentController extends Controller
             }
         }
 
-        // Validate that the specialist belongs to this provider/location
+        // Validate that the specialist is assigned to the active Provider and the given location.
+        // Use server-side $providerId rather than trusting a provider_id in the request body.
         $assignment = \App\Models\SpecialistAssignment::where('specialist_id', $validated['specialist_id'])
-            ->where('provider_id', $validated['provider_id'])
-            ->where('location_id', $validated['location_id'])
+            ->where('provider_id', $providerId)
+            ->where('location_id', $validated['salon_id'])
             ->first();
         
         if (!$assignment) {
@@ -115,8 +158,8 @@ class SpecialistAssessmentController extends Controller
             'id' => \Illuminate\Support\Str::uuid(),
             'customer_id' => $validated['customer_id'],
             'specialist_id' => $validated['specialist_id'],
-            'provider_id' => $validated['provider_id'],
-            'location_id' => $validated['location_id'],
+            'provider_id' => $providerId,
+            'location_id' => $validated['salon_id'],
             'booking_id' => $validated['booking_id'] ?? null,
             'observed_hair_type' => $validated['observed_hair_type'] ?? null,
             'hair_density' => $validated['hair_density'] ?? null,
@@ -234,10 +277,33 @@ class SpecialistAssessmentController extends Controller
             'metadata' => 'nullable|array',
         ]);
 
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        // before persisting any note. Existence validation is not authorization.
+        $providerId = request()->attributes->get('provider_id');
+        if (!$providerId && auth('specialist')->check()) {
+            $specialist = auth('specialist')->user()?->specialist;
+            $providerId = $specialist?->assignments()
+                ->whereIn('provider_id', function ($q) use ($validated) {
+                    $q->select('provider_id')->from('customer_providers')->where('customer_id', $validated['customer_id']);
+                })
+                ->value('provider_id');
+        }
+
+        if (!$providerId) {
+            return response()->json(['message' => 'No provider context associated with this request'], 403);
+        }
+
+        $customer = Customer::find($validated['customer_id']);
+        if (!$customer || !$customer->providers()->where('providers.id', $providerId)->exists()) {
+            return response()->json(['message' => 'Customer not found or not associated with your Provider'], 403);
+        }
+
         // Verify authenticated specialist matches the specialist_id being used
-        $account = auth('specialist')->user();
-        if (!$account || $account->specialist_id !== $validated['specialist_id']) {
-            return response()->json(['message' => 'Unauthorized: specialist_id does not match authenticated specialist'], 403);
+        if (auth('specialist')->check()) {
+            $account = auth('specialist')->user();
+            if (!$account || $account->specialist_id !== $validated['specialist_id']) {
+                return response()->json(['message' => 'Unauthorized: specialist_id does not match authenticated specialist'], 403);
+            }
         }
 
         // If booking_id is provided, verify it belongs to the same customer and specialist

@@ -473,6 +473,39 @@ Route::prefix('v1')->group(function () {
         Route::post('/providers/{provider}/logo', [ProviderController::class, 'update']);
         Route::delete('/providers/{provider}/logo', [ProviderController::class, 'update']);
 
+        // =========================================================================
+        // Platform Administration Routes (Decoupled from Provider & Location context)
+        // =========================================================================
+
+        // Admin — Platform Payment Management
+        Route::prefix('admin/platform-payments')->middleware(['platform.role:invoices_view'])->group(function () {
+            Route::get('/pending-invoices', [AdminPlatformPaymentController::class, 'getPendingInvoices']);
+            Route::get('/payment-methods', [AdminPlatformPaymentController::class, 'getPaymentMethods']);
+            Route::get('/payment-methods/{id}/details', [AdminPlatformPaymentController::class, 'getPaymentMethodDetails'])->middleware('platform.role:payment_methods_view_details');
+            Route::put('/payment-methods/{id}', [AdminPlatformPaymentController::class, 'updatePaymentMethod'])->middleware('platform.role:payment_methods_manage');
+            Route::get('/invoices/{invoiceId}', [AdminPlatformPaymentController::class, 'getInvoice']);
+            Route::post('/invoices/{invoiceId}/verify', [AdminPlatformPaymentController::class, 'verifyPayment'])->middleware('platform.role:invoices_verify_reject');
+            Route::post('/invoices/{invoiceId}/reject', [AdminPlatformPaymentController::class, 'rejectPayment'])->middleware('platform.role:invoices_verify_reject');
+        });
+
+        // Admin — Seeder Management
+        Route::prefix('admin/seeders')->middleware(['platform.role:seeder_view'])->group(function () {
+            Route::get('/', [SeederController::class, 'index']);
+            Route::get('/{seederClass}', [SeederController::class, 'show']);
+            Route::post('/', [SeederController::class, 'register'])->middleware('platform.role:seeder_execution');
+            Route::put('/{seederClass}', [SeederController::class, 'update'])->middleware('platform.role:seeder_execution');
+            Route::delete('/{seederClass}', [SeederController::class, 'destroy'])->middleware('platform.role:seeder_execution');
+            Route::post('/{seederClass}/run', [SeederController::class, 'run'])->middleware('platform.role:seeder_execution');
+            Route::post('/batch-run', [SeederController::class, 'runMultiple'])->middleware('platform.role:seeder_execution');
+            Route::post('/discover', [SeederController::class, 'discover'])->middleware('platform.role:seeder_execution');
+        });
+
+        // Admin — Schedule Migration Management
+        Route::prefix('admin/schedule-migration')->middleware(['platform.role:schedule_migration_admin'])->group(function () {
+            Route::get('/providers', [ScheduleMigrationController::class, 'getProvidersNeedingMigration']);
+            Route::post('/notify', [ScheduleMigrationController::class, 'sendNotifications']);
+        });
+
         // Protected routes requiring provider context
         Route::middleware(['provider.context', 'location.context'])->group(function () {
         // Pulse Operational Center
@@ -512,6 +545,10 @@ Route::prefix('v1')->group(function () {
         Route::delete('/locations/{locationId}/schedule-exceptions/{id}',[\App\Http\Controllers\Api\V1\ScheduleExceptionController::class, 'destroy']);
         
         // Team — unified identity for all provider payees (staff + employed specialists + independent specialists)
+        // Provider-scoped specialist assignments (roster role / removal)
+        Route::put('/providers/{provider}/specialists/{specialist}', [SpecialistController::class, 'updateAssignment']);
+        Route::delete('/providers/{provider}/specialists/{specialist}', [SpecialistController::class, 'destroyAssignment']);
+
         Route::get('/providers/{provider}/team', [TeamController::class, 'index']);
         Route::get('/providers/{provider}/team/{memberId}/payment-profile', [\App\Http\Controllers\Api\V1\TeamPaymentProfileController::class, 'show']);
 
@@ -668,29 +705,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/cash/confirm', [PlatformPaymentController::class, 'confirmCashPayment']);
         });
 
-        // Admin — Platform Payment Management
-        Route::prefix('admin/platform-payments')->group(function () {
-            Route::get('/pending-invoices', [AdminPlatformPaymentController::class, 'getPendingInvoices']);
-            Route::get('/payment-methods', [AdminPlatformPaymentController::class, 'getPaymentMethods']);
-            Route::get('/payment-methods/{id}/details', [AdminPlatformPaymentController::class, 'getPaymentMethodDetails']);
-            Route::put('/payment-methods/{id}', [AdminPlatformPaymentController::class, 'updatePaymentMethod']);
-            Route::get('/invoices/{invoiceId}', [AdminPlatformPaymentController::class, 'getInvoice']);
-            Route::post('/invoices/{invoiceId}/verify', [AdminPlatformPaymentController::class, 'verifyPayment']);
-            Route::post('/invoices/{invoiceId}/reject', [AdminPlatformPaymentController::class, 'rejectPayment']);
-        });
-
-        // Admin — Seeder Management
-        Route::prefix('admin/seeders')->group(function () {
-            Route::get('/', [SeederController::class, 'index']);
-            Route::get('/{seederClass}', [SeederController::class, 'show']);
-            Route::post('/', [SeederController::class, 'register']);
-            Route::put('/{seederClass}', [SeederController::class, 'update']);
-            Route::delete('/{seederClass}', [SeederController::class, 'destroy']);
-            Route::post('/{seederClass}/run', [SeederController::class, 'run']);
-            Route::post('/batch-run', [SeederController::class, 'runMultiple']);
-            Route::post('/discover', [SeederController::class, 'discover']);
-        });
-
         // Payments — Salon (B2C - Customer Booking Payments)
         Route::prefix('payments/salon')->group(function () {
             Route::post('/initialize', [BookingPaymentController::class, 'initializeBookingPayment']);
@@ -774,11 +788,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/discover/featured', [DiscoverController::class, 'setFeatured']);
         Route::post('/discover/refresh-trending', [DiscoverController::class, 'refreshTrendingScores']);
 
-        // Schedule Migration
+        // Schedule Migration (Provider context)
         Route::get('/schedule-migration/status', [ScheduleMigrationController::class, 'checkStatus']);
         Route::post('/schedule-migration/migrate', [ScheduleMigrationController::class, 'migrate']);
-        Route::get('/admin/schedule-migration/providers', [ScheduleMigrationController::class, 'getProvidersNeedingMigration']);
-        Route::post('/admin/schedule-migration/notify', [ScheduleMigrationController::class, 'sendNotifications']);
         });
     });
     // Shared universal authenticated routes (accessible by salon admin, specialist, or portal customer)
@@ -789,4 +801,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/media/{media}', [MediaController::class, 'show']);
         Route::delete('/media/{media}', [MediaController::class, 'destroy']);
     });
+});
+
+// Commercial Organization routes (business owner / organization governance)
+Route::prefix('v1')->middleware(['auth.any', 'organization.context', 'organization.db_context'])->group(function () {
+    Route::get('/organization', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'current']);
+    Route::get('/organization/providers', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'providers']);
+    Route::get('/organization/members', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'members']);
+    Route::post('/organization/members', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'addMember']);
+    Route::delete('/organization/members/{userId}', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'removeMember']);
+    Route::post('/organization/transfer-ownership', [\App\Http\Controllers\Api\V1\OrganizationController::class, 'transferOwnership']);
 });

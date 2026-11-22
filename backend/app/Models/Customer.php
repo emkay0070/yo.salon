@@ -79,13 +79,32 @@ class Customer extends Model
     }
 
     /**
-     * Find customer by phone or email
+     * Mutator to normalize phone numbers upon assignment.
+     */
+    public function setPhoneAttribute(?string $value): void
+    {
+        if ($value === null || trim($value) === '') {
+            $this->attributes['phone'] = null;
+            return;
+        }
+
+        $normalized = \App\Services\PhoneNormalizer::normalize($value);
+        $this->attributes['phone'] = $normalized ?? $value;
+    }
+
+    /**
+     * Find customer by phone or email.
+     * Keeps email and phone matching completely separate (H-1) and supports
+     * dual-query lookup compatibility for legacy unmigrated phone formats (M-1).
      */
     public static function findByContact(string $contact): ?self
     {
-        return self::where('phone', $contact)
-            ->orWhere('email', $contact)
-            ->first();
+        if (str_contains($contact, '@')) {
+            return self::where('email', $contact)->first();
+        }
+
+        $lookupValues = \App\Services\PhoneNormalizer::lookupValues($contact);
+        return self::whereIn('phone', $lookupValues)->first();
     }
 
     /**

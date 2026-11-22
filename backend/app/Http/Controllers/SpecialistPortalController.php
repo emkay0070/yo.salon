@@ -121,12 +121,17 @@ class SpecialistPortalController extends Controller
         // Business authority is determined by ProviderUser, not SpecialistAssignment.role
         $workplaces = $specialist->assignments()
             ->whereIn('status', ['ACTIVE', 'active'])
-            ->with(['provider', 'location'])
+            ->with(['provider.providerType', 'location'])
             ->get()
             ->map(function ($assignment) {
                 $provider = $assignment->provider;
-                    $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
-                    // Independent business ownership is determined by Provider.type, not SpecialistAssignment.role
+                    $providerTypeKey = $provider?->providerTypeKey();
+                    $definition = $providerTypeKey !== null
+                        ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($providerTypeKey)
+                        : null;
+                    // Independent business ownership is determined by the
+                    // canonical Provider Type relationship, not the legacy
+                    // Provider.type column or SpecialistAssignment.role.
                     $isIndependentBusiness = $definition && $definition->isIndependent;
 
                     // Determine role and permissions based on ProviderUser relationship
@@ -147,7 +152,7 @@ class SpecialistPortalController extends Controller
                         'assignment_id'   => $assignment->id,
                         'provider_id'     => $assignment->provider_id,
                         'provider_name'   => $provider?->display_name,
-                        'provider_type'   => $provider?->type,
+                        'provider_type'   => $providerTypeKey,
                         'provider_slug'   => $provider?->slug,
                         'provider_logo'   => $provider?->logo,
                         'location_id'     => $assignment->location_id,
@@ -404,12 +409,12 @@ class SpecialistPortalController extends Controller
             'message' => 'provider_slug is required for workspace-specific customer access',
             'available_workspaces' => $specialist->assignments()
                 ->whereIn('status', ['ACTIVE', 'active'])
-                ->with('provider')
+                ->with('provider.providerType')
                 ->get()
                 ->map(fn($a) => [
                     'provider_slug' => $a->provider->slug,
                     'provider_name' => $a->provider->display_name,
-                    'provider_type' => $a->provider->type,
+                    'provider_type' => $a->provider->providerTypeKey(),
                 ])
         ], 400);
     }
@@ -975,10 +980,13 @@ class SpecialistPortalController extends Controller
             ->whereIn('status', ['ACTIVE', 'active'])
             ->first();
 
-        $provider = \App\Models\Provider::find($validated['provider_id']);
-        $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
+        $provider = \App\Models\Provider::with('providerType')->find($validated['provider_id']);
+        $providerTypeKey = $provider?->providerTypeKey();
+        $definition = $providerTypeKey !== null
+            ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($providerTypeKey)
+            : null;
         // Business authority is determined by ProviderUser, not SpecialistAssignment.role
-        // For independent specialists, check if Provider type is independent
+        // For independent specialists, check the canonical Provider Type.
         $isIndependentSpecialist = $definition && $definition->isIndependent;
 
         if (!$isIndependentSpecialist) {
@@ -1043,10 +1051,13 @@ class SpecialistPortalController extends Controller
             ->whereIn('status', ['ACTIVE', 'active'])
             ->first();
 
-        $provider = \App\Models\Provider::find($service->provider_id);
-        $definition = $provider ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($provider->type) : null;
+        $provider = \App\Models\Provider::with('providerType')->find($service->provider_id);
+        $providerTypeKey = $provider?->providerTypeKey();
+        $definition = $providerTypeKey !== null
+            ? app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($providerTypeKey)
+            : null;
         // Business authority is determined by ProviderUser, not SpecialistAssignment.role
-        // For independent specialists, check if Provider type is independent
+        // For independent specialists, check the canonical Provider Type.
         $isIndependentSpecialist = $definition && $definition->isIndependent;
 
         if (!$isIndependentSpecialist) {

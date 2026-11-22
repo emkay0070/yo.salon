@@ -16,7 +16,7 @@ class BookingFactory extends Factory
     public function definition(): array
     {
         $provider = Provider::factory()->create();
-        $location = Location::factory()->create(['provider_id' => $provider->id]);
+        $location = Location::factory()->primary()->create(['provider_id' => $provider->id]);
 
         return [
             'location_id' => $location->id,

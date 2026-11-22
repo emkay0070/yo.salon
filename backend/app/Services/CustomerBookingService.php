@@ -18,17 +18,20 @@ class CustomerBookingService
     private BookingConfigurationService $configService;
     private BookingConflictService $conflictService;
     private \App\Services\AvailabilityEngine $availabilityEngine;
+    private ?CustomerAvailabilityService $customerAvailabilityService;
 
     public function __construct(
         CustomerSpecialistService $specialistService,
         BookingConfigurationService $configService,
         BookingConflictService $conflictService,
-        \App\Services\AvailabilityEngine $availabilityEngine
+        \App\Services\AvailabilityEngine $availabilityEngine,
+        ?CustomerAvailabilityService $customerAvailabilityService = null
     ) {
         $this->specialistService = $specialistService;
         $this->configService = $configService;
         $this->conflictService = $conflictService;
         $this->availabilityEngine = $availabilityEngine;
+        $this->customerAvailabilityService = $customerAvailabilityService;
     }
 
     /**
@@ -241,23 +244,75 @@ class CustomerBookingService
             $errors[] = 'Invalid time format';
         }
 
-        // Check availability
-        $availabilityService = new CustomerAvailabilityService();
         // Compatibility: accept both salon_id (legacy) and location_id (canonical)
         $locationId = $data['location_id'] ?? $data['salon_id'] ?? null;
-        $availability = $availabilityService->getAvailableSlots(
-            $locationId,
-            $data['service_id'],
-            $data['staff_id'] ?? null,
-            $data['date']
-        );
 
-        $timeAvailable = collect($availability['slots'])->firstWhere('time', $data['time']);
-        if (!$timeAvailable || !$timeAvailable['available']) {
+        // Availability is provider-scoped. Resolve the provider from the
+        // location rather than passing the location id where a provider id is
+        // expected (previously caused a 500 on portal booking creation).
+        $providerId = $data['provider_id'] ?? null;
+        if (!$providerId && $locationId) {
+            $providerId = \App\Models\Location::whereKey($locationId)->value('provider_id');
+        }
+        if (!$providerId) {
+            $service = Service::withoutGlobalScope('salon')
+                ->whereKey($data['service_id'] ?? null)
+                ->first();
+            $providerId = $service?->provider_id;
+        }
+
+        if (!$providerId) {
+            $errors[] = 'Unable to resolve provider for this booking';
+            return $errors;
+        }
+
+        $availabilityService = $this->customerAvailabilityService
+            ?? app(CustomerAvailabilityService::class);
+
+        try {
+            $availability = $availabilityService->getAvailableSlots(
+                $providerId,
+                $locationId,
+                $data['service_id'],
+                $data['staff_id'] ?? $data['specialist_id'] ?? null,
+                $data['date']
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('CustomerBookingService::validateBooking availability lookup failed', [
+                'provider_id' => $providerId,
+                'location_id' => $locationId,
+                'service_id' => $data['service_id'] ?? null,
+                'date' => $data['date'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            $errors[] = 'Unable to verify availability for the selected time';
+            return $errors;
+        }
+
+        $requestedTime = $this->normalizeTime($data['time']);
+        $timeAvailable = collect($availability['slots'] ?? [])->first(function ($slot) use ($requestedTime) {
+            return $this->normalizeTime($slot['time'] ?? '') === $requestedTime;
+        });
+
+        if (!$timeAvailable || empty($timeAvailable['available'])) {
             $errors[] = 'Selected time slot is not available';
         }
 
         return $errors;
+    }
+
+    /**
+     * Normalize HH:MM[:SS] to HH:MM for comparison.
+     */
+    private function normalizeTime(string $time): string
+    {
+        $parts = explode(':', $time);
+
+        if (count($parts) < 2) {
+            return $time;
+        }
+
+        return sprintf('%02d:%02d', (int) $parts[0], (int) $parts[1]);
     }
 
     /**

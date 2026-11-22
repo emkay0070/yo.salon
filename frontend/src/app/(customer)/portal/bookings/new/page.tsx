@@ -120,6 +120,7 @@ function NewBookingPageInner() {
         service_id: selectedService?.id,
         date: selectedDate,
         provider_id: activeProviderId,
+        location_id: selectedService?.location_id ?? selectedService?.location?.id,
       });
       return result;
     },
@@ -133,6 +134,7 @@ function NewBookingPageInner() {
       date: selectedDate,
       time: selectedTime,
       provider_id: activeProviderId,
+      location_id: selectedService?.location_id ?? selectedService?.location?.id,
     }),
     enabled: !!selectedService && !!activeProviderId,
   });
@@ -165,7 +167,8 @@ function NewBookingPageInner() {
     setBookingError('');
     createBooking.mutate({
       service_id:        selectedService.id,
-      provider_id:          activeProviderId,
+      provider_id:       activeProviderId,
+      location_id:       selectedService.location_id ?? selectedService.location?.id,
       specialist_id:     selectedSpecialist?.id,
       date:              selectedDate,
       time:              selectedTime,

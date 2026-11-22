@@ -22,6 +22,18 @@ class StaffController extends Controller
         $this->capabilityResolver = $capabilityResolver;
     }
 
+    private function currentProviderId(): ?string
+    {
+        return auth()->user()?->currentProvider()?->id;
+    }
+
+    private function staffBelongsToCurrentProvider(Staff $staff): bool
+    {
+        $providerId = $this->currentProviderId();
+
+        return $providerId !== null && $staff->provider_id === $providerId;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $provider = auth()->user()->currentProvider();
@@ -173,6 +185,10 @@ class StaffController extends Controller
 
     public function show(Staff $staff): JsonResponse
     {
+        if (!$this->staffBelongsToCurrentProvider($staff)) {
+            return response()->json(['message' => 'Staff member not found'], 404);
+        }
+
         $staff->load(['provider', 'location']);
 
         // Get services offered by this staff member.
@@ -264,6 +280,10 @@ class StaffController extends Controller
 
     public function update(Request $request, Staff $staff): JsonResponse
     {
+        if (!$this->staffBelongsToCurrentProvider($staff)) {
+            return response()->json(['message' => 'Staff member not found'], 404);
+        }
+
         $validated = $request->validate([
             'provider_id' => 'sometimes|uuid|exists:providers,id',
             'location_id' => 'sometimes|uuid|exists:locations,id',
@@ -278,7 +298,20 @@ class StaffController extends Controller
         ]);
 
         $data = $validated;
-        
+
+        // Provider ownership is immutable through this endpoint.
+        unset($data['provider_id']);
+
+        if (!empty($data['location_id'])) {
+            $locationBelongs = \App\Models\Location::whereKey($data['location_id'])
+                ->where('provider_id', $staff->provider_id)
+                ->exists();
+
+            if (!$locationBelongs) {
+                return response()->json(['message' => 'Location does not belong to this provider'], 403);
+            }
+        }
+
         if ($request->hasFile('photo')) {
             // Delete old media if exists
             if ($staff->photo && \Illuminate\Support\Str::isUuid($staff->photo)) {
@@ -315,6 +348,10 @@ class StaffController extends Controller
 
     public function destroy(Staff $staff): JsonResponse
     {
+        if (!$this->staffBelongsToCurrentProvider($staff)) {
+            return response()->json(['message' => 'Staff member not found'], 404);
+        }
+
         // Delete media if exists
         if ($staff->photo && \Illuminate\Support\Str::isUuid($staff->photo)) {
             $media = \App\Models\Media::find($staff->photo);
@@ -331,12 +368,18 @@ class StaffController extends Controller
 
     public function byProvider(string $provider): JsonResponse
     {
-        // Resolve provider_id and location_id from provider
-        $providerModel = \App\Models\Provider::find($provider);
-        if (!$providerModel) {
+        $currentProviderId = $this->currentProviderId();
+
+        // Accept either a provider id or slug, but only for the authenticated
+        // user's provider. Prevents cross-tenant staff enumeration.
+        $providerModel = \App\Models\Provider::where('id', $provider)
+            ->orWhere('slug', $provider)
+            ->first();
+
+        if (!$providerModel || !$currentProviderId || $providerModel->id !== $currentProviderId) {
             return response()->json(['message' => 'Provider not found'], 404);
         }
-        
+
         $staff = Staff::where('provider_id', $providerModel->id)
             ->where('active', true)
             ->get();

@@ -39,6 +39,7 @@ class SearchController extends Controller
         // Search providers
         if ($type === 'all' || $type === 'providers') {
             $providers = Provider::query()
+                ->with('providerType')
                 ->where('display_name', 'ILIKE', "%{$query}%")
                 ->orWhere('description', 'ILIKE', "%{$query}%")
                 ->orWhere('location', 'ILIKE', "%{$query}%")
@@ -47,13 +48,16 @@ class SearchController extends Controller
                 ->get();
 
             $results['providers'] = $providers->map(function ($provider) {
+                $providerTypeKey = $provider->providerTypeKey();
+
                 return [
                     'id' => $provider->id,
                     'type' => 'provider',
+                    'provider_type' => $providerTypeKey,
                     'display_name' => $provider->display_name,
                     'slug' => $provider->slug,
                     'description' => $provider->description,
-                    'type_label' => ucfirst($provider->type),
+                    'type_label' => $providerTypeKey !== null ? ucfirst($providerTypeKey) : null,
                     'location' => $provider->location,
                     'rating' => $provider->rating ?? 0,
                     'review_count' => $provider->review_count ?? 0,

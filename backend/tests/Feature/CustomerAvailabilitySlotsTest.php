@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\LocationSchedule;
 use App\Models\Specialist;
 use App\Models\SpecialistAssignment;
+use App\Models\Organization;
 use App\Models\Service;
 use App\Models\Subscription;
 use App\Models\Plan;
@@ -38,11 +39,14 @@ class CustomerAvailabilitySlotsTest extends TestCase
      */
     public function test_availability_returns_all_slots_with_availability_flags(): void
     {
+        $org = Organization::factory()->create();
+
         $provider = Provider::create([
-            'id'           => Str::uuid(),
-            'display_name' => 'Test Provider',
-            'type'         => 'independent_specialist',
-            'timezone'     => 'Africa/Kampala',
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'display_name'    => 'Test Provider',
+            'type'            => 'independent_specialist',
+            'timezone'        => 'Africa/Kampala',
         ]);
 
         $specialist = Specialist::create([

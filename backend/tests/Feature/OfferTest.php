@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Offer;
+use App\Models\Organization;
 use App\Models\Provider;
 use App\Models\Location;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,9 +24,12 @@ class OfferTest extends TestCase
         parent::setUp();
 
         // Create provider
+        $org1 = Organization::factory()->create();
         $this->provider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $org1->id,
             'name' => 'Test Provider',
+            'type' => 'salon',
             'display_name' => 'Test Provider Display',
             'slug' => 'test-provider',
             'active' => true,
@@ -42,9 +46,12 @@ class OfferTest extends TestCase
         ]);
 
         // Create other provider
+        $org2 = Organization::factory()->create();
         $this->otherProvider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $org2->id,
             'name' => 'Other Provider',
+            'type' => 'salon',
             'display_name' => 'Other Provider Display',
             'slug' => 'other-provider',
             'active' => true,

@@ -19,26 +19,32 @@ class CustomerResolver
 {
     /**
      * Resolve customer by contact information (phone or email)
+     * Keeps email and phone matching completely separate (H-1) and supports
+     * dual-query lookup compatibility for legacy unmigrated phone formats (M-1).
      * 
      * @param string $contact Phone number or email
      * @return Customer|null
      */
     public function findByContact(string $contact): ?Customer
     {
-        return Customer::where('phone', $contact)
-            ->orWhere('email', $contact)
-            ->first();
+        if (str_contains($contact, '@')) {
+            return Customer::where('email', $contact)->first();
+        }
+
+        $lookupValues = PhoneNormalizer::lookupValues($contact);
+        return Customer::whereIn('phone', $lookupValues)->first();
     }
 
     /**
-     * Resolve customer by phone
+     * Resolve customer by phone (supports canonical E.164 and legacy unmigrated formats).
      * 
      * @param string $phone
      * @return Customer|null
      */
     public function findByPhone(string $phone): ?Customer
     {
-        return Customer::where('phone', $phone)->first();
+        $lookupValues = PhoneNormalizer::lookupValues($phone);
+        return Customer::whereIn('phone', $lookupValues)->first();
     }
 
     /**

@@ -324,8 +324,21 @@ class CapabilityResolver
     // Private helper methods
     // ─────────────────────────────────────────────
 
+    public function getSubscriptionByOrganization(string $organizationId): ?Subscription
+    {
+        return Subscription::where('organization_id', $organizationId)->first();
+    }
+
     private function getSubscriptionByProvider(string $providerId): ?Subscription
     {
+        $provider = \App\Models\Provider::find($providerId);
+        if ($provider && $provider->organization_id) {
+            $orgSub = $this->getSubscriptionByOrganization($provider->organization_id);
+            if ($orgSub) {
+                return $orgSub;
+            }
+        }
+
         return Subscription::where('provider_id', $providerId)->first();
     }
 

@@ -10,13 +10,151 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\ProviderType;
+use App\Domain\Provider\ProviderTypeRegistry;
+use App\Domain\Provider\Exceptions\UnsupportedProviderTypeError;
 
 class Provider extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;
 
+    /**
+     * Transient properties tracking explicit type inputs for compatibility and conflict validation.
+     */
+    public ?string $suppliedLegacyType = null;
+    public ?string $suppliedExplicitProviderTypeId = null;
+
+    /**
+     * Clear legacy conflict tracking (used by factories when synchronizing legacy overrides).
+     */
+    public function clearLegacyConflict(): void
+    {
+        $this->suppliedExplicitProviderTypeId = null;
+    }
+
+    /**
+     * Phase 5: provider_type_id is the sole authoritative classification.
+     * Legacy `type` column is dropped from the database; input 'type' is
+     * accepted via compatibility mutator and mapped to provider_type_id.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Provider $provider) {
+            $registry = app(ProviderTypeRegistry::class);
+
+            $hasLegacyType = $provider->suppliedLegacyType !== null && $provider->suppliedLegacyType !== '';
+            $hasProviderTypeId = !empty($provider->provider_type_id);
+
+            if (!$hasLegacyType && !$hasProviderTypeId) {
+                if (!$provider->exists) {
+                    throw new \InvalidArgumentException(
+                        'A Provider cannot be created without a Provider Type.'
+                    );
+                }
+
+                // Unrelated update: leave the canonical relationship untouched.
+                return;
+            }
+
+            if ($hasLegacyType && !$registry->isSupported($provider->suppliedLegacyType)) {
+                throw new UnsupportedProviderTypeError($provider->suppliedLegacyType);
+            }
+
+            if ($hasLegacyType && !$provider->exists && !$registry->isAvailableForNewRegistration($provider->suppliedLegacyType)) {
+                throw new UnsupportedProviderTypeError($provider->suppliedLegacyType);
+            }
+
+            if ($hasProviderTypeId) {
+                $providerType = ProviderType::find($provider->provider_type_id);
+
+                if (!$providerType) {
+                    throw new UnsupportedProviderTypeError(
+                        (string) $provider->provider_type_id
+                    );
+                }
+
+                $typeKey = $providerType->key;
+
+                if (!$registry->isSupported($typeKey)) {
+                    throw new UnsupportedProviderTypeError($typeKey);
+                }
+
+                if (!$provider->exists && !$registry->isAvailableForNewRegistration($typeKey)) {
+                    throw new UnsupportedProviderTypeError($typeKey);
+                }
+
+                if ($hasLegacyType && $provider->suppliedExplicitProviderTypeId && $provider->suppliedLegacyType !== $typeKey) {
+                    throw new \InvalidArgumentException(sprintf(
+                        'Conflicting provider types: legacy type "%s" does not match provider_type_id "%s" (%s).',
+                        $provider->suppliedLegacyType,
+                        $provider->provider_type_id,
+                        $typeKey
+                    ));
+                }
+
+                return;
+            }
+
+            // Legacy-only creation: resolve provider_type_id through registry
+            $typeId = $registry->getTypeId($provider->suppliedLegacyType);
+
+            if (!$typeId) {
+                throw new UnsupportedProviderTypeError($provider->suppliedLegacyType);
+            }
+
+            $provider->provider_type_id = $typeId;
+        });
+
+        static::saved(function (Provider $provider) {
+            $provider->suppliedLegacyType = null;
+            $provider->suppliedExplicitProviderTypeId = null;
+        });
+    }
+
+    /**
+     * Compatibility mutator: allow callers passing 'type' => 'spa' during create/update
+     * to transparently resolve and populate 'provider_type_id'.
+     */
+    public function setTypeAttribute(?string $value): void
+    {
+        $this->suppliedLegacyType = $value;
+
+        if ($value !== null && $value !== '') {
+            $registry = app(ProviderTypeRegistry::class);
+            $typeId = $registry->getTypeId($value);
+
+            if (!$typeId) {
+                throw new UnsupportedProviderTypeError($value);
+            }
+
+            if (!$this->suppliedExplicitProviderTypeId || $this->suppliedExplicitProviderTypeId === $typeId) {
+                $this->attributes['provider_type_id'] = $typeId;
+                unset($this->relations['providerType']);
+            }
+        }
+    }
+
+    public function setProviderTypeIdAttribute(?string $value): void
+    {
+        $this->attributes['provider_type_id'] = $value;
+        $this->suppliedExplicitProviderTypeId = $value;
+        unset($this->relations['providerType']);
+    }
+
+    /**
+     * Compatibility accessor: transparently return the canonical Provider Type key
+     * so existing API serializers and consumers accessing $provider->type continue
+     * to work seamlessly after the database column is dropped.
+     */
+    public function getTypeAttribute(): ?string
+    {
+        return $this->providerTypeKey();
+    }
+
     protected $fillable = [
+        'organization_id',
         'type',
+        'provider_type_id',
         'status',
         'display_name',
         'slug',
@@ -62,6 +200,7 @@ class Provider extends Model
     ];
 
     protected $appends = [
+        'type',
         'logo_url',
         'cover_image_url',
     ];
@@ -149,9 +288,35 @@ class Provider extends Model
         return $this->hasOne(Subscription::class);
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function businessCategory(): BelongsTo
     {
         return $this->belongsTo(BusinessCategory::class);
+    }
+
+    public function providerType(): BelongsTo
+    {
+        return $this->belongsTo(ProviderType::class, 'provider_type_id');
+    }
+
+    /**
+     * The canonical Provider Type key resolved through provider_type_id.
+     */
+    public function providerTypeKey(): ?string
+    {
+        return $this->providerType?->key;
+    }
+
+    /**
+     * Whether this Provider is classified as the given operational type key.
+     */
+    public function hasProviderType(string $typeKey): bool
+    {
+        return $this->providerTypeKey() === $typeKey;
     }
 
     // Scopes
@@ -160,9 +325,20 @@ class Provider extends Model
         return $query->where('active', true);
     }
 
+    /**
+     * Filter by Provider Type key through the indexed provider_type_id FK.
+     * Unknown keys intentionally return no results, matching the previous
+     * ENUM-based behaviour without falling back to another type.
+     */
     public function scopeByType($query, string $type)
     {
-        return $query->where('type', $type);
+        $typeId = app(ProviderTypeRegistry::class)->getTypeId($type);
+
+        if ($typeId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where('provider_type_id', $typeId);
     }
 
     public function scopeByStatus($query, string $status)
@@ -175,6 +351,14 @@ class Provider extends Model
      */
     public function getTypeDefinition(): \App\Domain\Provider\ProviderTypeDefinition
     {
-        return app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($this->type);
+        $typeKey = $this->providerTypeKey();
+
+        if ($typeKey === null) {
+            throw new UnsupportedProviderTypeError(
+                (string) $this->provider_type_id
+            );
+        }
+
+        return app(ProviderTypeRegistry::class)->for($typeKey);
     }
 }

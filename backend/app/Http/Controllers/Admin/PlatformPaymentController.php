@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\InvoiceService;
+use App\Services\PlatformAuthorizationService;
 use App\Models\Invoice;
 use App\Models\PlatformPaymentMethod;
 use Illuminate\Http\Request;
@@ -13,17 +14,23 @@ use Illuminate\Support\Facades\Log;
 class PlatformPaymentController extends Controller
 {
     private InvoiceService $invoiceService;
+    private PlatformAuthorizationService $authService;
 
-    public function __construct(InvoiceService $invoiceService)
+    public function __construct(InvoiceService $invoiceService, PlatformAuthorizationService $authService)
     {
         $this->invoiceService = $invoiceService;
+        $this->authService = $authService;
     }
 
     /**
      * Get pending invoices awaiting manual verification
      */
-    public function getPendingInvoices(): JsonResponse
+    public function getPendingInvoices(Request $request): JsonResponse
     {
+        if (!$this->authService->canViewPlatformInvoices($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view invoices.'], 403);
+        }
+
         try {
             $invoices = Invoice::where('status', 'pending')
                 ->with('subscription.plan', 'subscription.provider')
@@ -51,6 +58,10 @@ class PlatformPaymentController extends Controller
      */
     public function verifyPayment(Request $request, string $invoiceId): JsonResponse
     {
+        if (!$this->authService->canVerifyOrRejectInvoices($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to verify payment.'], 403);
+        }
+
         $validated = $request->validate([
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -84,8 +95,12 @@ class PlatformPaymentController extends Controller
     /**
      * Get active platform payment methods
      */
-    public function getPaymentMethods(): JsonResponse
+    public function getPaymentMethods(Request $request): JsonResponse
     {
+        if (!$this->authService->canViewPlatformInvoices($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view payment methods.'], 403);
+        }
+
         try {
             $paymentMethods = $this->invoiceService->getActivePaymentMethods();
 
@@ -106,8 +121,12 @@ class PlatformPaymentController extends Controller
     /**
      * Get payment method details (decrypted for admin use)
      */
-    public function getPaymentMethodDetails(string $id): JsonResponse
+    public function getPaymentMethodDetails(Request $request, string $id): JsonResponse
     {
+        if (!$this->authService->canViewPaymentMethodDetails($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view payment method details.'], 403);
+        }
+
         try {
             $paymentMethod = PlatformPaymentMethod::findOrFail($id);
 
@@ -132,6 +151,10 @@ class PlatformPaymentController extends Controller
      */
     public function updatePaymentMethod(Request $request, string $id): JsonResponse
     {
+        if (!$this->authService->canManagePaymentMethods($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to update payment methods.'], 403);
+        }
+
         $validated = $request->validate([
             'details' => 'nullable|array',
             'is_active' => 'boolean',
@@ -164,8 +187,12 @@ class PlatformPaymentController extends Controller
     /**
      * Get invoice details
      */
-    public function getInvoice(string $invoiceId): JsonResponse
+    public function getInvoice(Request $request, string $invoiceId): JsonResponse
     {
+        if (!$this->authService->canViewPlatformInvoices($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view invoice.'], 403);
+        }
+
         try {
             $invoice = Invoice::with('subscription.plan', 'subscription.provider', 'payments')
                 ->findOrFail($invoiceId);
@@ -190,6 +217,10 @@ class PlatformPaymentController extends Controller
      */
     public function rejectPayment(Request $request, string $invoiceId): JsonResponse
     {
+        if (!$this->authService->canVerifyOrRejectInvoices($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to reject payment.'], 403);
+        }
+
         $validated = $request->validate([
             'reason' => 'required|string',
         ]);

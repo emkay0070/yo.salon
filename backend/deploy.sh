@@ -39,9 +39,9 @@ echo "🎨 Optimizing views..."
 sudo -u www-data php artisan view:clear
 sudo -u www-data php artisan view:cache
 
-# Run migrations
-echo "🗄️  Running database migrations..."
-sudo -u www-data php artisan migrate --force
+# Run migrations using the designated privileged migration connection
+echo "🗄️  Running database migrations (via pgsql_tybuel_admin)..."
+sudo -u www-data php artisan migrate --database=pgsql_tybuel_admin --force
 
 # Clear and cache events
 echo "📡 Optimizing events..."

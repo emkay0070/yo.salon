@@ -26,6 +26,19 @@ class BookingController extends Controller
         $this->notificationService = $notificationService;
     }
 
+    private function currentProviderId(Request $request): ?string
+    {
+        return $request->attributes->get('provider_id')
+            ?? auth()->user()?->currentProvider()?->id;
+    }
+
+    private function bookingBelongsToProvider(Request $request, Booking $booking): bool
+    {
+        $providerId = $this->currentProviderId($request);
+
+        return $providerId !== null && $booking->provider_id === $providerId;
+    }
+
     public function index(Request $request): JsonResponse
     {
         \Log::info('BookingController::index called', ['params' => $request->all()]);
@@ -213,6 +226,16 @@ class BookingController extends Controller
             }
         }
 
+        // ── Customer ownership guard ─────────────────────────────────────────────
+        // Validate that if a customer_id is provided, the customer belongs to this provider.
+        // FIND-CRIT-03: Provider A must not silently attach or book for Provider B's customer.
+        if (!empty($validated['customer_id'])) {
+            $customer = \App\Models\Customer::find($validated['customer_id']);
+            if (!$customer || !$customer->providers()->where('providers.id', $validated['provider_id'])->exists()) {
+                return response()->json(['message' => 'Customer not found or does not belong to this provider.'], 403);
+            }
+        }
+
         // ── Time resolution ───────────────────────────────────────────────────────
         if (empty($validated['time']) && !empty($validated['date'])) {
             $validated['time'] = \Illuminate\Support\Carbon::parse($validated['date'])->format('H:i');
@@ -221,6 +244,8 @@ class BookingController extends Controller
         try {
             $result = app(\App\Services\BookingOrchestrator::class)->reserveAndBook($validated);
             $booking = $result['booking'];
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json(['message' => $e->getMessage()], 403);
         } catch (\Exception $e) {
             \Log::error('BookingController::store failed', ['message' => $e->getMessage(), 'payload' => $validated]);
             return response()->json(['message' => $e->getMessage()], 422);
@@ -257,13 +282,21 @@ class BookingController extends Controller
     }
 
 
-    public function show(Booking $booking): JsonResponse
+    public function show(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         return response()->json(new BookingResource($booking->load(['location', 'customer', 'specialist', 'service', 'staff', 'resolution'])));
     }
 
     public function update(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $validated = $request->validate([
             'location_id'  => 'sometimes|uuid|exists:locations,id',
             'provider_id'  => 'sometimes|uuid|exists:providers,id',
@@ -277,9 +310,43 @@ class BookingController extends Controller
             'notes'        => 'nullable|string',
         ]);
 
+        // Provider ownership is immutable through this endpoint.
+        unset($validated['provider_id']);
+
         // If time is not provided but date is, extract it from date
         if (empty($validated['time']) && !empty($validated['date'])) {
             $validated['time'] = \Illuminate\Support\Carbon::parse($validated['date'])->format('H:i');
+        }
+
+        if (!empty($validated['location_id'])) {
+            $locationBelongs = Location::whereKey($validated['location_id'])
+                ->where('provider_id', $booking->provider_id)
+                ->exists();
+
+            if (!$locationBelongs) {
+                return response()->json(['message' => 'Location does not belong to this provider.'], 403);
+            }
+        }
+
+        if (!empty($validated['specialist_id'])) {
+            $specialistAssigned = SpecialistAssignment::where('specialist_id', $validated['specialist_id'])
+                ->where('provider_id', $booking->provider_id)
+                ->whereIn('status', ['ACTIVE', 'active'])
+                ->exists();
+
+            if (!$specialistAssigned) {
+                return response()->json(['message' => 'Specialist is not assigned to this provider.'], 403);
+            }
+        }
+
+        if (!empty($validated['staff_id'])) {
+            $staffBelongs = \App\Models\Staff::whereKey($validated['staff_id'])
+                ->where('provider_id', $booking->provider_id)
+                ->exists();
+
+            if (!$staffBelongs) {
+                return response()->json(['message' => 'Staff member does not belong to this provider.'], 403);
+            }
         }
 
         // Check if scheduling fields are changing (date, time, specialist_id, location_id)
@@ -470,6 +537,10 @@ class BookingController extends Controller
      */
     public function resolve(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $validated = $request->validate([
             'outcome'      => 'required|in:NO_SHOW,CANCELLED,RESCHEDULED,COMPLETED_LATE,CUSTOMER_ARRIVED',
             'reason_code'  => 'required|in:CUSTOMER_DID_NOT_ARRIVE,CUSTOMER_CANCELLED,CUSTOMER_REQUESTED_RESCHEDULE,CUSTOMER_COULD_NOT_BE_REACHED,CUSTOMER_ARRIVED_LATE,PROVIDER_UNAVAILABLE,SPECIALIST_UNAVAILABLE,LOCATION_CLOSED,TECHNICAL_ISSUE,OTHER',
@@ -524,6 +595,10 @@ class BookingController extends Controller
      */
     public function followUp(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $validated = $request->validate([
             'follow_up_at' => 'nullable|date',
             'follow_up_notes' => 'nullable|string',
@@ -620,31 +695,50 @@ class BookingController extends Controller
         ]);
     }
 
-    public function destroy(Booking $booking): JsonResponse
+    public function destroy(Request $request, Booking $booking): JsonResponse
     {
+        if (!$this->bookingBelongsToProvider($request, $booking)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         $booking->delete();
         return response()->json(null, 204);
     }
 
-    public function byProvider(string $provider): JsonResponse
+    public function byProvider(Request $request, string $provider): JsonResponse
     {
-        // Get provider_id from location (legacy salon request)
-        $locationModel = \App\Models\Location::find($provider);
-        $providerId = $locationModel ? $locationModel->provider_id : null;
+        // Accept either a provider id or slug. The route parameter previously
+        // represented a location, which silently returned the wrong tenant.
+        $providerModel = \App\Models\Provider::where('id', $provider)
+            ->orWhere('slug', $provider)
+            ->first();
 
-        if (!$providerId) {
+        $currentProviderId = $this->currentProviderId($request);
+        if (!$providerModel || !$currentProviderId || $providerModel->id !== $currentProviderId) {
             return response()->json(['message' => 'Provider not found'], 404);
         }
 
-        $bookings = Booking::where('provider_id', $providerId)
+        $bookings = Booking::where('provider_id', $providerModel->id)
             ->with(['customer', 'specialist', 'service'])
             ->get();
         return response()->json($bookings);
     }
 
-    public function byCustomer(string $customer): JsonResponse
+    public function byCustomer(Request $request, string $customer): JsonResponse
     {
+        $providerId = $this->currentProviderId($request);
+        if (!$providerId) {
+            return response()->json(['message' => 'Provider context not found'], 400);
+        }
+
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        $customerModel = \App\Models\Customer::find($customer);
+        if (!$customerModel || !$customerModel->providers()->where('providers.id', $providerId)->exists()) {
+            return response()->json(['message' => 'Customer not found'], 404);
+        }
+
         $bookings = Booking::where('customer_id', $customer)
+            ->where('provider_id', $providerId)
             ->with(['location', 'specialist', 'service', 'services'])
             ->orderBy('date', 'desc')
             ->orderBy('time', 'desc')

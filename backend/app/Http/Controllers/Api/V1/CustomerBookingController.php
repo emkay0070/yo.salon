@@ -57,13 +57,25 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'service_id' => 'nullable|uuid',
             'staff_id' => 'nullable|uuid',
+            'specialist_id' => 'nullable|uuid',
             'date' => 'nullable|date',
-            'location_id' => 'required|uuid|exists:locations,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'salon_id' => 'nullable|uuid',
         ]);
 
-        $locationId = $request->attributes->get('location_id');
-        $providerId = $request->attributes->get('provider_id');
+        $locationId = $request->attributes->get('location_id') ?? $validated['location_id'] ?? null;
+        $providerId = $request->attributes->get('provider_id') ?? $validated['provider_id'] ?? null;
+
+        if (!$providerId && $locationId) {
+            $providerId = \App\Models\Location::whereKey($locationId)->value('provider_id');
+        }
+
+        if (!$providerId) {
+            return response()->json([
+                'message' => 'Provider or location context is required',
+            ], 422);
+        }
 
         // If no date provided, return empty slots
         if (empty($validated['date'])) {
@@ -78,7 +90,7 @@ class CustomerBookingController extends Controller
                 $providerId,
                 $locationId,
                 $validated['service_id'] ?? null,
-                $validated['staff_id'] ?? null,
+                $validated['staff_id'] ?? $validated['specialist_id'] ?? null,
                 $validated['date']
             );
 
@@ -105,12 +117,23 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'year' => 'required|integer',
             'month' => 'required|integer|min:1|max:12',
-            'location_id' => 'required|uuid|exists:locations,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'salon_id' => 'nullable|uuid',
         ]);
 
-        $locationId = $request->attributes->get('location_id');
-        $providerId = $request->attributes->get('provider_id');
+        $locationId = $request->attributes->get('location_id') ?? $validated['location_id'] ?? null;
+        $providerId = $request->attributes->get('provider_id') ?? $validated['provider_id'] ?? null;
+
+        if (!$providerId && $locationId) {
+            $providerId = \App\Models\Location::whereKey($locationId)->value('provider_id');
+        }
+
+        if (!$providerId) {
+            return response()->json([
+                'message' => 'Provider or location context is required',
+            ], 422);
+        }
 
         try {
             $dates = $this->availabilityService->getAvailableDates(
@@ -139,12 +162,23 @@ class CustomerBookingController extends Controller
             'service_id' => 'required|uuid',
             'date' => 'nullable|date',
             'time' => 'nullable',
-            'location_id' => 'required|uuid|exists:locations,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'salon_id' => 'nullable|uuid',
         ]);
 
-        $locationId = $request->attributes->get('location_id');
-        $providerId = $request->attributes->get('provider_id');
+        $locationId = $request->attributes->get('location_id') ?? $validated['location_id'] ?? null;
+        $providerId = $request->attributes->get('provider_id') ?? $validated['provider_id'] ?? null;
+
+        if (!$providerId && $locationId) {
+            $providerId = \App\Models\Location::whereKey($locationId)->value('provider_id');
+        }
+
+        if (!$providerId) {
+            return response()->json([
+                'message' => 'Provider or location context is required',
+            ], 422);
+        }
 
         try {
             // If date and time are provided, check availability for that specific slot
@@ -178,19 +212,48 @@ class CustomerBookingController extends Controller
         $validated = $request->validate([
             'service_id' => 'required|uuid',
             'staff_id' => 'nullable|uuid',
+            'specialist_id' => 'nullable|uuid|exists:specialists,id',
             'date' => 'required|date',
             'time' => 'required',
             'notes' => 'nullable|string',
             'offer_id' => 'nullable|uuid',
-            'location_id' => 'required|uuid|exists:locations,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
+            'provider_id' => 'nullable|uuid|exists:providers,id',
             'salon_id' => 'nullable|uuid',
             'customer_phone' => 'nullable|string|regex:/^[0-9+\s\-\(\)]{7,20}$/',
         ], [
             'customer_phone.regex' => 'Please enter a valid phone number.',
         ]);
 
-        $locationId = $validated['location_id'];
+        $locationId = $request->attributes->get('location_id') ?? $validated['location_id'] ?? null;
+        $providerId = $request->attributes->get('provider_id') ?? $validated['provider_id'] ?? null;
         $customerId = $request->attributes->get('customer_id');
+
+        if (!$locationId && $providerId) {
+            // Resolve a sensible default for provider-level bookings (salon
+            // bookings are physically location-bound).
+            $locationId = \App\Models\Location::where('provider_id', $providerId)
+                ->where('is_primary', true)
+                ->value('id')
+                ?? \App\Models\Location::where('provider_id', $providerId)
+                    ->where('is_active', true)
+                    ->value('id');
+        }
+
+        if (!$locationId) {
+            return response()->json([
+                'message' => 'A location is required to create this booking',
+            ], 422);
+        }
+
+        $location = \App\Models\Location::find($locationId);
+        $providerId = $location?->provider_id;
+
+        if (!$location || !$providerId) {
+            return response()->json([
+                'message' => 'Location not found',
+            ], 404);
+        }
 
         try {
             // specialist_id and staff_id are now distinct identities.
@@ -199,6 +262,7 @@ class CustomerBookingController extends Controller
             // The domain resolves staff_id via SpecialistAssignment when needed.
             $bookingData = array_merge($validated, [
                 'customer_id' => $customerId,
+                'provider_id' => $providerId,
                 'location_id' => $locationId,
                 // staff_id only used if explicitly provided (e.g. salon-direct booking)
                 'staff_id' => $validated['staff_id'] ?? null,
@@ -240,6 +304,24 @@ class CustomerBookingController extends Controller
     }
 
     /**
+     * Find a booking owned by the authenticated portal customer.
+     * Returns null when the booking does not exist or belongs to someone else,
+     * so callers can return a non-enumerating 404.
+     */
+    private function ownedBooking(Request $request, string $bookingId): ?\App\Models\Booking
+    {
+        $customerId = $request->attributes->get('customer_id');
+
+        if (!$customerId) {
+            return null;
+        }
+
+        return \App\Models\Booking::whereKey($bookingId)
+            ->where('customer_id', $customerId)
+            ->first();
+    }
+
+    /**
      * Rebook from a previous booking
      */
     public function rebook(Request $request, string $previousBookingId): JsonResponse
@@ -248,15 +330,27 @@ class CustomerBookingController extends Controller
             'date' => 'required|date',
             'time' => 'required',
             'notes' => 'nullable|string',
-            'location_id' => 'required|uuid|exists:locations,id',
+            'location_id' => 'nullable|uuid|exists:locations,id',
             'salon_id' => 'nullable|uuid',
         ]);
 
-        $locationId = $request->attributes->get('location_id');
+        $previousBooking = $this->ownedBooking($request, $previousBookingId);
+        if (!$previousBooking) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
+        $locationId = $request->attributes->get('location_id')
+            ?? $validated['location_id']
+            ?? $previousBooking->location_id;
+
+        if (!$locationId) {
+            return response()->json(['message' => 'A location is required to rebook'], 422);
+        }
 
         try {
             $newData = array_merge($validated, [
                 'location_id' => $locationId,
+                'provider_id' => $previousBooking->provider_id,
             ]);
 
             $booking = $this->bookingService->rebookFromPrevious($previousBookingId, $newData);
@@ -276,8 +370,12 @@ class CustomerBookingController extends Controller
     /**
      * Cancel a booking
      */
-    public function cancel(string $bookingId): JsonResponse
+    public function cancel(Request $request, string $bookingId): JsonResponse
     {
+        if (!$this->ownedBooking($request, $bookingId)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
+
         try {
             $booking = $this->bookingService->cancelBooking($bookingId);
 
@@ -303,6 +401,10 @@ class CustomerBookingController extends Controller
             'time' => 'required',
             'notes' => 'nullable|string',
         ]);
+
+        if (!$this->ownedBooking($request, $bookingId)) {
+            return response()->json(['message' => 'Booking not found'], 404);
+        }
 
         try {
             $booking = $this->bookingService->rescheduleBooking($bookingId, $validated);

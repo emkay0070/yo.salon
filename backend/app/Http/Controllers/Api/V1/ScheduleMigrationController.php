@@ -68,9 +68,8 @@ class ScheduleMigrationController extends Controller
      */
     public function getProvidersNeedingMigration(Request $request): JsonResponse
     {
-        // Admin-only check
-        $user = auth()->user();
-        if (!$user || !$user->is_admin) {
+        $user = $request->user();
+        if (!app(\App\Services\PlatformAuthorizationService::class)->canManageScheduleMigration($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -87,9 +86,8 @@ class ScheduleMigrationController extends Controller
      */
     public function sendNotifications(Request $request): JsonResponse
     {
-        // Admin-only check
-        $user = auth()->user();
-        if (!$user || !$user->is_admin) {
+        $user = $request->user();
+        if (!app(\App\Services\PlatformAuthorizationService::class)->canManageScheduleMigration($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

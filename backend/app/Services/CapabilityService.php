@@ -316,11 +316,18 @@ class CapabilityService
     }
 
     /**
-     * Get subscription tier for provider
+     * Get subscription tier for provider (resolving via Organization first)
      */
     private function getSubscriptionTier(Provider $provider): ?string
     {
-        $subscription = Subscription::where('provider_id', $provider->id)->first();
+        $subscription = null;
+        if ($provider->organization_id) {
+            $subscription = Subscription::where('organization_id', $provider->organization_id)->first();
+        }
+        if (!$subscription) {
+            $subscription = Subscription::where('provider_id', $provider->id)->first();
+        }
+
         if (!$subscription || !$subscription->isActive()) {
             return null;
         }

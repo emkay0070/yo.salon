@@ -110,8 +110,8 @@ class SpecialistController extends Controller
             ->where(function ($q) use ($idOrHandle) {
                 $q->where('id', $idOrHandle)->orWhere('handle', $idOrHandle);
             })
-            ->with(['provider', 'assignments' => function ($q) {
-                $q->where('status', 'ACTIVE')->with('provider', 'location');
+            ->with(['provider.providerType', 'assignments' => function ($q) {
+                $q->where('status', 'ACTIVE')->with('provider.providerType', 'location');
             }])
             ->first();
 
@@ -273,6 +273,7 @@ class SpecialistController extends Controller
                 'display_name' => $specialist->provider->display_name,
                 'slug' => $specialist->provider->slug,
                 'logo' => $specialist->provider->logo,
+                'provider_type' => $specialist->provider->providerTypeKey(),
             ] : null,
             'salons' => $specialist->assignments->map(function ($assignment) {
                 return [
@@ -315,6 +316,10 @@ class SpecialistController extends Controller
 
     public function update(Request $request, Specialist $specialist): JsonResponse
     {
+        if (!$this->managesSpecialist($specialist)) {
+            return response()->json(['message' => 'Specialist not found'], 404);
+        }
+
         $validated = $request->validate([
             'name' => 'sometimes|string',
             'phone' => 'nullable|string',
@@ -336,8 +341,145 @@ class SpecialistController extends Controller
 
     public function destroy(Specialist $specialist): JsonResponse
     {
+        if (!$this->managesSpecialist($specialist)) {
+            return response()->json(['message' => 'Specialist not found'], 404);
+        }
+
         $specialist->delete();
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * Update the provider-scoped assignment (role, active status, rates).
+     * This edits the relationship, not the global specialist identity.
+     */
+    public function updateAssignment(Request $request, string $provider, string $specialist): JsonResponse
+    {
+        $providerModel = $this->resolveManagedProvider($provider);
+        if (!$providerModel) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+
+        $assignment = \App\Models\SpecialistAssignment::where('provider_id', $providerModel->id)
+            ->where('specialist_id', $specialist)
+            ->latest('created_at')
+            ->first();
+
+        if (!$assignment) {
+            return response()->json(['message' => 'Specialist assignment not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'role' => 'sometimes|string',
+            'employment_type' => 'sometimes|string|in:employee,freelancer,contractor,EMPLOYEE,FREELANCER,CONTRACTOR',
+            'is_primary' => 'sometimes|boolean',
+            'commission_rate' => 'sometimes|nullable|numeric',
+            'hourly_rate' => 'sometimes|nullable|numeric',
+            'status' => 'sometimes|string|in:active,inactive,terminated,ACTIVE,INACTIVE,TERMINATED',
+            'active' => 'sometimes|boolean',
+        ]);
+
+        $data = $validated;
+
+        if (array_key_exists('active', $data)) {
+            $data['status'] = $data['active'] ? 'ACTIVE' : 'INACTIVE';
+            unset($data['active']);
+        }
+
+        if (isset($data['role'])) {
+            $roleMap = [
+                'owner' => 'OWNER',
+                'manager' => 'MANAGER',
+                'staff' => 'SPECIALIST',
+                'receptionist' => 'SPECIALIST',
+                'senior_specialist' => 'SENIOR_SPECIALIST',
+                'specialist' => 'SPECIALIST',
+                'trainee' => 'TRAINEE',
+            ];
+            $normalized = strtolower($data['role']);
+            $data['role'] = $roleMap[$normalized] ?? strtoupper($data['role']);
+
+            if (!in_array($data['role'], ['OWNER', 'MANAGER', 'SENIOR_SPECIALIST', 'SPECIALIST', 'TRAINEE'], true)) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => ['role' => ['Invalid assignment role.']],
+                ], 422);
+            }
+        }
+
+        if (isset($data['status'])) {
+            $data['status'] = strtoupper($data['status']);
+        }
+
+        if (isset($data['employment_type'])) {
+            $data['employment_type'] = strtoupper($data['employment_type']);
+        }
+
+        $assignment->update($data);
+
+        $specialistModel = $assignment->specialist;
+        $specialistModel->pivot = (object) [
+            'role' => $assignment->role,
+            'employment_type' => $assignment->employment_type,
+            'is_primary' => $assignment->is_primary,
+            'status' => $assignment->status,
+            'assignment_id' => $assignment->id,
+        ];
+
+        return response()->json($specialistModel);
+    }
+
+    /**
+     * Remove a specialist from the provider by deleting the assignment.
+     * The global specialist identity is preserved.
+     */
+    public function destroyAssignment(string $provider, string $specialist): JsonResponse
+    {
+        $providerModel = $this->resolveManagedProvider($provider);
+        if (!$providerModel) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+
+        $assignment = \App\Models\SpecialistAssignment::where('provider_id', $providerModel->id)
+            ->where('specialist_id', $specialist)
+            ->first();
+
+        if (!$assignment) {
+            return response()->json(['message' => 'Specialist assignment not found'], 404);
+        }
+
+        $assignment->delete();
+
+        return response()->json(null, 204);
+    }
+
+    private function resolveManagedProvider(string $provider): ?\App\Models\Provider
+    {
+        $providerModel = \App\Models\Provider::where('id', $provider)
+            ->orWhere('slug', $provider)
+            ->first();
+
+        $current = auth()->user()?->currentProvider();
+
+        if (!$providerModel || !$current || $providerModel->id !== $current->id) {
+            return null;
+        }
+
+        return $providerModel;
+    }
+
+    private function managesSpecialist(Specialist $specialist): bool
+    {
+        $current = auth()->user()?->currentProvider();
+
+        if (!$current) {
+            return false;
+        }
+
+        return $specialist->assignments()
+            ->where('provider_id', $current->id)
+            ->whereIn('status', ['ACTIVE', 'active'])
+            ->exists();
     }
 }

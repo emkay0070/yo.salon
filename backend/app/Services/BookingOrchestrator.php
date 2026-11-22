@@ -69,8 +69,8 @@ class BookingOrchestrator
 
         // For independent_specialist providers without specialist_id, resolve primary assignment
         if (!$specialistId) {
-            $provider = \App\Models\Provider::find($providerId);
-            if ($provider && $provider->type === \App\Models\Provider::TYPE_SPECIALIST) {
+            $provider = \App\Models\Provider::with('providerType')->find($providerId);
+            if ($provider && $provider->hasProviderType(\App\Models\Provider::TYPE_SPECIALIST)) {
                 $primaryAssignment = SpecialistAssignment::where('provider_id', $providerId)
                     ->where('is_primary', true)
                     ->whereIn('status', ['ACTIVE', 'active'])

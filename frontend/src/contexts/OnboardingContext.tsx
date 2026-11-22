@@ -15,7 +15,7 @@ interface ProviderData {
   timezone: string;
   currency: string;
   description: string;
-  providerType: string; // 'salon', 'spa', 'independent_specialist', etc.
+  providerType: string; // Canonical key from the selected business category; empty until selected
   category: string; // Now stores category slug instead of category name
   vibe: string;
   businessType: string;
@@ -132,7 +132,7 @@ const defaultProviderData: ProviderData = {
   timezone: 'Africa/Kampala',
   currency: 'UGX',
   description: '',
-  providerType: 'salon',
+  providerType: '',
   category: '',
   vibe: '',
   businessType: '',

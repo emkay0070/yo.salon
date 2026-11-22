@@ -11,12 +11,25 @@ use Illuminate\Support\Facades\Log;
 
 class ProviderScheduleController extends Controller
 {
-    public function index($providerId): JsonResponse
+    /**
+     * Ensure the authenticated user's provider context matches the provider in
+     * the URL. Returns a 403 response when it does not, otherwise null.
+     */
+    private function authorizeProvider(Request $request, string $providerId): ?JsonResponse
     {
-        $salon = request()->attributes->get('salon');
+        $contextProviderId = $request->attributes->get('provider_id');
 
-        if (!$salon || $salon->provider_id !== $providerId) {
+        if (!$contextProviderId || $contextProviderId !== $providerId) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return null;
+    }
+
+    public function index(Request $request, $providerId): JsonResponse
+    {
+        if ($denied = $this->authorizeProvider($request, $providerId)) {
+            return $denied;
         }
 
         $schedules = ProviderSchedule::where('provider_id', $providerId)
@@ -49,10 +62,8 @@ class ProviderScheduleController extends Controller
 
     public function update(Request $request, $providerId): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-
-        if (!$salon || $salon->provider_id !== $providerId) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if ($denied = $this->authorizeProvider($request, $providerId)) {
+            return $denied;
         }
 
         $validated = $request->validate([
@@ -153,9 +164,8 @@ class ProviderScheduleController extends Controller
 
     public function publish(Request $request, $providerId): JsonResponse
     {
-        $salon = $request->attributes->get('salon');
-        if (!$salon || $salon->provider_id !== $providerId) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if ($denied = $this->authorizeProvider($request, $providerId)) {
+            return $denied;
         }
 
         $rows = ProviderSchedule::where('provider_id', $providerId)->get();

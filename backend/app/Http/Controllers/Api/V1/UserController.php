@@ -63,6 +63,16 @@ class UserController extends Controller
             'photo_url' => 'sometimes|nullable|string',
         ]);
 
+        // Explicitly invalidate email verification state if email address is updated
+        if (isset($validated['email']) && strtolower(trim($validated['email'])) !== strtolower(trim($user->email))) {
+            $user->email = strtolower(trim($validated['email']));
+            $user->email_verified_at = null;
+            if ($user->status === 'email_verified') {
+                $user->status = 'registered';
+            }
+            unset($validated['email']);
+        }
+
         $user->update($validated);
 
         // Load providers relationship with logo media, cover image media, and business category

@@ -94,6 +94,9 @@ class SpecialistCraftService
         $rows = DB::table('specialist_service')
             ->join('services', 'services.id', '=', 'specialist_service.service_id')
             ->join('providers', 'providers.id', '=', 'services.provider_id')
+            // Provider Type key is resolved through the canonical FK, never
+            // through the legacy providers.type compatibility column.
+            ->join('provider_types', 'provider_types.id', '=', 'providers.provider_type_id')
             // Join media to get image URL
             ->leftJoin('media', 'media.id', '=', 'services.image_media_id')
             // Join craft taxonomy to get category information
@@ -128,7 +131,7 @@ class SpecialistCraftService
                 // Provider context
                 'providers.id as provider_id',
                 'providers.display_name as provider_display_name',
-                'providers.type as provider_type',
+                'provider_types.key as provider_type',
                 'providers.slug as provider_slug',
                 // Assignment context (role at this Provider)
                 'specialist_assignments.role as assignment_role',

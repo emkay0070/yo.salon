@@ -15,7 +15,7 @@ import { ShareFavoriteActions } from '@/components/destination/ShareFavoriteActi
 
 interface ProviderData {
   id: string;
-  type: string;
+  provider_type: string | null;
   display_name: string;
   slug: string;
   description: string;
@@ -123,7 +123,8 @@ function ProviderProfilePageContent({ params }: { params: Promise<{ id: string }
     );
   }
 
-  const getTypeLabel = (type: string) => {
+  const getTypeLabel = (type: string | null) => {
+    if (!type) return '';
     const labels: Record<string, string> = {
       salon: 'Salon',
       independent_specialist: 'Independent Specialist',
@@ -166,7 +167,7 @@ function ProviderProfilePageContent({ params }: { params: Promise<{ id: string }
         {/* Hero Card */}
         <HeroCard
           title={provider.display_name}
-          subtitle={getTypeLabel(provider.type)}
+          subtitle={getTypeLabel(provider.provider_type)}
           description={provider.description}
           image={provider.logo || undefined}
           badges={badges}

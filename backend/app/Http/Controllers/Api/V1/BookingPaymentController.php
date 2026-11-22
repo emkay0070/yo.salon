@@ -137,7 +137,7 @@ class BookingPaymentController extends Controller
         $validated = $request->validate([
             'booking_id' => 'nullable|exists:bookings,id',
             'customer_id' => 'nullable|exists:customers,id',
-            'location_id' => 'required|exists:locations,id',
+            'location_id' => 'nullable|required_without:booking_id|exists:locations,id',
             'amount' => 'required|numeric|min:0',
             'payment_method' => 'required|in:cash,card,terminal',
             'notes' => 'nullable|string|max:500',
@@ -146,17 +146,23 @@ class BookingPaymentController extends Controller
         try {
             $providerId = $this->providerId();
 
-            $location = \App\Models\Location::find($validated['location_id']);
-            if (!$location || $location->provider_id !== $providerId) {
-                return response()->json(['success' => false, 'message' => 'Location not found'], 404);
-            }
-
+            $booking = null;
             if (!empty($validated['booking_id'])) {
                 $booking = Booking::find($validated['booking_id']);
                 if (!$booking || $booking->provider_id !== $providerId) {
                     return response()->json(['success' => false, 'message' => 'Booking not found'], 404);
                 }
             }
+
+            // Derive the location from the booking when omitted.
+            $locationId = $validated['location_id'] ?? $booking?->location_id;
+
+            $location = \App\Models\Location::find($locationId);
+            if (!$location || $location->provider_id !== $providerId) {
+                return response()->json(['success' => false, 'message' => 'Location not found'], 404);
+            }
+
+            $validated['location_id'] = $locationId;
 
             $result = $this->bookingPaymentService->recordManualPayment($validated);
 

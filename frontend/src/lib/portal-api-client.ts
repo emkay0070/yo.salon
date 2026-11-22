@@ -167,6 +167,7 @@ class PortalApiClient {
   async createPortalBooking(data: {
     service_id: string;
     provider_id: string;
+    location_id?: string;
     specialist_id?: string;
     date: string;
     time: string;

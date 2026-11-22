@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Organization;
 use App\Models\SpecialistCareerEvent;
 use App\Models\Specialist;
 use App\Models\SpecialistAssignment;
@@ -25,9 +26,12 @@ class SpecialistCareerEventTest extends TestCase
         parent::setUp();
 
         // Create provider
+        $org = Organization::factory()->create();
         $this->provider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $org->id,
             'name' => 'Test Provider',
+            'type' => 'salon',
             'display_name' => 'Test Provider Display',
             'slug' => 'test-provider',
             'active' => true,

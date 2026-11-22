@@ -80,11 +80,11 @@ export default function CategoryScene() {
         console.error('Failed to fetch business categories:', error);
         // Fallback to hardcoded categories for development
         setCategories([
-          { id: '1', slug: 'hair_salon', name: 'Hair Salon', short_name: 'Salon', description: 'Hair • Styling • Beauty' },
-          { id: '2', slug: 'barbershop', name: 'Barbershop', short_name: 'Barber', description: 'Cuts • Grooming • Beard' },
-          { id: '3', slug: 'nail_studio', name: 'Nail Studio', short_name: 'Nails', description: 'Nails • Art • Care' },
-          { id: '4', slug: 'spa', name: 'Spa', short_name: 'Spa', description: 'Treatments • Relaxation • Wellness' },
-          { id: '5', slug: 'wellness_center', name: 'Wellness Center', short_name: 'Wellness', description: 'Care • Movement • Wellbeing' },
+          { id: '1', slug: 'hair_salon', provider_type: 'salon', name: 'Hair Salon', short_name: 'Salon', description: 'Hair • Styling • Beauty' },
+          { id: '2', slug: 'barbershop', provider_type: 'salon', name: 'Barbershop', short_name: 'Barber', description: 'Cuts • Grooming • Beard' },
+          { id: '3', slug: 'nail_studio', provider_type: 'salon', name: 'Nail Studio', short_name: 'Nails', description: 'Nails • Art • Care' },
+          { id: '4', slug: 'spa', provider_type: 'spa', name: 'Spa', short_name: 'Spa', description: 'Treatments • Relaxation • Wellness' },
+          { id: '5', slug: 'wellness_center', provider_type: 'spa', name: 'Wellness Center', short_name: 'Wellness', description: 'Care • Movement • Wellbeing' },
         ]);
       } finally {
         setLoading(false);
@@ -94,11 +94,14 @@ export default function CategoryScene() {
     fetchCategories();
   }, []);
 
-  const isValid = !!providerData.category;
+  const currentCategory = categories.find(c => c.slug === providerData.category);
+  const isValid = !!providerData.category && !!currentCategory?.provider_type;
 
   const handleCategorySelect = (categorySlug: string) => {
     const selectedCategory = categories.find(c => c.slug === categorySlug);
-    const providerType = selectedCategory?.provider_type || 'salon';
+    // The category's server-supplied Provider Type is authoritative. Do not
+    // default to salon when it is missing.
+    const providerType = selectedCategory?.provider_type ?? '';
     setProviderData({ ...providerData, category: categorySlug, providerType });
     setCategorySlug(categorySlug);
   };

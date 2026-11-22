@@ -112,9 +112,16 @@ class BookingPaymentService
             }
         }
 
-        // Calculate total from all services
-        $totalPrice = $booking->services()->sum('price');
-        
+        // Calculate total from all services. Legacy bookings have no
+        // BookingService rows, so fall back to the booking's service price.
+        $totalPrice = (float) $booking->services()->sum('price');
+        if ($totalPrice <= 0 && $booking->service_id) {
+            $totalPrice = (float) (\App\Models\Service::find($booking->service_id)?->price ?? 0);
+        }
+        if ($totalPrice <= 0) {
+            $totalPrice = (float) ($booking->amount_due ?? 0);
+        }
+
         // Calculate fees
         $fees = $this->feeEngine->calculateFees($totalPrice, $paymentMethod);
 
@@ -123,7 +130,7 @@ class BookingPaymentService
         $paymentData = [
             'reference' => $reference,
             'amount' => $fees['gross_amount'],
-            'currency' => 'NGN',
+            'currency' => $paymentMethod->currency ?: 'UGX',
             'email' => $customerEmail,
             'customer_name' => $customerName,
             'phone' => $customerPhone,
@@ -463,12 +470,23 @@ class BookingPaymentService
      */
     public function recordManualPayment(array $data): array
     {
-        return DB::transaction(function () use ($data) {
+        $result = DB::transaction(function () use ($data) {
             $bookingId = $data['booking_id'] ?? null;
             $customerId = $data['customer_id'] ?? null;
-            $locationId = $data['location_id'];
+            $locationId = $data['location_id'] ?? null;
             $amount = $data['amount'];
             $paymentMethod = $data['payment_method'] ?? 'cash';
+
+            $booking = $bookingId ? Booking::find($bookingId) : null;
+            if ($bookingId && !$booking) {
+                throw new \Exception('Booking not found');
+            }
+
+            // A manual payment for a booking can be recorded without an
+            // explicit location: the booking already carries the location.
+            if (!$locationId && $booking) {
+                $locationId = $booking->location_id;
+            }
 
             // Get provider from location for payment method
             $location = \App\Models\Location::find($locationId);
@@ -476,6 +494,14 @@ class BookingPaymentService
                 throw new \Exception('Location not found');
             }
             $providerId = $location->provider_id;
+
+            if ($booking && $booking->provider_id !== $providerId) {
+                throw new \Exception('Booking does not belong to this location');
+            }
+
+            if (!$customerId && $booking) {
+                $customerId = $booking->customer_id;
+            }
 
             // Get or create payment method
             $paymentMethodRecord = PaymentMethod::firstOrCreate(
@@ -528,6 +554,30 @@ class BookingPaymentService
                 'transaction' => $transaction,
             ];
         });
+
+        // Manual payments must enter the same finance pipeline as verified
+        // gateway payments. Dispatch after commit so listeners observe the
+        // persisted transaction. Listeners are non-blocking by design.
+        if ($result['success'] && !empty($result['transaction']->booking_id)) {
+            try {
+                $transaction = $result['transaction'];
+                $booking = Booking::find($transaction->booking_id);
+
+                if ($booking) {
+                    Event::dispatch(new PaymentConfirmed(
+                        $booking,
+                        $transaction,
+                        $transaction->customer_id ?? $booking->customer_id
+                    ));
+                }
+            } catch (\Throwable $e) {
+                Log::error('PaymentConfirmed event listener error for manual payment (non-blocking)', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $result;
     }
 
     /**

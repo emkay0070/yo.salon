@@ -174,7 +174,7 @@ class ApiClient {
     return response.data;
   }
 
-  // Returns { user, status, current_step, next_route }
+  // Returns { user, status, current_step, next_route, provider_authorities, provider_type_context }
   async getCurrentUser() {
     const response = await this.client.get('/v1/auth/user');
     return response.data;
@@ -462,7 +462,7 @@ class ApiClient {
   async uploadProviderCoverImage(providerId: string, file: File) {
     const formData = new FormData();
     formData.append('cover_image', file);
-    const response = await this.client.post(`/v1/providers/${providerId}/update`, formData);
+    const response = await this.client.put(`/v1/providers/${providerId}`, formData);
     return response.data;
   }
 
@@ -567,7 +567,7 @@ class ApiClient {
   }
 
   async copilotChat(message: string, context?: any) {
-    const response = await this.client.post('/v1/analytics/copilot-chat', { message, context });
+    const response = await this.client.post('/v1/copilot/chat', { message, context });
     return response.data;
   }
 
@@ -608,7 +608,7 @@ class ApiClient {
     return response.data;
   }
 
-  async getMembershipPlans(providerType: string = 'provider') {
+  async getMembershipPlans(providerType: string) {
     const response = await this.client.get('/v1/membership/plans', {
       params: { provider_type: providerType }
     });
@@ -870,9 +870,9 @@ class ApiClient {
 
   // Customer lookup
   async lookupCustomer(phone: string, providerId?: string) {
-    const params: any = { phone };
-    if (providerId) params.provider_id = providerId;
-    const response = await this.client.get('/v1/customers/lookup', { params });
+    const payload: any = { phone };
+    if (providerId) payload.provider_id = providerId;
+    const response = await this.client.post('/v1/customers/lookup', payload);
     return response.data;
   }
 

@@ -99,8 +99,15 @@ class OperationalHealthService
                 ->exists();
         });
 
-        $hasValidSubscription = $this->safeCheck('subscription', function () use ($providerId) {
-            return Subscription::where('provider_id', $providerId)
+        $hasValidSubscription = $this->safeCheck('subscription', function () use ($providerId, $provider) {
+            return Subscription::where(function ($q) use ($providerId, $provider) {
+                if ($provider && $provider->organization_id) {
+                    $q->where('organization_id', $provider->organization_id)
+                      ->orWhere('provider_id', $providerId);
+                } else {
+                    $q->where('provider_id', $providerId);
+                }
+            })
                 ->where(fn($q) => $q
                     ->whereNull('ends_at')
                     ->orWhere('ends_at', '>', CarbonImmutable::now())

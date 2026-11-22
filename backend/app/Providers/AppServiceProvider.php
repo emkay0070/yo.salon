@@ -2,19 +2,31 @@
 
 namespace App\Providers;
 
+use App\Models\Customer;
+use App\Policies\CustomerPolicy;
 use App\Services\Payments\Contracts\PaymentProviderInterface;
 use App\Services\Payments\FlutterwaveProvider;
 use App\Services\Payments\MTNMomoService;
 use App\Services\Payments\AirtelProvider;
-use Illuminate\Support\ServiceProvider;
+use Illuminate\Foundation\Support\Providers\AuthServiceProvider;
 
-class AppServiceProvider extends ServiceProvider
+class AppServiceProvider extends AuthServiceProvider
 {
+    /**
+     * The model-to-policy mappings for the application.
+     *
+     * @var array<class-string, class-string>
+     */
+    protected $policies = [
+        Customer::class => CustomerPolicy::class,
+    ];
+
     /**
      * Register any application services.
      */
     public function register(): void
     {
+        $this->app->singleton(\App\Services\PlatformAuthorizationService::class);
         $this->app->bind(PaymentProviderInterface::class, FlutterwaveProvider::class);
         $this->app->bind('payment.flutterwave', FlutterwaveProvider::class);
         $this->app->bind('payment.mtn', MTNMomoService::class);
@@ -44,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->registerPolicies();
+
         // Intentionally empty. All listeners managed by Event Auto-Discovery.
     }
 }

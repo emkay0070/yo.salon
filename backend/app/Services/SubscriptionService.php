@@ -21,8 +21,21 @@ class SubscriptionService
     public function __construct(
         private readonly CapabilityResolver $capabilityResolver
     ) {}
+    public function getSubscriptionByOrganization(string $organizationId): ?Subscription
+    {
+        return Subscription::where('organization_id', $organizationId)->first();
+    }
+
     public function getSubscriptionByProvider(string $providerId): ?Subscription
     {
+        $provider = Provider::find($providerId);
+        if ($provider && $provider->organization_id) {
+            $orgSub = $this->getSubscriptionByOrganization($provider->organization_id);
+            if ($orgSub) {
+                return $orgSub;
+            }
+        }
+
         return Subscription::where('provider_id', $providerId)->first();
     }
 
@@ -44,8 +57,16 @@ class SubscriptionService
         return DB::transaction(function () use ($providerId, $planId, $trialDays) {
             $plan = Plan::findOrFail($planId);
 
+            $org = \App\Models\Organization::find($providerId);
+            $provider = null;
+            if (!$org) {
+                $provider = Provider::find($providerId);
+                $org = $provider?->organization;
+            }
+
             $subscription = Subscription::create([
-                'provider_id' => $providerId,
+                'organization_id' => $org?->id,
+                'provider_id' => $provider?->id ?? ($org ? $org->providers()->first()?->id : $providerId),
                 'plan_id' => $planId,
                 'status' => 'trialing',
                 'billing_cycle' => 'monthly',

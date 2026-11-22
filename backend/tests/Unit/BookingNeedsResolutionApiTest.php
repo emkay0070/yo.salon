@@ -6,7 +6,9 @@ use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\Location;
 use App\Models\Provider;
+use App\Models\ProviderUser;
 use App\Models\Service;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -392,6 +394,16 @@ class BookingNeedsResolutionApiTest extends TestCase
 
     public function test_booking_show_includes_resolution()
     {
+        $user = User::factory()->create(['status' => 'active']);
+
+        ProviderUser::forceCreate([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'user_id' => $user->id,
+            'provider_id' => $this->provider->id,
+            'role' => 'owner',
+            'authority_scope' => 'provider_wide',
+        ]);
+
         $booking = Booking::factory()->create([
             'provider_id' => $this->provider->id,
             'location_id' => $this->location->id,
@@ -407,15 +419,11 @@ class BookingNeedsResolutionApiTest extends TestCase
             'reason_code' => 'CUSTOMER_DID_NOT_ARRIVE',
         ]);
 
-        $controller = new \App\Http\Controllers\Api\V1\BookingController(
-            app(\App\Services\BookingService::class),
-            app(\App\Services\NotificationService::class)
-        );
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/bookings/{$booking->id}");
 
-        $response = $controller->show($booking);
-
-        $this->assertEquals(200, $response->status());
-        $data = json_decode($response->getContent(), true);
+        $response->assertStatus(200);
+        $data = $response->json();
         $this->assertEquals($resolution->id, $data['resolution']['id']);
         $this->assertEquals('NO_SHOW', $data['resolution']['outcome']);
     }

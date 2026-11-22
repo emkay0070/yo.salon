@@ -84,4 +84,63 @@ class BookingCustomerProviderRelationshipTest extends TestCase
         $this->assertTrue($hasProviderARelationship);
         $this->assertTrue($hasProviderBRelationship);
     }
+
+    /**
+     * R-4 regression: resolveOrCreateForBusiness() previously called the
+     * non-existent CustomerResolver::resolveOrCreateForSalon() and would
+     * throw a fatal BadMethodCallException at runtime. Verify it no longer
+     * crashes and correctly delegates to resolveOrCreateForProvider().
+     */
+    public function test_resolve_or_create_for_business_does_not_throw_bad_method_call_exception(): void
+    {
+        $provider = Provider::factory()->create();
+
+        $data = [
+            'name'  => 'Test Customer',
+            'phone' => '+15550001234',
+            'email' => 'test-r4@example.com',
+        ];
+
+        // Must not throw BadMethodCallException / Error
+        $result = $this->customerService->resolveOrCreateForBusiness($data, $provider->id, true);
+
+        $this->assertArrayHasKey('customer', $result);
+        $this->assertArrayHasKey('is_new', $result);
+        $this->assertArrayHasKey('is_new_salon_relationship', $result);
+        $this->assertInstanceOf(\App\Models\Customer::class, $result['customer']);
+        $this->assertTrue($result['is_new'], 'Customer should be newly created.');
+
+        // The new customer must be associated with the Provider
+        $this->assertTrue(
+            $result['customer']->providers()->where('provider_id', $provider->id)->exists(),
+            'resolveOrCreateForBusiness() must establish a customer_providers relationship.'
+        );
+    }
+
+    /**
+     * R-4 regression: resolveOrCreateForBusiness() with an existing customer
+     * and createIfNotFound=false must return the existing customer, not throw.
+     */
+    public function test_resolve_or_create_for_business_returns_existing_customer_when_create_disabled(): void
+    {
+        $provider = Provider::factory()->create();
+        $customer = Customer::factory()->create(['phone' => '+15550005678']);
+        $customer->providers()->attach($provider->id, [
+            'id'        => (string) \Illuminate\Support\Str::uuid(),
+            'visits'    => 0,
+            'joined_at' => now(),
+        ]);
+
+        $data = [
+            'name'  => $customer->name,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+        ];
+
+        $result = $this->customerService->resolveOrCreateForBusiness($data, $provider->id, false);
+
+        $this->assertArrayHasKey('customer', $result);
+        $this->assertEquals($customer->id, $result['customer']->id);
+        $this->assertFalse($result['is_new'], 'Existing customer must not be flagged as new.');
+    }
 }

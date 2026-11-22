@@ -18,7 +18,7 @@ class UsageService
     {
         return DB::transaction(function () use ($subscriptionId, $metric, $value) {
             $subscription = Subscription::findOrFail($subscriptionId);
-            $provider = $subscription->provider;
+            $provider = $subscription->provider ?? $subscription->organization?->providers()->first();
 
             if (!$provider) {
                 throw new \Exception('Provider not found for subscription');
@@ -99,7 +99,7 @@ class UsageService
     public function syncUsageWithActualData(string $subscriptionId): array
     {
         $subscription = Subscription::findOrFail($subscriptionId);
-        $provider = $subscription->provider;
+        $provider = $subscription->provider ?? $subscription->organization?->providers()->first();
 
         if (!$provider) {
             // If no salon exists, return empty usage

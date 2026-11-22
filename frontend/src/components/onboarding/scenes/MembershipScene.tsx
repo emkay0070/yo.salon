@@ -39,7 +39,12 @@ export default function MembershipScene() {
 
   const { data: plansData, isLoading, error } = useQuery({
     queryKey: ['plans', providerData.providerType],
-    queryFn: () => apiClient.getMembershipPlans(providerData.providerType || 'salon'),
+    queryFn: () => {
+      if (!providerData.providerType) {
+        throw new Error('Select a business category before choosing a plan.');
+      }
+      return apiClient.getMembershipPlans(providerData.providerType);
+    },
     enabled: !!providerData.providerType,
   });
 

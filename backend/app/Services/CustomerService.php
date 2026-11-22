@@ -71,7 +71,7 @@ class CustomerService
      */
     public function resolveOrCreateForBusiness(array $data, string $salonId, bool $createIfNotFound = true): array
     {
-        return $this->customerResolver->resolveOrCreateForSalon($data, $salonId, $createIfNotFound);
+        return $this->customerResolver->resolveOrCreateForProvider($data, $salonId, $createIfNotFound);
     }
 
     /**

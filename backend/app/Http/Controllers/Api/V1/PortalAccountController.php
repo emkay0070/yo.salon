@@ -194,22 +194,35 @@ class PortalAccountController extends Controller
             'customer_id' => 'required|exists:customers,id',
         ]);
 
-        $customer = Customer::find($validated['customer_id']);
-
-        if ($customer->hasPortalAccount()) {
-            return response()->json([
-                'message' => 'Customer already has a portal account',
-            ], 409);
-        }
-
-        // Get provider context from auth or request
-        $providerId = auth()->user()?->currentProvider()?->id
-            ?? $request->attributes->get('provider_id');
+        // FIND-CRIT-03: Resolve provider context from server-side middleware attributes.
+        // Never trust a provider_id supplied only in the request body.
+        $providerId = $request->attributes->get('provider_id');
         
         if (!$providerId) {
             return response()->json([
                 'message' => 'No active provider context',
             ], 403);
+        }
+
+        $customer = Customer::find($validated['customer_id']);
+
+        if (!$customer) {
+            return response()->json(['message' => 'Customer not found'], 404);
+        }
+
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        // before dispatching an invitation. Provider A must not send invitations
+        // for Provider B's customers.
+        if (!$customer->providers()->where('providers.id', $providerId)->exists()) {
+            return response()->json([
+                'message' => 'Customer not found or not associated with your Provider',
+            ], 403);
+        }
+
+        if ($customer->hasPortalAccount()) {
+            return response()->json([
+                'message' => 'Customer already has a portal account',
+            ], 409);
         }
 
         // Check if there's already a pending invitation

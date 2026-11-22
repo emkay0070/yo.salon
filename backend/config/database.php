@@ -102,6 +102,64 @@ return [
             ],
         ],
 
+        // ───────────────────────────────────────────────────────────────────
+        // TYBUEL — Runtime application connection
+        //
+        // Role: tybuel_app (NOBYPASSRLS NOSUPERUSER)
+        // Purpose: ALL application query traffic against the tybuel database.
+        //          RLS policies are enforced because tybuel_app has NOBYPASSRLS.
+        //
+        // Set env vars: TYBUEL_DB_USERNAME=tybuel_app, TYBUEL_DB_PASSWORD=...
+        // ───────────────────────────────────────────────────────────────────
+        'pgsql_tybuel' => [
+            'driver' => 'pgsql',
+            'url' => env('TYBUEL_DB_URL'),
+            'host' => env('TYBUEL_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('TYBUEL_DB_PORT', env('DB_PORT', '5432')),
+            'database' => env('TYBUEL_DB_DATABASE', 'tybuel'),
+            'username' => env('TYBUEL_DB_USERNAME', 'tybuel_app'),
+            'password' => env('TYBUEL_DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'disable'),
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
+        ],
+
+        // ───────────────────────────────────────────────────────────────────
+        // TYBUEL — Administration / migration connection
+        //
+        // Role: postgres superuser (BYPASSRLS — intentional for migrations)
+        // Purpose: Running php artisan migrate --database=pgsql_tybuel_admin,
+        //          ALTER TABLE ... OWNER TO tybuel_app,
+        //          and manual DBA operations.
+        //
+        // WARNING: NEVER use this connection for application query traffic.
+        //          The postgres role bypasses all RLS policies unconditionally.
+        //
+        // Set env vars: TYBUEL_ADMIN_DB_USERNAME=postgres, TYBUEL_ADMIN_DB_PASSWORD=...
+        // ───────────────────────────────────────────────────────────────────
+        'pgsql_tybuel_admin' => [
+            'driver' => 'pgsql',
+            'url' => env('TYBUEL_ADMIN_DB_URL'),
+            'host' => env('TYBUEL_ADMIN_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('TYBUEL_ADMIN_DB_PORT', env('DB_PORT', '5432')),
+            'database' => env('TYBUEL_ADMIN_DB_DATABASE', 'tybuel'),
+            'username' => env('TYBUEL_ADMIN_DB_USERNAME', env('DB_USERNAME', 'postgres')),
+            'password' => env('TYBUEL_ADMIN_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'disable'),
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => true,
+            ],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

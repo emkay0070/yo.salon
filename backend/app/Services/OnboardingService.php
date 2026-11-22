@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Models\PaymentMethod;
 use App\Models\Subscription;
 use App\Models\Provider;
+use App\Models\ProviderType;
 use App\Services\MediaService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -19,10 +20,12 @@ use Exception;
 class OnboardingService
 {
     protected MediaService $mediaService;
+    protected LocationService $locationService;
 
-    public function __construct(MediaService $mediaService)
+    public function __construct(MediaService $mediaService, ?LocationService $locationService = null)
     {
         $this->mediaService = $mediaService;
+        $this->locationService = $locationService ?? app(LocationService::class);
     }
 
     /**
@@ -57,12 +60,51 @@ class OnboardingService
                 $logoMediaId = $logoMedia->id;
             }
 
-            // Determine provider type from category (preserve existing type enum for compatibility)
+            // Determine provider type key from the selected business category.
             $providerType = $this->mapCategoryToProviderType($categorySlug);
 
-            // Create Provider (business identity / tenant)
+            $registry = app(\App\Domain\Provider\ProviderTypeRegistry::class);
+
+            // New onboarding creates new Providers, so the resolved type must
+            // be available for registration (active) as well as supported.
+            if (!$registry->isAvailableForNewRegistration($providerType)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Provider type "%s" is not available for new providers.',
+                    $providerType
+                ));
+            }
+
+            $providerTypeRecord = ProviderType::byKey($providerType)->first();
+
+            if (!$providerTypeRecord) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Provider type "%s" is not registered.',
+                    $providerType
+                ));
+            }
+
+            // Establish commercial Organization first (governance layer)
+            $orgService = app(\App\Services\OrganizationService::class);
+            if ($providerType === 'independent_specialist') {
+                $organization = $orgService->createPersonalForSpecialistPrincipal($user, [
+                    'name'  => $businessData['name'] ?? 'Independent Specialist',
+                    'email' => $businessData['email'] ?? $user->email,
+                    'phone' => $businessData['phone'] ?? $user->phone,
+                ]);
+            } else {
+                $organization = $orgService->createForBusinessOwner($user, [
+                    'name'        => $businessData['name'] ?? 'New Organization',
+                    'email'       => $businessData['email'] ?? $user->email,
+                    'phone'       => $businessData['phone'] ?? $user->phone,
+                    'description' => $businessData['description'] ?? null,
+                ]);
+            }
+
+            // Create Provider (business identity / tenant). provider_type_id is
+            // canonical; the legacy type column is derived by the model.
             $provider = Provider::create([
-                'type'                => $providerType,
+                'organization_id'     => $organization->id,
+                'provider_type_id'    => $providerTypeRecord->id,
                 'status'              => 'active',
                 'display_name'        => $businessData['name'] ?? 'New Business',
                 'slug'                => $this->generateUniqueSlug($businessData['name'] ?? 'New Business'),
@@ -87,9 +129,7 @@ class OnboardingService
                     $locationSlug .= '-' . time();
                 }
 
-                $locationId = DB::table('locations')->insertGetId([
-                    'id'            => (string) Str::uuid(),
-                    'provider_id'   => $provider->id,
+                $location = $this->locationService->createLocation($provider, [
                     'name'          => $businessData['name'] ?? 'Primary Location',
                     'slug'          => $locationSlug,
                     'address'       => $businessData['address'] ?? null,
@@ -99,15 +139,10 @@ class OnboardingService
                     'lng'           => $businessData['lng'] ?? null,
                     'phone'         => $businessData['phone'] ?? null,
                     'email'         => $businessData['email'] ?? null,
-                    'is_primary'    => true,
                     'is_active'     => true,
-                    'opening_hours' => !empty($walletData['openingHours']) ? json_encode($walletData['openingHours']) : null,
+                    'opening_hours' => !empty($walletData['openingHours']) ? $walletData['openingHours'] : null,
                     'timezone'      => $businessData['timezone'] ?? 'Africa/Kampala',
-                    'created_at'    => now(),
-                    'updated_at'    => now(),
-                ], 'id');
-
-                $location = Location::find($locationId);
+                ]);
 
                 // Create canonical LocationSchedule records from opening_hours
                 $this->createLocationSchedules($location, $walletData['openingHours'] ?? []);
@@ -143,6 +178,8 @@ class OnboardingService
                 'authority_scope' => 'provider_wide'
             ]);
             $user->update(['status' => 'active']);
+
+            // Organization already established above and linked to provider
 
             // Create specialist records
             $teamData = $onboardingData['team'] ?? [];
@@ -226,6 +263,7 @@ class OnboardingService
             $membershipData = $onboardingData['membership'] ?? [];
             if (!empty($membershipData)) {
                 Subscription::create([
+                    'organization_id' => $organization?->id,
                     'provider_id'  => $provider->id,
                     'plan_id'      => $membershipData['plan_id'] ?? null,
                     'status'       => 'trial',
@@ -240,7 +278,7 @@ class OnboardingService
                 'current_step' => 'completed',
             ]);
 
-            return $provider->load(['specialists', 'subscription']);
+            return $provider->load(['specialists', 'subscription', 'organization']);
         });
     }
 
@@ -289,30 +327,48 @@ class OnboardingService
     }
 
     /**
-     * Map category slug to Provider type enum for compatibility
-     * BusinessCategory is the authoritative classification; this reads
-     * the provider_type from the business_categories table.
+     * Map category slug to a stable Provider Type key.
+     * BusinessCategory is the authoritative business-kind classification; this
+     * reads provider_type from the business_categories table. The legacy
+     * category-slug fallbacks are retained only as compatibility mappings for
+     * environments where those categories have not been seeded yet.
+     *
+     * @throws \InvalidArgumentException When the category or provider type is unknown.
      */
     private function mapCategoryToProviderType(?string $categorySlug): string
     {
-        // Default to salon if no category or unknown
-        if (!$categorySlug) return Provider::TYPE_SALON;
+        if (!$categorySlug) {
+            throw new \InvalidArgumentException('A business category is required to determine the provider type.');
+        }
 
         // Read provider_type from business_categories table
         $category = DB::table('business_categories')->where('slug', $categorySlug)->first();
 
         if ($category && $category->provider_type) {
-            return $category->provider_type;
+            $providerType = $category->provider_type;
+        } else {
+            // Compatibility mappings expressed as stable Provider Type keys.
+            // No Provider::TYPE_* constants and no implicit salon default.
+            $providerType = match ($categorySlug) {
+                'spa' => 'spa',
+                'beauty-school' => 'beauty_school',
+                'mobile-team' => 'mobile_team',
+                'independent-specialist' => 'independent_specialist',
+                default => null,
+            };
         }
 
-        // Fallback to hardcoded mapping for backward compatibility
-        return match($categorySlug) {
-            'spa' => Provider::TYPE_SPA,
-            'beauty-school' => Provider::TYPE_BEAUTY_SCHOOL,
-            'mobile-team' => Provider::TYPE_MOBILE_TEAM,
-            'independent-specialist' => Provider::TYPE_SPECIALIST,
-            default => Provider::TYPE_SALON,
-        };
+        if (!$providerType) {
+            throw new \InvalidArgumentException(sprintf(
+                'Unknown business category "%s" cannot be mapped to a provider type.',
+                $categorySlug
+            ));
+        }
+
+        // Validate against the registry so unknown types fail explicitly.
+        app(\App\Domain\Provider\ProviderTypeRegistry::class)->for($providerType);
+
+        return $providerType;
     }
 
     /**
@@ -404,8 +460,8 @@ class OnboardingService
                         'day_of_week' => $dayOfWeekInt,
                     ],
                     [
-                        'open_time' => null,
-                        'close_time' => null,
+                        'open_time' => '00:00:00',
+                        'close_time' => '00:00:00',
                         'is_closed' => true,
                     ]
                 );

@@ -19,6 +19,18 @@ class ServiceController extends Controller
         $this->mediaService = $mediaService;
     }
 
+    private function currentProviderId(): ?string
+    {
+        return auth()->user()?->currentProvider()?->id;
+    }
+
+    private function serviceBelongsToCurrentProvider(Service $service): bool
+    {
+        $providerId = $this->currentProviderId();
+
+        return $providerId !== null && $service->provider_id === $providerId;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $provider = auth()->user()->currentProvider();
@@ -164,6 +176,10 @@ class ServiceController extends Controller
 
     public function update(Request $request, Service $service): JsonResponse
     {
+        if (!$this->serviceBelongsToCurrentProvider($service)) {
+            return response()->json(['message' => 'Service not found'], 404);
+        }
+
         $validated = $request->validate([
             'name'        => 'sometimes|string',
             'description' => 'nullable|string',
@@ -199,6 +215,10 @@ class ServiceController extends Controller
 
     public function destroy(Service $service): JsonResponse
     {
+        if (!$this->serviceBelongsToCurrentProvider($service)) {
+            return response()->json(['message' => 'Service not found'], 404);
+        }
+
         // Delete media if exists
         if ($service->image_media_id) {
             $media = \App\Models\Media::find($service->image_media_id);
@@ -219,8 +239,12 @@ class ServiceController extends Controller
      */
     public function byProvider(string $providerId): JsonResponse
     {
-        $provider = \App\Models\Provider::find($providerId);
-        if (!$provider) {
+        $provider = \App\Models\Provider::where('id', $providerId)
+            ->orWhere('slug', $providerId)
+            ->first();
+
+        $currentProviderId = $this->currentProviderId();
+        if (!$provider || !$currentProviderId || $provider->id !== $currentProviderId) {
             return response()->json(['message' => 'Provider not found'], 404);
         }
 

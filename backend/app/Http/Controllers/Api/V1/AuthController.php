@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Profile;
+use App\Services\ProviderTypeContext;
 use App\Services\ProviderUserAuthorityService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -203,12 +204,28 @@ class AuthController extends Controller
             }
         }
 
+        // Phase 2B: expose the resolved provider type context to the
+        // application layer. Reuses ProviderTypeContext, which resolves the
+        // provider exclusively from server-side selection (middleware request
+        // attribute, then authenticated user's currentProvider()) — provider
+        // type is never derived from client-supplied input. Additive key;
+        // existing response fields are unchanged.
+        $providerTypeContext = app(ProviderTypeContext::class)
+            ->resolveFromRequest($request)
+            ->toArray();
+
+        $organizationContext = app(\App\Services\OrganizationContext::class)
+            ->resolveFromRequest($request)
+            ->toArray();
+
         return response()->json([
             'user' => $user,
             'status' => $user->status,
             'current_step' => $user->onboardingSession?->current_step,
             'next_route' => $this->resolveNextRoute($user),
             'provider_authorities' => $providerAuthorities,
+            'provider_type_context' => $providerTypeContext,
+            'organization_context' => $organizationContext,
         ]);
     }
 

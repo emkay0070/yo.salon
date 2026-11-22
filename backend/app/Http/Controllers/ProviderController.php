@@ -7,6 +7,7 @@ use App\Services\MediaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ProviderController extends Controller
 {
@@ -35,9 +36,9 @@ class ProviderController extends Controller
             });
         }
 
-        // Filter by type
+        // Filter by type through the canonical Provider Type relationship.
         if ($request->has('type')) {
-            $query->where('type', $request->input('type'));
+            $query->byType($request->input('type'));
         }
 
         // Filter by status
@@ -51,9 +52,18 @@ class ProviderController extends Controller
         }
 
         // Load relationships based on type
-        $query->with(['specialists']);
+        $query->with(['specialists', 'providerType']);
 
         $providers = $query->paginate(20);
+
+        // Expose the canonical key without removing the legacy-compatible
+        // `type` attribute (which is itself derived from this relationship).
+        $providers->getCollection()->each(function (Provider $provider) {
+            $provider->setAttribute('provider_type', $provider->providerTypeKey());
+            // Avoid serializing the loaded relation object under the same
+            // snake_case key; `provider_type` must remain the string key.
+            $provider->makeHidden('providerType');
+        });
 
         return response()->json($providers);
     }
@@ -67,6 +77,7 @@ class ProviderController extends Controller
         $isUuid = preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id);
 
         $query = Provider::with([
+            'providerType',
             'specialists' => function ($query) {
                 // Use ONLY the assignments relationship (canonical domain model)
                 $query->where('active', true)
@@ -156,7 +167,8 @@ class ProviderController extends Controller
 
         return response()->json([
             'id' => $provider->id,
-            'type' => $provider->type,
+            'type' => $provider->providerTypeKey(),
+            'provider_type' => $provider->providerTypeKey(),
             'status' => $provider->status,
             'display_name' => $provider->display_name,
             'slug' => $provider->slug,
@@ -226,13 +238,30 @@ class ProviderController extends Controller
         return response()->json($specialists);
     }
 
+    private function canManageProvider(Provider $provider): bool
+    {
+        $current = auth()->user()?->currentProvider();
+
+        return $current !== null
+            && ($current->id === $provider->id || $current->slug === $provider->slug);
+    }
+
     /**
      * Store a newly created provider
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'type' => 'required|in:salon,independent_specialist,spa,beauty_school,mobile_team',
+            'type' => [
+                'required_without:provider_type_id',
+                'string',
+                Rule::exists('provider_types', 'key')->where('is_active', true),
+            ],
+            'provider_type_id' => [
+                'required_without:type',
+                'uuid',
+                Rule::exists('provider_types', 'id')->where('is_active', true),
+            ],
             'display_name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255|unique:providers,slug',
             'description' => 'nullable|string',
@@ -267,7 +296,10 @@ class ProviderController extends Controller
             $data['cover_image'] = $media->id;
         }
 
-        $provider = Provider::create($validated);
+        $provider = Provider::create($data);
+        $provider->load('providerType');
+        $provider->setAttribute('provider_type', $provider->providerTypeKey());
+        $provider->makeHidden('providerType');
 
         return response()->json($provider, 201);
     }
@@ -287,11 +319,24 @@ class ProviderController extends Controller
             'request_method' => $request->method(),
         ]);
 
-        $provider = Provider::findOrFail($id);
+        $provider = Provider::where('id', $id)->orWhere('slug', $id)->firstOrFail();
+
+        if (!$this->canManageProvider($provider)) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
 
         try {
             $validated = $request->validate([
-                'type' => 'sometimes|in:salon,independent_specialist,spa,beauty_school,mobile_team',
+                'type' => [
+                    'sometimes',
+                    'string',
+                    Rule::exists('provider_types', 'key'),
+                ],
+                'provider_type_id' => [
+                    'sometimes',
+                    'uuid',
+                    Rule::exists('provider_types', 'id'),
+                ],
                 'status' => 'sometimes|in:pending,active,suspended,inactive',
                 'display_name' => 'sometimes|string|max:255',
                 'slug' => 'sometimes|string|max:255|unique:providers,slug,' . $id,
@@ -360,7 +405,9 @@ class ProviderController extends Controller
         ]);
 
         // Load media relationships for response
-        $provider->load('coverImageMedia', 'logoMedia');
+        $provider->load('coverImageMedia', 'logoMedia', 'providerType');
+        $provider->setAttribute('provider_type', $provider->providerTypeKey());
+        $provider->makeHidden('providerType');
 
         return response()->json($provider);
     }
@@ -370,7 +417,12 @@ class ProviderController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
-        $provider = Provider::findOrFail($id);
+        $provider = Provider::where('id', $id)->orWhere('slug', $id)->firstOrFail();
+
+        if (!$this->canManageProvider($provider)) {
+            return response()->json(['message' => 'Provider not found'], 404);
+        }
+
         $provider->delete();
 
         return response()->json(['message' => 'Provider deleted successfully']);

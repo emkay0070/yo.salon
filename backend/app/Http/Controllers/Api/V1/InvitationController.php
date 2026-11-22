@@ -182,12 +182,15 @@ class InvitationController extends Controller
             })->where('email', $validated['email'])->first();
         }
 
-        // If still no customer, create a new one (guest turning into regular)
+        // If still no customer, create a new one from the invitation.
+        // Phone is not provided through the invitation flow — set to null (nullable since
+        // migration 2026_07_31_191109). The customer can add their phone later via their
+        // portal account. Never store a placeholder string like 'TBD'.
         if (!$customer) {
             $customer = Customer::create([
                 'name'  => $validated['name'],
                 'email' => $validated['email'],
-                'phone' => 'TBD', // Requires phone update later
+                'phone' => null,
             ]);
         }
 

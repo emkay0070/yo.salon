@@ -34,7 +34,7 @@ interface Provider {
   slug: string;
   rating?: number | null; // Can be null from backend
   city?: string; // Optional location field
-  type?: string; // Provider type (e.g., 'independent_specialist', 'salon')
+  provider_type?: string; // Canonical Provider Type key supplied by the server
   active?: boolean; // Whether the provider is accepting bookings
   status?: string; // 'active' | 'pending' | 'inactive' | 'suspended'
 }
@@ -112,7 +112,7 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
       setStep('service');
       if (contextServiceId) {
         // Skip staff step for independent_specialist providers
-        const providerType = selectedProvider?.type;
+        const providerType = selectedProvider?.provider_type;
         if (providerType === 'independent_specialist') {
           setStep('time');
         } else {
@@ -129,7 +129,7 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
     } else if (contextSpecialistId) {
       setStep('provider');
     }
-  }, [contextServiceId, contextSpecialistId, contextProviderId, contextProviderSlug, selectedProvider?.type]);
+  }, [contextServiceId, contextSpecialistId, contextProviderId, contextProviderSlug, selectedProvider?.provider_type]);
 
   // Load data based on context
   useEffect(() => {
@@ -337,7 +337,7 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
 
   const handleServiceContinue = () => {
     // Skip staff step for independent_specialist providers
-    if (selectedProvider?.type === 'independent_specialist') {
+    if (selectedProvider?.provider_type === 'independent_specialist') {
       setStep('time');
     } else {
       setStep('staff');
@@ -436,12 +436,12 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
             // Hide provider step if already selected
             if (s === 'provider' && selectedProvider) return false;
             // Hide staff step for independent_specialist providers
-            if (s === 'staff' && selectedProvider?.type === 'independent_specialist') return false;
+            if (s === 'staff' && selectedProvider?.provider_type === 'independent_specialist') return false;
             return true;
           }).map((s, index) => {
             const visibleSteps = ['provider', 'service', 'staff', 'time', 'details'].filter(st => {
               if (st === 'provider' && selectedProvider) return false;
-              if (st === 'staff' && selectedProvider?.type === 'independent_specialist') return false;
+              if (st === 'staff' && selectedProvider?.provider_type === 'independent_specialist') return false;
               return true;
             });
             const stepIndex = visibleSteps.indexOf(step);
@@ -963,10 +963,10 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
 
               <div className="flex justify-between items-center">
                 <button
-                  onClick={() => selectedProvider?.type === 'independent_specialist' ? setStep('service') : setStep('staff')}
+                  onClick={() => selectedProvider?.provider_type === 'independent_specialist' ? setStep('service') : setStep('staff')}
                   className="text-white/50 hover:text-white text-xs font-mono font-medium transition-colors"
                 >
-                  ← Back to {selectedProvider?.type === 'independent_specialist' ? 'treatments' : 'stylist'}
+                  ← Back to {selectedProvider?.provider_type === 'independent_specialist' ? 'treatments' : 'stylist'}
                 </button>
               </div>
             </motion.div>

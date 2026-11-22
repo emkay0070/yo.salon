@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Organization;
 use App\Models\SpecialistNote;
 use App\Models\Customer;
 use App\Models\Specialist;
@@ -24,9 +25,12 @@ class SpecialistNoteTest extends TestCase
         parent::setUp();
 
         // Create provider
+        $org = Organization::factory()->create();
         $this->provider = Provider::create([
             'id' => Str::uuid(),
+            'organization_id' => $org->id,
             'name' => 'Test Provider',
+            'type' => 'salon',
             'display_name' => 'Test Provider Display',
             'slug' => 'test-provider',
             'active' => true,

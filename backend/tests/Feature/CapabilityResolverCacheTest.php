@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Organization;
 use App\Models\Plan;
 use App\Models\PlanEntitlement;
 use App\Models\Provider;
@@ -48,10 +49,11 @@ class CapabilityResolverCacheTest extends TestCase
         }
 
         Subscription::create([
-            'provider_id' => $provider->id,
-            'plan_id' => $plan->id,
-            'status' => 'active',
-            'starts_at' => now(),
+            'provider_id'     => $provider->id,
+            'organization_id' => $provider->organization_id,
+            'plan_id'         => $plan->id,
+            'status'          => 'active',
+            'starts_at'       => now(),
         ]);
 
         $resolver = app(CapabilityResolver::class);

@@ -77,7 +77,16 @@ class TestSessionAuth extends Command
         if ($location2 && $location1->id !== $location2->id) {
             \App\Models\ProviderUserLocation::firstOrCreate(['provider_user_id' => $bobProviderUser->id, 'location_id' => $location2->id]);
         } else {
-            $dummyLocation = Location::firstOrCreate(['provider_id' => $provider->id, 'name' => 'Dummy Location', 'slug' => 'dummy-'.uniqid()]);
+            $dummyLocation = Location::firstOrCreate([
+                'provider_id' => $provider->id,
+                'name' => 'Dummy Location',
+                'slug' => 'dummy-'.uniqid(),
+            ], [
+                // This is an auxiliary test location; it must never claim the
+                // Provider's primary designation.
+                'is_primary' => false,
+                'is_active' => true,
+            ]);
             \App\Models\ProviderUserLocation::firstOrCreate(['provider_user_id' => $bobProviderUser->id, 'location_id' => $dummyLocation->id]);
         }
 

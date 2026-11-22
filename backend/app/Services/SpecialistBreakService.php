@@ -108,6 +108,12 @@ class SpecialistBreakService
                 ]);
             }
 
+            if (!$this->specialistBelongsToProvider($specialist, $providerId)) {
+                throw ValidationException::withMessages([
+                    'authorization' => 'This specialist does not belong to your provider.'
+                ]);
+            }
+
             $authorityService = app(\App\Services\ProviderUserAuthorityService::class);
             if (!$authorityService->canPerformAction($providerUser, 'operate_floor')) {
                 throw ValidationException::withMessages([
@@ -126,5 +132,21 @@ class SpecialistBreakService
         throw ValidationException::withMessages([
             'authorization' => 'Unknown actor type.'
         ]);
+    }
+
+    /**
+     * Whether a specialist is linked to the given provider, either directly
+     * (provider_id) or through an active assignment.
+     */
+    private function specialistBelongsToProvider(Specialist $specialist, string $providerId): bool
+    {
+        if ($specialist->provider_id === $providerId) {
+            return true;
+        }
+
+        return \App\Models\SpecialistAssignment::where('specialist_id', $specialist->id)
+            ->where('provider_id', $providerId)
+            ->where('status', 'ACTIVE')
+            ->exists();
     }
 }

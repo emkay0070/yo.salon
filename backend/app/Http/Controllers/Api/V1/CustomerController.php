@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class CustomerController extends Controller
 {
@@ -167,25 +169,46 @@ class CustomerController extends Controller
             'visits' => 'sometimes|integer',
         ]);
 
-        // If user is authenticated, provider_id is auto-set by BelongsToSalon trait
-        // If no auth (guest booking), use location_id from request to derive provider_id
-        if (auth()->check()) {
-            $providerId = request()->attributes->get('provider_id');
-            unset($validated['provider_id']); // Remove so trait can set it
-        } else {
+        // Resolve active Provider context. Server-side context is primary and authoritative.
+        $providerId = $request->attributes->get('provider_id');
+
+        if (!$providerId && auth()->check()) {
+            $providerId = $request->user()?->currentProvider()?->id;
+        }
+
+        // For unauthenticated/guest flows, derive from validated parameters if context was not injected
+        if (!$providerId && !auth()->check()) {
             $locationId = $validated['location_id'] ?? null;
             $providerId = $validated['provider_id'] ?? null;
-            
-            // If only location_id provided, derive provider_id from it
+
             if ($locationId && !$providerId) {
                 $location = \App\Models\Location::find($locationId);
                 $providerId = $location?->provider_id;
             }
         }
 
-        // Check if customer already exists by phone or email within the provider
-        $existingCustomer = Customer::findByContact($validated['phone'], $providerId);
-        
+        if (!$providerId) {
+            return response()->json(['message' => 'No provider context associated with this request'], 403);
+        }
+
+        // FIND-CRIT-04 / R-1: Check if customer already exists within the active Provider context.
+        // A customer record belonging exclusively to another Provider must NEVER be disclosed
+        // or returned here. Phone equality alone is not authorization.
+        $lookupPhones = \App\Services\PhoneNormalizer::lookupValues($validated['phone']);
+        $existingCustomer = Customer::whereIn('phone', $lookupPhones)
+            ->whereHas('providers', function ($query) use ($providerId) {
+                $query->where('providers.id', $providerId);
+            })
+            ->first();
+
+        if (!$existingCustomer && !empty($validated['email'])) {
+            $existingCustomer = Customer::where('email', $validated['email'])
+                ->whereHas('providers', function ($query) use ($providerId) {
+                    $query->where('providers.id', $providerId);
+                })
+                ->first();
+        }
+
         if ($existingCustomer) {
             return response()->json([
                 'message' => 'Customer already exists',
@@ -193,13 +216,23 @@ class CustomerController extends Controller
             ], 200);
         }
 
-        // For guest booking, use withoutSalonScope to bypass auto-set
-        if (!auth()->check()) {
-            $customer = Customer::withoutSalonScope()->create($validated);
-        } else {
-            $customer = Customer::create($validated);
-        }
-        
+        // Create new customer and associate with active Provider
+        $customer = DB::transaction(function () use ($validated, $providerId) {
+            $customer = Customer::create([
+                'name' => $validated['name'],
+                'phone' => $validated['phone'],
+                'email' => $validated['email'] ?? null,
+            ]);
+
+            $customer->providers()->attach($providerId, [
+                'id' => (string) Str::uuid(),
+                'visits' => $validated['visits'] ?? 0,
+                'joined_at' => now(),
+            ]);
+
+            return $customer;
+        });
+
         return response()->json($customer, 201);
     }
 
@@ -222,7 +255,8 @@ class CustomerController extends Controller
             return response()->json(['found' => false]);
         }
 
-        $customer = Customer::where('phone', $validated['phone'])
+        $lookupPhones = \App\Services\PhoneNormalizer::lookupValues($validated['phone']);
+        $customer = Customer::whereIn('phone', $lookupPhones)
             ->whereHas('providers', function ($query) use ($providerId) {
                 $query->where('providers.id', $providerId);
             })
@@ -260,7 +294,8 @@ class CustomerController extends Controller
             return response()->json(['found' => false]);
         }
 
-        $customer = Customer::where('phone', $validated['phone'])
+        $lookupPhones = \App\Services\PhoneNormalizer::lookupValues($validated['phone']);
+        $customer = Customer::whereIn('phone', $lookupPhones)
             ->whereHas('providers', function ($query) use ($providerId) {
                 $query->where('providers.id', $providerId);
             })
@@ -283,7 +318,16 @@ class CustomerController extends Controller
 
     public function show(Customer $customer): JsonResponse
     {
-        $customer->load('bookings');
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider.
+        // Authorization uses server-side provider context only (never client-supplied IDs).
+        $this->authorize('view', $customer);
+
+        $providerId = request()->attributes->get('provider_id');
+        $customer->load(['bookings' => function ($q) use ($providerId) {
+            if ($providerId) {
+                $q->where('provider_id', $providerId);
+            }
+        }]);
         $lastBooking = $customer->bookings->where('status', 'completed')->sortByDesc('date')->first();
         $customer->setAttribute('lastVisit', $lastBooking ? $lastBooking->date : null);
         return response()->json($customer);
@@ -291,6 +335,10 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer): JsonResponse
     {
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider
+        // before returning any data or accepting any mutation.
+        $this->authorize('update', $customer);
+
         $validated = $request->validate([
             'name' => 'sometimes|string',
             'phone' => 'sometimes|string',
@@ -305,7 +353,22 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): JsonResponse
     {
-        $customer->delete();
-        return response()->json(null, 204);
+        // FIND-CRIT-03: Verify the customer is associated with the active Provider.
+        $this->authorize('detach', $customer);
+
+        // FIND-CRIT-03: Domain safety — a Provider must never permanently delete a
+        // globally shared customer identity that may be associated with other Providers.
+        //
+        // Safe behavior: remove only this Provider's association (customer_providers pivot).
+        // The customer identity record is preserved for other Providers.
+        //
+        // Global customer deletion is not supported through this endpoint.
+        // If a future domain decision requires global deletion, it must be a separate,
+        // explicitly authorized administrative operation with cascade-impact review.
+        $providerId = request()->attributes->get('provider_id');
+
+        $customer->providers()->detach($providerId);
+
+        return response()->json(['message' => 'Customer removed from your Provider successfully'], 200);
     }
 }

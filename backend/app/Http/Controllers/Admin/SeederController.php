@@ -8,14 +8,26 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use App\Services\PlatformAuthorizationService;
 
 class SeederController extends Controller
 {
+    protected PlatformAuthorizationService $authService;
+
+    public function __construct(PlatformAuthorizationService $authService)
+    {
+        $this->authService = $authService;
+    }
+
     /**
      * Get all seeder statuses
      */
     public function index(Request $request): JsonResponse
     {
+        if (!$this->authService->canViewSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view seeders.'], 403);
+        }
+
         $query = SeederStatus::query();
 
         if ($request->has('category')) {
@@ -52,8 +64,12 @@ class SeederController extends Controller
     /**
      * Get a specific seeder status
      */
-    public function show(string $seederClass): JsonResponse
+    public function show(Request $request, string $seederClass): JsonResponse
     {
+        if (!$this->authService->canViewSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to view seeders.'], 403);
+        }
+
         $seeder = SeederStatus::where('seeder_class', $seederClass)->first();
 
         if (!$seeder) {
@@ -68,6 +84,14 @@ class SeederController extends Controller
      */
     public function run(Request $request, string $seederClass): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to execute seeders.'], 403);
+        }
+
         $seeder = SeederStatus::where('seeder_class', $seederClass)->first();
 
         if (!$seeder) {
@@ -141,6 +165,14 @@ class SeederController extends Controller
      */
     public function runMultiple(Request $request): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to execute seeders.'], 403);
+        }
+
         $validated = $request->validate([
             'seeder_classes' => 'required|array',
             'seeder_classes.*' => 'string',
@@ -199,6 +231,14 @@ class SeederController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to manage seeders.'], 403);
+        }
+
         $validated = $request->validate([
             'seeder_class' => 'required|string|unique:seeder_statuses,seeder_class',
             'display_name' => 'required|string',
@@ -229,6 +269,14 @@ class SeederController extends Controller
      */
     public function update(Request $request, string $seederClass): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to manage seeders.'], 403);
+        }
+
         $seeder = SeederStatus::where('seeder_class', $seederClass)->first();
 
         if (!$seeder) {
@@ -254,8 +302,16 @@ class SeederController extends Controller
     /**
      * Delete a seeder registration
      */
-    public function destroy(string $seederClass): JsonResponse
+    public function destroy(Request $request, string $seederClass): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to manage seeders.'], 403);
+        }
+
         $seeder = SeederStatus::where('seeder_class', $seederClass)->first();
 
         if (!$seeder) {
@@ -289,8 +345,16 @@ class SeederController extends Controller
     /**
      * Discover and auto-register seeders from the seeders directory
      */
-    public function discover(): JsonResponse
+    public function discover(Request $request): JsonResponse
     {
+        if ($this->authService->isSeederExecutionDisabledInCurrentEnvironment()) {
+            return response()->json(['message' => 'Database seeding is disabled in production environments.'], 403);
+        }
+
+        if (!$this->authService->canExecuteSeeders($request->user())) {
+            return response()->json(['message' => 'Forbidden: Insufficient platform permissions to manage seeders.'], 403);
+        }
+
         $seedersPath = database_path('seeders');
         $discovered = [];
         $registered = 0;

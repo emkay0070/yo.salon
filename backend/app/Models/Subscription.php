@@ -12,6 +12,7 @@ class Subscription extends Model
     use HasUuids;
 
     protected $fillable = [
+        'organization_id',
         'provider_id',
         'plan_id',
         'status',
@@ -43,6 +44,11 @@ class Subscription extends Model
     public function provider(): BelongsTo
     {
         return $this->belongsTo(Provider::class);
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function salon()

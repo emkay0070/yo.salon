@@ -18,11 +18,16 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'auth.any' => \App\Http\Middleware\AuthenticateAnyActor::class,
+            'organization.context' => \App\Http\Middleware\ResolveOrganizationContext::class,
+            // Sets PostgreSQL session variable app.current_organization_id (transaction-scoped).
+            // Must be listed AFTER organization.context in route middleware chains.
+            'organization.db_context' => \App\Http\Middleware\SetOrganizationDatabaseContext::class,
             'provider.context' => \App\Http\Middleware\ResolveProviderContext::class,
             'location.context' => \App\Http\Middleware\ResolveLocationContext::class,
             'portal.context' => \App\Http\Middleware\ResolvePortalContext::class,
             'track.views' => \App\Http\Middleware\TrackViewCount::class,
             'specialist.capability' => \App\Http\Middleware\SpecialistCapabilityMiddleware::class,
+            'platform.role' => \App\Http\Middleware\EnsurePlatformRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

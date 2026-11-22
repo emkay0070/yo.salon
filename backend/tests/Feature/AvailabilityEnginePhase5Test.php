@@ -10,6 +10,7 @@ use App\Models\LocationSchedule;
 use App\Models\ProviderSchedule;
 use App\Models\Specialist;
 use App\Models\SpecialistAssignment;
+use App\Models\Organization;
 use App\Models\Service;
 use App\Models\Subscription;
 use App\Models\Plan;
@@ -43,10 +44,13 @@ class AvailabilityEnginePhase5Test extends TestCase
      */
     public function test_independent_specialist_uses_provider_schedule(): void
     {
+        $org = Organization::factory()->create();
+
         $provider = Provider::create([
-            'id'           => Str::uuid(),
-            'display_name' => 'Indie Provider',
-            'type'         => 'independent_specialist',
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'display_name'    => 'Indie Provider',
+            'type'            => 'independent_specialist',
         ]);
 
         $plan = Plan::create([
@@ -61,11 +65,12 @@ class AvailabilityEnginePhase5Test extends TestCase
 
         // Subscription required by preflight
         Subscription::create([
-            'id'          => Str::uuid(),
-            'provider_id' => $provider->id,
-            'status'      => 'active',
-            'plan_id'     => $plan->id,
-            'starts_at'   => Carbon::now(),
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'provider_id'     => $provider->id,
+            'status'          => 'active',
+            'plan_id'         => $plan->id,
+            'starts_at'       => Carbon::now(),
         ]);
 
         $specialist = Specialist::create([
@@ -129,10 +134,13 @@ class AvailabilityEnginePhase5Test extends TestCase
      */
     public function test_branch_uses_location_schedule(): void
     {
+        $org = Organization::factory()->create();
+
         $provider = Provider::create([
-            'id'           => Str::uuid(),
-            'display_name' => 'Branch Provider',
-            'type'         => 'salon',
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'display_name'    => 'Branch Provider',
+            'type'            => 'salon',
         ]);
 
         $plan = Plan::create([
@@ -146,11 +154,12 @@ class AvailabilityEnginePhase5Test extends TestCase
         ]);
 
         Subscription::create([
-            'id'          => Str::uuid(),
-            'provider_id' => $provider->id,
-            'status'      => 'active',
-            'plan_id'     => $plan->id,
-            'starts_at'   => Carbon::now(),
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'provider_id'     => $provider->id,
+            'status'          => 'active',
+            'plan_id'         => $plan->id,
+            'starts_at'       => Carbon::now(),
         ]);
 
         $location = Location::create([
@@ -214,10 +223,13 @@ class AvailabilityEnginePhase5Test extends TestCase
      */
     public function test_context_from_provider_bridges_correctly(): void
     {
+        $org = Organization::factory()->create();
+
         $provider = Provider::create([
-            'id'           => Str::uuid(),
-            'display_name' => 'Bridge Provider',
-            'type'         => 'salon',
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'display_name'    => 'Bridge Provider',
+            'type'            => 'salon',
         ]);
 
         $location = Location::create([
@@ -252,10 +264,13 @@ class AvailabilityEnginePhase5Test extends TestCase
      */
     public function test_cross_service_availability_blocks_conflicting_slots(): void
     {
+        $org = Organization::factory()->create();
+
         $provider = Provider::create([
-            'id'           => Str::uuid(),
-            'display_name' => 'Test Provider',
-            'type'         => 'independent_specialist',
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'display_name'    => 'Test Provider',
+            'type'            => 'independent_specialist',
         ]);
 
         $plan = Plan::create([
@@ -269,11 +284,12 @@ class AvailabilityEnginePhase5Test extends TestCase
         ]);
 
         Subscription::create([
-            'id'          => Str::uuid(),
-            'provider_id' => $provider->id,
-            'status'      => 'active',
-            'plan_id'     => $plan->id,
-            'starts_at'   => Carbon::now(),
+            'id'              => Str::uuid(),
+            'organization_id' => $org->id,
+            'provider_id'     => $provider->id,
+            'status'          => 'active',
+            'plan_id'         => $plan->id,
+            'starts_at'       => Carbon::now(),
         ]);
 
         $specialist = Specialist::create([

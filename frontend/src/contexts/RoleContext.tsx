@@ -6,6 +6,32 @@ import { apiClient } from '@/lib/api-client';
 export type UserRole = 'owner' | 'manager' | 'employee' | 'receptionist' | 'platform_admin';
 export type UserStatus = 'registered' | 'email_verified' | 'onboarding_started' | 'onboarding_completed' | 'active';
 
+/**
+ * Resolved provider type context returned by GET /v1/auth/user under
+ * `provider_type_context` (Phase 2B). Produced exclusively by the backend's
+ * ProviderTypeContext resolver from server-side provider selection — the
+ * frontend must not guess or hardcode provider types.
+ */
+export interface ProviderTypeContextData {
+  /** Resolved provider (tenant) ID, null when no provider in context */
+  provider_id: string | null;
+  /** Registered provider type key (salon | independent_specialist | spa | beauty_school | mobile_team), null when unresolved */
+  provider_type: string | null;
+  /** Registry definition for display purposes; null when unresolved or unsupported */
+  provider_type_definition: {
+    id: string;
+    type: string;
+    display_name: string;
+    is_independent: boolean;
+    is_owner_managed: boolean;
+    is_active: boolean;
+  } | null;
+  is_independent: boolean;
+  is_owner_managed: boolean;
+  /** Explicit context error (missing provider / unsupported type); null when resolved */
+  error: string | null;
+}
+
 interface RoleContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
@@ -50,6 +76,8 @@ interface RoleContextType {
   capabilities: Record<string, boolean> | null;
   /** Check if the current user has a specific capability in the active provider context */
   hasCapability: (action: string) => boolean;
+  /** Resolved provider type context for the selected provider (server-resolved, never client-guessed) */
+  providerTypeContext: ProviderTypeContextData | null;
 }
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
@@ -82,6 +110,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [specialists, setSpecialists] = useState<any[]>([]);
   const [capabilities, setCapabilities] = useState<Record<string, boolean> | null>(null);
+  const [providerTypeContext, setProviderTypeContext] = useState<ProviderTypeContextData | null>(null);
 
   const hasCapability = (action: string): boolean => {
     return capabilities ? !!capabilities[action] : false;
@@ -211,6 +240,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       setUserStatus(data?.status ?? null);
       setNextRoute(data?.next_route ?? null);
       setCurrentStep(data?.current_step ?? null);
+      // Phase 2B: server-resolved provider type context (additive field)
+      setProviderTypeContext(data?.provider_type_context ?? null);
     } catch (error: any) {
       console.error('[RoleContext] Failed to load user profile:', error);
       localStorage.removeItem('auth_token');
@@ -278,6 +309,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       specialists,
       capabilities,
       hasCapability,
+      providerTypeContext,
     }}>
       {children}
     </RoleContext.Provider>
