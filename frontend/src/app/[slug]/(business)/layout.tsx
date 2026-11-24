@@ -1,8 +1,15 @@
 import BusinessProviders from '@/components/providers/BusinessProviders';
 
-export default function SlugBusinessLayout({ children }: { children: React.ReactNode }) {
+export default async function SlugBusinessLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ slug: string }> | { slug: string };
+}) {
+  const resolvedParams = await params;
   return (
-    <BusinessProviders>
+    <BusinessProviders slug={resolvedParams?.slug}>
       {children}
     </BusinessProviders>
   );

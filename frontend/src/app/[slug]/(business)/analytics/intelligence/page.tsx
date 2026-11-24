@@ -17,32 +17,22 @@ import { Brain } from 'lucide-react';
 export default function SalonIntelligenceCenterPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/analytics/intelligence`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonIntelligenceCenterPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonIntelligenceCenterPage] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   const { data: intelligence, isLoading, error } = useQuery({
     queryKey: ['intelligence', providerId],
     queryFn: () => apiClient.getIntelligence(),
-    enabled: !!providerId,
+    enabled: isContextReady,
   });
 
   if (isLoading) {

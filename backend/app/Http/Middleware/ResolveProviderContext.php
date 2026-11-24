@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,7 +26,14 @@ class ResolveProviderContext
         // Check if user is authenticated
         if (Auth::check()) {
             $user = Auth::user();
-            
+
+            // Provider context applies only to `User` principals. Specialist and
+            // customer portal accounts (SpecialistAccount / PortalAccount) are not
+            // Users and resolve their own context via their guards/relationships.
+            if (!$user instanceof User) {
+                return $next($request);
+            }
+
             // Handle onboarding status - redirect to onboarding if not completed
             if ($user->isOnboarding()) {
                 // Allow onboarding endpoints to pass through
@@ -42,7 +50,24 @@ class ResolveProviderContext
             
             // For active users, ensure they have a provider
             if ($user->isActive()) {
-                $currentProvider = $user->currentProvider();
+                $requestedProviderId = $request->header('X-Provider-Id')
+                    ?? $request->query('provider_id')
+                    ?? $request->header('X-Salon-Id');
+
+                if ($requestedProviderId) {
+                    $currentProvider = $user->providers()
+                        ->where('providers.id', $requestedProviderId)
+                        ->first();
+
+                    if (!$currentProvider) {
+                        return response()->json([
+                            'message' => 'You do not have access to this provider',
+                        ], 403);
+                    }
+                } else {
+                    $currentProvider = $user->currentProvider();
+                }
+
                 if (!$currentProvider) {
                     return response()->json([
                         'message' => 'User is not associated with a provider',

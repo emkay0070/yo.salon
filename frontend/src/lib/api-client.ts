@@ -65,17 +65,47 @@ class ApiClient {
           config.headers.Authorization = `Bearer ${token}`;
         }
 
-        // Add location context header only when explicitly requested
-        // X-Location-Id is a context signal, not an authorization mechanism
-        // Authorization is determined by the user's role and backend logic
-        // Location persistence is UI convenience, not automatic request context
-        if (config.includeLocationContext) {
+        // --- Context headers propagation (TYBUEL Phase 1) ---
+        // Commercial establishment owner requests: attach Organization, Provider, and Location headers
+        // Specialist portal requests are completely isolated and untouched
+        const isSpecialistPortalRequest = config.url?.includes('/specialist-portal/');
+
+        if (!isSpecialistPortalRequest) {
+          // 1. Organization Context (governance layer)
+          const organizationId = localStorage.getItem('organization_id');
+          if (organizationId && isValidIdSegment(organizationId)) {
+            config.headers['X-Organization-Id'] = organizationId;
+          }
+
+          // 2. Provider Context (business/tenant layer)
+          const providerId = localStorage.getItem('provider_id');
+          if (providerId && isValidIdSegment(providerId)) {
+            config.headers['X-Provider-Id'] = providerId;
+          }
+
+          // 3. Location Context (physical operating context)
+          // Attached when explicitly requested via includeLocationContext === true
+          // or automatically for location-sensitive operational endpoints,
+          // unless explicitly disabled (includeLocationContext === false).
           const locationId = localStorage.getItem('location_id');
-          if (locationId) {
-            config.headers['X-Location-Id'] = locationId;
-            console.log('[ApiClient] Adding X-Location-Id header (explicit opt-in):', locationId);
-          } else {
-            console.log('[ApiClient] includeLocationContext=true but no location_id in localStorage');
+          const isExplicitlyDisabled = config.includeLocationContext === false;
+          const isExplicitlyEnabled = config.includeLocationContext === true;
+
+          const isLocationSensitiveEndpoint = !!config.url && (
+            config.url.includes('/bookings') ||
+            config.url.includes('/floor/') ||
+            config.url.includes('/analytics') ||
+            config.url.includes('/pulse') ||
+            config.url.includes('/schedule-exceptions') ||
+            config.url.includes('/assignable-specialists')
+          );
+
+          if (!isExplicitlyDisabled && (isExplicitlyEnabled || isLocationSensitiveEndpoint)) {
+            if (locationId && isValidIdSegment(locationId)) {
+              config.headers['X-Location-Id'] = locationId;
+            } else if (locationId === 'all') {
+              config.headers['X-Location-Id'] = 'all';
+            }
           }
         }
         
@@ -542,6 +572,13 @@ class ApiClient {
 
   async verifySalonPayment(reference: string) {
     const response = await this.client.post('/v1/payments/salon/verify', { reference });
+    return response.data;
+  }
+
+  async getCustomerPaymentStatus(bookingId: string) {
+    const response = await this.client.get('/payments/customer/status', {
+      params: { booking_id: bookingId },
+    });
     return response.data;
   }
 

@@ -67,27 +67,17 @@ const gradientStyle = `
 export default function SalonPaymentsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/payments`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonPaymentsPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonPaymentsPage] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   // State
   const [activeIndex, setActiveIndex] = useState(0);
@@ -124,7 +114,7 @@ export default function SalonPaymentsPage({ params }: { params: Promise<{ slug: 
   const { data: paymentMethods = [], isLoading: isMethodsLoading } = useQuery({
     queryKey: ['payment-methods', providerId],
     queryFn: () => apiClient.getPaymentMethods({ provider_id: providerId }),
-    enabled: !!providerId,
+    enabled: isContextReady,
   });
 
   // Calculate active method
@@ -141,21 +131,21 @@ export default function SalonPaymentsPage({ params }: { params: Promise<{ slug: 
       payment_method_id: activeMethod?.id,
       today: true
     }),
-    enabled: !!providerId && !!activeMethod,
+    enabled: isContextReady && !!activeMethod,
   });
 
   // Fetch today's summary
   const { data: summary } = useQuery({
     queryKey: ['transaction-summary', providerId],
     queryFn: () => apiClient.getTransactionSummary({ provider_id: providerId }),
-    enabled: !!providerId,
+    enabled: isContextReady,
   });
 
   // Fetch settlements
   const { data: settlements = [] } = useQuery({
     queryKey: ['settlements', providerId],
     queryFn: () => apiClient.getSettlements({ provider_id: providerId }),
-    enabled: !!providerId,
+    enabled: isContextReady,
   });
 
   // Stack Navigation

@@ -55,7 +55,7 @@ class CustomerAuthorizationTest extends TestCase
         );
 
         // Setup Provider A
-        $this->providerA = Provider::factory()->create(['name' => 'Salon Alpha', 'active' => true]);
+        $this->providerA = Provider::factory()->create(['display_name' => 'Salon Alpha', 'status' => 'active']);
         $this->locationA = Location::factory()->create(['provider_id' => $this->providerA->id]);
         $this->userA = User::factory()->create(['status' => 'active', 'email' => 'staff.a@example.com']);
         ProviderUser::factory()->owner()->create([
@@ -64,7 +64,7 @@ class CustomerAuthorizationTest extends TestCase
         ]);
 
         // Setup Provider B
-        $this->providerB = Provider::factory()->create(['name' => 'Salon Beta', 'active' => true]);
+        $this->providerB = Provider::factory()->create(['display_name' => 'Salon Beta', 'status' => 'active']);
         $this->locationB = Location::factory()->create(['provider_id' => $this->providerB->id]);
         $this->userB = User::factory()->create(['status' => 'active', 'email' => 'staff.b@example.com']);
         ProviderUser::factory()->owner()->create([
@@ -99,6 +99,36 @@ class CustomerAuthorizationTest extends TestCase
             'duration' => 30,
             'price' => 50000,
         ]);
+
+        // Configure operable business hours for Provider A so non-internal
+        // bookings can resolve a valid slot (a real branch is always scheduled).
+        // ProviderSchedule.day_of_week is an integer (0=Sunday); LocationSchedule
+        // uses the full day name.
+        $days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        foreach ($days as $index => $dayName) {
+            DB::table('provider_schedules')->insert([
+                'id' => (string) Str::uuid(),
+                'provider_id' => $this->providerA->id,
+                'day_of_week' => $index,
+                'open_time' => '08:00:00',
+                'close_time' => '20:00:00',
+                'is_closed' => false,
+                'effective_date' => now()->toDateString(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('location_schedules')->insert([
+                'id' => (string) Str::uuid(),
+                'location_id' => $this->locationA->id,
+                'day_of_week' => $dayName,
+                'open_time' => '08:00:00',
+                'close_time' => '20:00:00',
+                'is_closed' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     // =========================================================================
@@ -836,7 +866,7 @@ class CustomerAuthorizationTest extends TestCase
             'internal_booking' => true,
         ]);
 
-        $rescheduledBooking = $bookingService->rebookFromPrevious($initialBooking->id, [
+        $rescheduledBooking = app(\App\Services\CustomerBookingService::class)->rebookFromPrevious($initialBooking->id, [
             'date' => now()->addDays(5)->format('Y-m-d'),
             'time' => '16:00',
             'location_id' => $this->locationA->id,
@@ -859,7 +889,7 @@ class CustomerAuthorizationTest extends TestCase
             'location_id' => $this->locationB->id,
             'customer_name' => 'Spoof Attempt',
             'customer_phone' => '+15559990001',
-            'service_id' => $this->serviceA->id,
+            'service_id' => [$this->serviceA->id],
             'date' => now()->addDays(2)->format('Y-m-d'),
             'time' => '10:00',
         ]);
@@ -871,7 +901,7 @@ class CustomerAuthorizationTest extends TestCase
             'location_id' => $this->locationA->id,
             'customer_name' => 'Walkin Client',
             'customer_phone' => '+15550000002', // Customer B's phone
-            'service_id' => $this->serviceA->id,
+            'service_id' => [$this->serviceA->id],
             'date' => now()->addDays(2)->format('Y-m-d'),
             'time' => '10:00',
             'internal_booking' => true,
@@ -1058,17 +1088,15 @@ class CustomerAuthorizationTest extends TestCase
      */
     public function test_invitation_acceptance_sets_phone_to_null_never_tbd(): void
     {
-        $invitation = \App\Models\Invitation::create([
+        $issueData = \App\Models\Invitation::issue([
             'provider_id' => $this->providerA->id,
             'location_id' => $this->locationA->id,
             'email'       => 'invited.customer@example.com',
             'role'        => 'customer',
-            'token'       => \Illuminate\Support\Str::random(32),
             'status'      => 'pending',
-            'expires_at'  => now()->addDays(7),
-        ]);
+        ], now()->addDays(7));
 
-        $response = $this->postJson("/api/v1/invitations/{$invitation->token}/accept", [
+        $response = $this->postJson("/api/v1/invitations/{$issueData['rawToken']}/accept", [
             'name'     => 'Invited Customer',
             'email'    => 'invited.customer@example.com',
             'password' => 'SecurePass123!',

@@ -58,9 +58,9 @@ class BookingOrchestrator
             }
         }
 
-        // Extract provider_id and location_id
+        // Extract provider_id and resolve/validate the booking location (authoritative for all clients)
         $providerId = $validatedData['provider_id'];
-        $locationId = $validatedData['location_id'] ?? null;
+        $locationId = $this->resolveAndValidateLocation($validatedData, $providerId);
 
         $serviceId = is_array($validatedData['service_id']) ? $validatedData['service_id'][0] : $validatedData['service_id'];
         $specialistId = $validatedData['specialist_id'] ?? null;
@@ -86,24 +86,31 @@ class BookingOrchestrator
         }
         
         // 1. Resolve Specialist Assignment
+        // Canonical semantics (aligned with /providers/{provider}/assignable-specialists):
+        // - A location-scoped booking requires an ACTIVE assignment at that exact location,
+        //   or a branch-agnostic assignment (location_id = NULL) for specialists who work
+        //   across branches.
+        // - An assignment scoped to a *different* location is never compatible.
         $assignment = null;
         if ($specialistId) {
-            // First try a location-scoped assignment (specialist works at this specific branch)
             $assignmentQuery = SpecialistAssignment::where('specialist_id', $specialistId)
-                ->where('provider_id', $providerId);
-            
-            if ($locationId) {
-                $assignment = (clone $assignmentQuery)->where('location_id', $locationId)->first();
-            }
+                ->where('provider_id', $providerId)
+                ->whereIn('status', ['ACTIVE', 'active']);
 
-            // Fall back to provider-level assignment (specialist has no fixed location on their record,
-            // e.g. they work across branches or the assignment was created without a location_id)
-            if (!$assignment) {
-                $assignment = $assignmentQuery->whereIn('status', ['ACTIVE', 'active'])->first();
-            }
-            
-            if (!$assignment) {
-                throw new \Exception('Specialist is not assigned to this provider.');
+            if ($locationId) {
+                $assignment = (clone $assignmentQuery)->where('location_id', $locationId)->first()
+                    ?? (clone $assignmentQuery)->whereNull('location_id')->first();
+
+                if (!$assignment) {
+                    throw new \Exception('Specialist is not available at the selected location.');
+                }
+            } else {
+                // Location-less context (independent specialist workspace).
+                $assignment = $assignmentQuery->first();
+
+                if (!$assignment) {
+                    throw new \Exception('Specialist is not assigned to this provider.');
+                }
             }
         }
 
@@ -261,6 +268,56 @@ class BookingOrchestrator
                 return $this->bookingService->createBookingWithAccount($validatedData);
             }
         });
+    }
+
+    /**
+     * Resolve and validate the booking's location.
+     *
+     * - When a location_id is supplied it must belong to the provider and be active.
+     * - When it is omitted, the provider's primary active location is used (the same
+     *   fallback the authenticated portal flow applies). If none can be resolved,
+     *   location-less bookings are only permitted for independent specialists;
+     *   every other provider type requires a location.
+     *
+     * The resolved location is written back into $validatedData so downstream
+     * pipeline stages (bookability, conflicts, persistence) use a single value.
+     */
+    private function resolveAndValidateLocation(array &$validatedData, string $providerId): ?string
+    {
+        $locationId = $validatedData['location_id'] ?? null;
+
+        if ($locationId) {
+            $isOwnedAndActive = Location::where('id', $locationId)
+                ->where('provider_id', $providerId)
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$isOwnedAndActive) {
+                throw new \Exception('The selected location is not available for this provider.');
+            }
+
+            return $locationId;
+        }
+
+        // Omitted: resolve the provider's primary location, then any active location.
+        $provider = \App\Models\Provider::with('providerType')->find($providerId);
+
+        $resolved = $provider?->locations()->where('is_primary', true)->first()
+            ?? $provider?->locations()->where('is_active', true)->first();
+
+        if ($resolved) {
+            $validatedData['location_id'] = $resolved->id;
+
+            return $resolved->id;
+        }
+
+        // No resolvable location. Independent specialists may operate without a fixed
+        // location; every other provider type must not create location-less bookings.
+        if ($provider && $provider->hasProviderType(\App\Models\Provider::TYPE_SPECIALIST)) {
+            return null;
+        }
+
+        throw new \Exception('A location is required to create this booking.');
     }
 
     private function calculateEndTime(string $startTime, string $serviceId): string

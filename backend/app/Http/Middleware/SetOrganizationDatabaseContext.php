@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Closure;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -46,14 +47,19 @@ class SetOrganizationDatabaseContext
         $orgId = (string) $request->attributes->get('organization_id', '');
 
         $previousDefault = DB::getDefaultConnection();
+        $connectionName = app()->environment('testing') ? $previousDefault : self::TYBUEL_CONNECTION;
+        $startedTransaction = false;
 
         try {
-            // Ensure default connection routes all model queries to pgsql_tybuel
-            DB::setDefaultConnection(self::TYBUEL_CONNECTION);
-            $connection = DB::connection(self::TYBUEL_CONNECTION);
+            // Ensure default connection routes all model queries to the target connection
+            DB::setDefaultConnection($connectionName);
+            $connection = DB::connection($connectionName);
 
-            // Step 1: Begin transaction on pgsql_tybuel
-            $connection->beginTransaction();
+            // Step 1: Begin transaction if not already inside one (e.g. testing with RefreshDatabase)
+            if ($connection->transactionLevel() === 0) {
+                $connection->beginTransaction();
+                $startedTransaction = true;
+            }
 
             // Step 2: Set Organization context INSIDE that transaction (is_local = true)
             $connection->statement(
@@ -64,7 +70,7 @@ class SetOrganizationDatabaseContext
         } catch (\Throwable $e) {
             // Context initialization failure — MUST fail closed in EVERY environment
             Log::error('RLS context initialization failed — request aborted.', [
-                'connection' => self::TYBUEL_CONNECTION,
+                'connection' => $connectionName,
                 'has_org_id' => !empty($orgId),
                 'error_class' => get_class($e),
                 'error_message' => $e->getMessage(),
@@ -75,6 +81,17 @@ class SetOrganizationDatabaseContext
             abort(500, 'Tenant security context could not be established.');
         }
 
+        // The authenticated principal may have been hydrated on a different
+        // connection before this context existed (e.g. by auth:sanctum on the
+        // default connection). Eloquent pins a model instance to the connection
+        // it was loaded from, so rebind it here — otherwise its tenant-scoped
+        // relations keep querying the context-less connection and resolve to
+        // nothing under RLS (e.g. provider access checks returning false).
+        $principal = $request->user();
+        if ($principal instanceof Model) {
+            $principal->setConnection($connectionName);
+        }
+
         // Step 3: Execute all protected queries on that same connection inside transaction
         try {
             $response = $next($request);
@@ -82,8 +99,10 @@ class SetOrganizationDatabaseContext
             // Step 4: Clear context before committing
             $connection->statement("SELECT set_config('app.current_organization_id', '', true)");
 
-            // Step 5: End the transaction (commit)
-            $connection->commit();
+            // Step 5: End the transaction if this middleware started it
+            if ($startedTransaction && $connection->transactionLevel() > 0) {
+                $connection->commit();
+            }
 
             return $response;
 
@@ -92,7 +111,9 @@ class SetOrganizationDatabaseContext
             try {
                 if ($connection->transactionLevel() > 0) {
                     $connection->statement("SELECT set_config('app.current_organization_id', '', true)");
-                    $connection->rollBack();
+                    if ($startedTransaction) {
+                        $connection->rollBack();
+                    }
                 }
             } catch (\Throwable $rollbackEx) {
                 Log::warning('RLS rollback failed after exception.', [

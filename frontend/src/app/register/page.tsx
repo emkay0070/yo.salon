@@ -72,7 +72,16 @@ export default function RegisterPage() {
       router.push(nextRoute);
     } catch (err: any) {
       console.error('Registration error:', err);
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Registration failed';
+      const validationErrors = err.response?.data?.errors;
+      const firstValidationError = validationErrors
+        ? Object.values(validationErrors).flat()[0]
+        : null;
+      const errorMessage =
+        (firstValidationError as string) ||
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Registration failed';
       setError(errorMessage);
     } finally {
       setLoading(false);

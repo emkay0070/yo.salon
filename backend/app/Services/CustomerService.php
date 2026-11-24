@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -46,11 +47,15 @@ class CustomerService
                 'email' => $data['email'] ?? null,
             ]);
 
-            // Upsert into customer_providers (idempotent: safe if already exists)
+            // Insert the Provider relationship. The customer was created inside
+            // this same transaction, so no relationship row can already exist.
+            // A plain INSERT is used instead of ON CONFLICT: PostgreSQL requires
+            // SELECT visibility for the ON CONFLICT arbiter check, and RLS
+            // deliberately grants guest (unauthenticated) bookings no SELECT
+            // policy on customer_providers.
             DB::statement(
                 'INSERT INTO customer_providers (id, customer_id, provider_id, visits, joined_at, created_at, updated_at)
-                 VALUES (?, ?, ?, 0, ?, ?, ?)
-                 ON CONFLICT (customer_id, provider_id) DO NOTHING',
+                 VALUES (?, ?, ?, 0, ?, ?, ?)',
                 [(string) Str::orderedUuid(), $customer->id, $providerId, now(), now(), now()]
             );
 
@@ -108,13 +113,28 @@ class CustomerService
             ->where('provider_id', $providerId)
             ->exists();
 
-        if (!$exists) {
-            DB::statement(
-                'INSERT INTO customer_providers (id, customer_id, provider_id, visits, joined_at, created_at, updated_at)
-                 VALUES (?, ?, ?, 0, ?, ?, ?)
-                 ON CONFLICT (customer_id, provider_id) DO NOTHING',
-                [(string) Str::orderedUuid(), $customer->id, $providerId, now(), now(), now()]
-            );
+        if ($exists) {
+            return $customer->fresh();
+        }
+
+        // Plain INSERT instead of ON CONFLICT: PostgreSQL requires SELECT
+        // visibility for the ON CONFLICT arbiter check, and RLS grants guest
+        // (unauthenticated) bookings no SELECT policy on customer_providers — so
+        // a guest context can never see an existing relationship above and
+        // ON CONFLICT would be rejected outright. A duplicate INSERT is instead
+        // absorbed by the unique (customer_id, provider_id) constraint. The
+        // nested transaction opens a SAVEPOINT so the failed statement cannot
+        // abort an enclosing transaction.
+        try {
+            DB::transaction(function () use ($customer, $providerId) {
+                DB::statement(
+                    'INSERT INTO customer_providers (id, customer_id, provider_id, visits, joined_at, created_at, updated_at)
+                     VALUES (?, ?, ?, 0, ?, ?, ?)',
+                    [(string) Str::orderedUuid(), $customer->id, $providerId, now(), now(), now()]
+                );
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            // Relationship already exists but is invisible to this RLS context.
         }
 
         return $customer->fresh();

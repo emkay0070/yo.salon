@@ -56,7 +56,7 @@ export default function ProviderBookingsPage({ params }: { params: Promise<{ slu
   const { slug } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { role, userName, providerId, locationId, user, activeProvider, providerSlug } = useRole();
+  const { role, userName, providerId, locationId, user, activeProvider, providerSlug, providerAccessError } = useRole();
   const routes = providerRoutes(providerSlug);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -81,26 +81,14 @@ export default function ProviderBookingsPage({ params }: { params: Promise<{ slu
       router.push(`/login?returnTo=/${slug}/bookings`);
       return;
     }
+  }, [user, router, slug]);
 
-    if (!providerId) {
-      console.warn('[ProviderBookingsPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the provider slug matches the user's active provider
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[ProviderBookingsPage] Access denied: user provider does not match URL provider', {
-        userProviderSlug: activeProvider.slug,
-        urlSlug: slug,
-      });
-      router.push(`/${activeProvider.slug}/bookings`);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  const isContextReady = !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
 
   const { data: apiBookings = [], isLoading } = useQuery({
     queryKey: ['bookings', providerId, locationId],
-    queryFn: () => apiClient.getBookings(),
-    enabled: !!providerId,
+    queryFn: () => apiClient.getBookings({ provider_id: providerId, ...(locationId ? { location_id: locationId } : {}) }),
+    enabled: isContextReady,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
   });

@@ -198,6 +198,7 @@ class OnboardingService
                     }
 
                     $specialist = Specialist::create([
+                        'provider_id'   => $provider->id,
                         'name'          => $teamMember['name'] ?? 'Team Member',
                         'phone'         => $teamMember['phone'] ?? null,
                         'email'         => $teamMember['email'] ?? null,

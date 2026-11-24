@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 
 export type UserRole = 'owner' | 'manager' | 'employee' | 'receptionist' | 'platform_admin';
@@ -32,6 +33,22 @@ export interface ProviderTypeContextData {
   error: string | null;
 }
 
+/**
+ * Commercial Organization Context data returned by GET /v1/auth/user
+ * under `organization_context`.
+ */
+export interface OrganizationContextData {
+  organization_id: string | null;
+  name: string | null;
+  slug: string | null;
+  type: string | null;
+  status: string | null;
+  role: string | null;
+  is_owner: boolean;
+  is_admin: boolean;
+  error: string | null;
+}
+
 interface RoleContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
@@ -58,6 +75,18 @@ interface RoleContextType {
   activeProvider: any | null;
   /** Canonical: setter for active provider */
   setActiveProvider: (provider: any | null) => void;
+  /** Error when requested provider slug is not authorized or not found */
+  providerAccessError: string | null;
+  /** Switch to another authorized provider by slug */
+  switchProviderBySlug: (slug: string) => boolean;
+
+  // Commercial Organization Context (governance layer)
+  organizationId: string | null;
+  setOrganizationId: (id: string | null) => void;
+  organizationContext: OrganizationContextData | null;
+  activeOrganization: any | null;
+  organizations: any[];
+
   /** Canonical: active location object (currently selected location) */
   activeLocation: any | null;
   /** Canonical: setter for active location */
@@ -92,15 +121,27 @@ function sanitizeId(value: any): string | null {
   return str;
 }
 
-export function RoleProvider({ children }: { children: ReactNode }) {
+export function RoleProvider({ children, initialSlug }: { children: ReactNode; initialSlug?: string }) {
   console.log('[RoleProvider] Component mounted');
+  const params = useParams();
+  const currentUrlSlug = initialSlug || (typeof params?.slug === 'string' ? params.slug : (Array.isArray(params?.slug) ? params.slug[0] : undefined));
+
   const [role, setRole] = useState<UserRole>('owner');
   const [userName, setUserName] = useState('');
   const [user, setUser] = useState<any | null>(null);
+  
   // Canonical provider context
   const [providerId, setProviderId] = useState<string | null>(null);
   const [providerSlug, setProviderSlug] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<any | null>(null);
+  const [providerAccessError, setProviderAccessError] = useState<string | null>(null);
+
+  // Commercial Organization context
+  const [organizationId, setOrganizationIdState] = useState<string | null>(null);
+  const [organizationContext, setOrganizationContext] = useState<OrganizationContextData | null>(null);
+  const [activeOrganization, setActiveOrganization] = useState<any | null>(null);
+  const [organizations, setOrganizations] = useState<any[]>([]);
+
   // Location context (physical operating context)
   const [activeLocation, setActiveLocation] = useState<any | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -112,145 +153,241 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [capabilities, setCapabilities] = useState<Record<string, boolean> | null>(null);
   const [providerTypeContext, setProviderTypeContext] = useState<ProviderTypeContextData | null>(null);
 
+  // Cached raw response data for dynamic resolution on slug changes
+  const [rawAuthData, setRawAuthData] = useState<any | null>(null);
+
   const hasCapability = (action: string): boolean => {
     return capabilities ? !!capabilities[action] : false;
   };
 
+  /**
+   * Apply context for a specific provider safely:
+   * 1. Confirms user authorization for this provider.
+   * 2. Sets role & capabilities scoped strictly to this provider.
+   * 3. Sets organization context matching this provider's parent organization.
+   * 4. Validates location belongs to this provider, preventing cross-tenant leakage.
+   */
+  const applyProviderContext = useCallback((
+    targetSlug: string | undefined,
+    userData: any,
+    authorities: any[],
+    serverOrgContext: any
+  ) => {
+    const providers: any[] = userData?.providers || [];
+
+    if (!providers || providers.length === 0) {
+      console.warn('[RoleContext] User has no providers assigned');
+      setProviderId(null);
+      setProviderSlug(null);
+      setActiveProvider(null);
+      setProviderAccessError(null);
+      setOrganizationIdState(null);
+      setActiveOrganization(null);
+      setActiveLocation(null);
+      setLocationId(null);
+      setCapabilities(null);
+      localStorage.removeItem('provider_id');
+      localStorage.removeItem('location_id');
+      localStorage.removeItem('organization_id');
+      return;
+    }
+
+    let selectedProvider: any = null;
+    let accessError: string | null = null;
+
+    if (targetSlug) {
+      // Find matching provider by slug (case-insensitive)
+      selectedProvider = providers.find(
+        (p: any) => p.slug && p.slug.toLowerCase() === targetSlug.toLowerCase()
+      );
+
+      if (!selectedProvider) {
+        console.warn(`[RoleContext] Access denied: User does not belong to provider slug "${targetSlug}"`);
+        accessError = `You do not have access to the business "${targetSlug}", or it does not exist.`;
+      }
+    } else {
+      // No slug requested in URL (e.g. root dashboard route)
+      // Check if a previously selected valid provider exists in localStorage
+      const storedProviderId = localStorage.getItem('provider_id');
+      if (storedProviderId) {
+        selectedProvider = providers.find((p: any) => p.id === storedProviderId) || null;
+      }
+      // Otherwise default to the first provider
+      if (!selectedProvider) {
+        selectedProvider = providers[0];
+      }
+    }
+
+    if (accessError || !selectedProvider) {
+      // Unauthorized or nonexistent slug requested
+      setProviderId(null);
+      setProviderSlug(targetSlug || null);
+      setActiveProvider(null);
+      setProviderAccessError(accessError);
+      setCapabilities(null);
+      setActiveLocation(null);
+      setLocationId(null);
+      setOrganizationIdState(null);
+      setActiveOrganization(null);
+      localStorage.removeItem('provider_id');
+      localStorage.removeItem('location_id');
+      localStorage.removeItem('organization_id');
+      return;
+    }
+
+    // Provider resolved successfully
+    const cleanProvId = sanitizeId(selectedProvider.id);
+    setProviderId(cleanProvId);
+    setProviderSlug(selectedProvider.slug);
+    setActiveProvider(selectedProvider);
+    setProviderAccessError(null);
+
+    if (cleanProvId) {
+      localStorage.setItem('provider_id', cleanProvId);
+    } else {
+      localStorage.removeItem('provider_id');
+    }
+
+    // Role mapping for this provider
+    const pivotRole = selectedProvider.pivot?.role;
+    const mappedRole: UserRole = pivotRole === 'staff' ? 'employee' :
+                                  pivotRole === 'admin' ? 'owner' :
+                                  pivotRole === 'owner' ? 'owner' :
+                                  (pivotRole as UserRole) || 'owner';
+    setRole(mappedRole);
+
+    // Capabilities for this provider
+    if (cleanProvId && authorities) {
+      const auth = authorities.find((a: any) => a.provider_id === cleanProvId);
+      setCapabilities(auth?.capabilities || null);
+    } else {
+      setCapabilities(null);
+    }
+
+    // Commercial Organization Context resolution
+    const userOrgs = userData.organizations || [];
+    const targetOrgId = sanitizeId(
+      selectedProvider.organization_id ||
+      selectedProvider.organization?.id ||
+      serverOrgContext?.organization_id
+    );
+
+    if (targetOrgId) {
+      setOrganizationIdState(targetOrgId);
+      localStorage.setItem('organization_id', targetOrgId);
+
+      const resolvedOrg = userOrgs.find((o: any) => o.id === targetOrgId) ||
+        selectedProvider.organization ||
+        (serverOrgContext?.organization_id === targetOrgId ? serverOrgContext : null);
+
+      setActiveOrganization(resolvedOrg || null);
+      if (serverOrgContext && serverOrgContext.organization_id === targetOrgId) {
+        setOrganizationContext(serverOrgContext);
+      } else if (resolvedOrg) {
+        setOrganizationContext({
+          organization_id: targetOrgId,
+          name: resolvedOrg.name || null,
+          slug: resolvedOrg.slug || null,
+          type: resolvedOrg.type || null,
+          status: resolvedOrg.status || null,
+          role: resolvedOrg.pivot?.role || mappedRole,
+          is_owner: resolvedOrg.pivot?.role === 'owner' || mappedRole === 'owner',
+          is_admin: resolvedOrg.pivot?.role === 'admin' || mappedRole === 'owner',
+          error: null,
+        });
+      }
+    } else {
+      setOrganizationIdState(null);
+      setActiveOrganization(null);
+      localStorage.removeItem('organization_id');
+    }
+
+    // Location Context resolution
+    const persistedLocationId = localStorage.getItem('location_id');
+    const primaryLocation = selectedProvider.primaryLocation || selectedProvider.primary_location;
+    const locations = selectedProvider.locations || [];
+
+    let finalLocationId: string | null = null;
+    let finalLocationObj: any = null;
+
+    // Validate if persisted location belongs to THIS provider
+    if (persistedLocationId && locations.length > 0) {
+      const matched = locations.find((loc: any) => loc.id === persistedLocationId);
+      if (matched) {
+        finalLocationId = sanitizeId(persistedLocationId);
+        finalLocationObj = matched;
+        console.log('[RoleContext] Using valid persisted location for provider:', matched);
+      } else {
+        localStorage.removeItem('location_id');
+        console.log('[RoleContext] Stale location_id cleared (did not belong to active provider)');
+      }
+    }
+
+    // Fall back to provider's primary location if no valid location was persisted
+    if (!finalLocationId && primaryLocation?.id) {
+      finalLocationId = sanitizeId(primaryLocation.id);
+      finalLocationObj = primaryLocation;
+      localStorage.setItem('location_id', primaryLocation.id);
+      console.log('[RoleContext] Defaulting to primary location:', primaryLocation);
+    } else if (!finalLocationId) {
+      // Provider-wide context
+      localStorage.removeItem('location_id');
+      console.log('[RoleContext] No location selected, Provider-wide context');
+    }
+
+    setLocationId(finalLocationId);
+    setActiveLocation(finalLocationObj);
+  }, []);
+
   async function loadUser() {
     console.log('[RoleContext] loadUser called');
-    console.log('[RoleContext] Current localStorage location_id:', localStorage.getItem('location_id'));
-    // Check if we're on the server
     if (typeof window === 'undefined') {
-      console.log('[RoleContext] On server, skipping');
       setIsLoading(false);
       return;
     }
 
     const token = localStorage.getItem('auth_token');
-    console.log('[RoleContext] Token exists:', !!token, 'Token value:', token?.substring(0, 20) + '...');
     if (!token) {
-      console.log('[RoleContext] No token found, setting loading false');
       setIsLoading(false);
       return;
     }
+
     try {
       const data = await apiClient.getCurrentUser();
       console.log('[RoleContext] /auth/user response:', data);
 
       if (data?.user) {
-        // Role from canonical Provider relationship
-        const pivotRole = data.user.providers?.[0]?.pivot?.role;
-        
-        // Map backend roles to frontend roles
-        // Backend: staff, manager, receptionist, admin, owner
-        // Frontend: employee, manager, receptionist, owner, owner
-        const mappedRole: UserRole = pivotRole === 'staff' ? 'employee' :
-                                      pivotRole === 'admin' ? 'owner' :
-                                      pivotRole === 'owner' ? 'owner' :
-                                      (pivotRole as UserRole) || 'owner';
-        
-        setRole(mappedRole);
-        setUserName(data.user.name || data.user.email);
         setUser(data.user);
+        setUserName(data.user.name || data.user.email);
+        setOrganizations(data.user.organizations || []);
+        setRawAuthData(data);
 
-        console.log('[RoleContext] User providers:', data.user.providers);
+        // Apply provider context based on current URL slug
+        applyProviderContext(
+          currentUrlSlug,
+          data.user,
+          data.provider_authorities || [],
+          data.organization_context || null
+        );
 
-        const firstProvider = data.user.providers?.[0];
-        const rawProviderId = firstProvider?.id;
-        const cleanId = sanitizeId(rawProviderId);
-        // Set canonical provider context
-        setProviderId(cleanId);
-        setProviderSlug(firstProvider?.slug || null);
-        setActiveProvider(firstProvider || null);
-
-        // Load capabilities from provider_authorities for the current provider
-        if (cleanId && data.provider_authorities) {
-          const auth = data.provider_authorities.find((a: any) => a.provider_id === cleanId);
-          if (auth && auth.capabilities) {
-            setCapabilities(auth.capabilities);
-          } else {
-            setCapabilities(null);
-          }
-        } else {
-          setCapabilities(null);
-        }
-
-        // Location context: validate persisted location belongs to active provider
-        const persistedLocationId = localStorage.getItem('location_id');
-        const primaryLocation = firstProvider?.primary_location;
-        const locations = firstProvider?.locations || [];
-        
-        console.log('[RoleContext] Persisted location_id:', persistedLocationId);
-        console.log('[RoleContext] Primary location:', primaryLocation);
-        console.log('[RoleContext] Provider locations:', locations);
-        
-        let finalLocationId: string | null = null;
-        
-        // Validate persisted location belongs to current provider
-        if (persistedLocationId && locations.length > 0) {
-          const persistedLocation = locations.find((loc: any) => loc.id === persistedLocationId);
-          if (persistedLocation) {
-            // Valid persisted location
-            finalLocationId = sanitizeId(persistedLocationId);
-            setActiveLocation(persistedLocation);
-            console.log('[RoleContext] Using valid persisted location:', persistedLocation);
-          } else {
-            // Invalid/stale location - clear and fall back to primary
-            localStorage.removeItem('location_id');
-            console.log('[RoleContext] Persisted location not in provider locations, cleared');
-          }
-        }
-        
-        // If no valid location, use primary_location (but allow NULL for Provider-wide contexts)
-        if (!finalLocationId && primaryLocation?.id) {
-          finalLocationId = sanitizeId(primaryLocation.id);
-          setActiveLocation(primaryLocation);
-          localStorage.setItem('location_id', primaryLocation.id);
-          console.log('[RoleContext] Using primary location:', primaryLocation);
-        } else if (!finalLocationId) {
-          // No location available - Provider-wide context
-          setActiveLocation(null);
-          localStorage.removeItem('location_id');
-          console.log('[RoleContext] No location available, Provider-wide context');
-        }
-        
-        setLocationId(finalLocationId);
-
-        console.log('[RoleContext] Provider ID:', cleanId);
-        console.log('[RoleContext] Provider Slug:', firstProvider?.slug);
-        console.log('[RoleContext] Location ID:', finalLocationId);
-        console.log('[RoleContext] Full provider data:', firstProvider);
-
-        if (rawProviderId && !cleanId) {
-          console.warn('[RoleContext] Discarded invalid provider_id from API:', JSON.stringify(rawProviderId));
-        }
-
-        if (!cleanId && data.user.providers?.length > 0) {
-          console.error('[RoleContext] No valid provider ID found from providers array:', data.user.providers);
-        }
-
-        if (!cleanId && data.user.providers?.length === 0) {
-          console.warn('[RoleContext] User has no providers assigned - redirecting to provider creation');
-          // User has no providers - redirect to provider creation or show no-provider state
+        if (!data.user.providers || data.user.providers.length === 0) {
           setNextRoute('/onboarding/create-provider');
         }
       } else {
         console.error('[RoleContext] No user in response data:', data);
       }
+
       setUserStatus(data?.status ?? null);
       setNextRoute(data?.next_route ?? null);
       setCurrentStep(data?.current_step ?? null);
-      // Phase 2B: server-resolved provider type context (additive field)
       setProviderTypeContext(data?.provider_type_context ?? null);
     } catch (error: any) {
       console.error('[RoleContext] Failed to load user profile:', error);
       localStorage.removeItem('auth_token');
-      // Redirect to login on 401 error
       if (error?.response?.status === 401) {
         window.location.href = '/login';
       }
     } finally {
-      console.log('[RoleContext] Setting loading false');
       setIsLoading(false);
     }
   }
@@ -259,13 +396,50 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     loadUser();
   }, []);
 
+  // When URL slug changes dynamically, update context without reloading user
+  useEffect(() => {
+    if (rawAuthData?.user && currentUrlSlug) {
+      console.log('[RoleContext] URL slug changed to:', currentUrlSlug);
+      applyProviderContext(
+        currentUrlSlug,
+        rawAuthData.user,
+        rawAuthData.provider_authorities || [],
+        rawAuthData.organization_context || null
+      );
+    }
+  }, [currentUrlSlug, rawAuthData, applyProviderContext]);
+
   const safeSetProviderId = (value: string | null) => {
     const cleanId = sanitizeId(value);
     setProviderId(cleanId);
+    if (cleanId) {
+      localStorage.setItem('provider_id', cleanId);
+    } else {
+      localStorage.removeItem('provider_id');
+    }
   };
 
   const safeSetActiveProvider = (provider: any | null) => {
-    setActiveProvider(provider);
+    if (provider && rawAuthData?.user) {
+      applyProviderContext(
+        provider.slug,
+        rawAuthData.user,
+        rawAuthData.provider_authorities || [],
+        rawAuthData.organization_context || null
+      );
+    } else {
+      setActiveProvider(provider);
+    }
+  };
+
+  const safeSetOrganizationId = (value: string | null) => {
+    const cleanId = sanitizeId(value);
+    setOrganizationIdState(cleanId);
+    if (cleanId) {
+      localStorage.setItem('organization_id', cleanId);
+    } else {
+      localStorage.removeItem('organization_id');
+    }
   };
 
   const safeSetActiveLocation = (location: any | null) => {
@@ -279,6 +453,22 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const switchProviderBySlug = useCallback((slug: string): boolean => {
+    if (!rawAuthData?.user?.providers) return false;
+    const found = rawAuthData.user.providers.find(
+      (p: any) => p.slug && p.slug.toLowerCase() === slug.toLowerCase()
+    );
+    if (found) {
+      applyProviderContext(
+        found.slug,
+        rawAuthData.user,
+        rawAuthData.provider_authorities || [],
+        rawAuthData.organization_context || null
+      );
+      return true;
+    }
+    return false;
+  }, [rawAuthData, applyProviderContext]);
 
   return (
     <RoleContext.Provider value={{
@@ -297,6 +487,14 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       providerSlug,
       activeProvider,
       setActiveProvider: safeSetActiveProvider,
+      providerAccessError,
+      switchProviderBySlug,
+      // Commercial Organization context
+      organizationId,
+      setOrganizationId: safeSetOrganizationId,
+      organizationContext,
+      activeOrganization,
+      organizations,
       // Location context
       activeLocation,
       setActiveLocation: safeSetActiveLocation,

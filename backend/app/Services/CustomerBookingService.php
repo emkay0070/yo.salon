@@ -355,11 +355,14 @@ class CustomerBookingService
         return DB::transaction(function () use ($previousBookingId, $newData) {
             $previousBooking = Booking::withoutGlobalScope('salon')->with(['service', 'staff'])->findOrFail($previousBookingId);
 
-            // Copy service and staff from previous booking
+            // Copy service, staff and customer identity from previous booking.
+            // The customer is the whole point of "rebook": callers such as the
+            // portal rebook endpoint deliberately do not resend customer_id.
             $bookingData = array_merge($newData, [
                 'service_id' => $previousBooking->service_id,
                 'staff_id' => $previousBooking->staff_id,
             ]);
+            $bookingData['customer_id'] ??= $previousBooking->customer_id;
 
             return $this->createBooking($bookingData);
         });

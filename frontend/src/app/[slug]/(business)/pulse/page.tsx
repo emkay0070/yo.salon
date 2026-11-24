@@ -13,28 +13,18 @@ import { providerRoutes } from '@/lib/routes';
 export default function SalonPulsePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, locationId, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
   const [now, setNow] = useState(new Date());
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/pulse`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonPulsePage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonPulsePage] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   // Clock updates every second
   useEffect(() => {
@@ -46,11 +36,41 @@ export default function SalonPulsePage({ params }: { params: Promise<{ slug: str
 
   // Fetch operational data every 30 seconds
   const { data, isLoading, error } = useQuery({
-    queryKey: ['pulse', providerId],
-    queryFn: () => apiClient.getPulseData({ provider_id: providerId || undefined }),
-    enabled: !!providerId,
+    queryKey: ['pulse', providerId, locationId],
+    queryFn: () => apiClient.getPulseData({ provider_id: providerId || undefined, ...(locationId ? { location_id: locationId } : {}) }),
+    enabled: isContextReady,
     refetchInterval: 30000,
   });
+
+  if (providerAccessError) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4">
+            <Activity className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mb-6">{providerAccessError}</p>
+          {user?.providers?.length > 0 && (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-xs text-neutral-400 font-medium uppercase tracking-wider">Switch to an authorized business</span>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {user.providers.map((p: any) => (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/${p.slug}/pulse`)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:opacity-90 transition-opacity"
+                  >
+                    {p.name || p.display_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (isLoading) {
     return (

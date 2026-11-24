@@ -103,23 +103,54 @@ class ProviderTypeRegistry
 
     private function loadFromDatabase(): array
     {
-        return Cache::remember(self::CACHE_KEY, 3600, function () {
-            $result = [];
+        $raw = Cache::remember(self::CACHE_KEY, 3600, function () {
+            $data = [];
+            foreach (ProviderType::all() as $type) {
+                $data[$type->key] = [
+                    'id' => $type->id,
+                    'type' => $type->key,
+                    'displayName' => $type->name,
+                    'isIndependent' => (bool) $type->is_independent,
+                    'isOwnerManaged' => (bool) $type->is_owner_managed,
+                    'isActive' => (bool) $type->is_active,
+                ];
+            }
+            return $data;
+        });
 
-            // Load ALL types, including inactive ones, so existing Providers
-            // remain resolvable even if their type is deactivated.
+        $result = [];
+        if (is_array($raw)) {
+            foreach ($raw as $key => $item) {
+                if ($item instanceof ProviderTypeDefinition) {
+                    $result[$key] = $item;
+                } elseif (is_array($item)) {
+                    $result[$key] = new ProviderTypeDefinition(
+                        id: $item['id'],
+                        type: $item['type'],
+                        displayName: $item['displayName'],
+                        isIndependent: $item['isIndependent'],
+                        isOwnerManaged: $item['isOwnerManaged'],
+                        isActive: $item['isActive'],
+                    );
+                }
+            }
+        }
+
+        // Defensive: If cache was corrupted or empty while DB has records, reload directly
+        if (empty($result) && ProviderType::count() > 0) {
+            Cache::forget(self::CACHE_KEY);
             foreach (ProviderType::all() as $type) {
                 $result[$type->key] = new ProviderTypeDefinition(
                     id: $type->id,
                     type: $type->key,
                     displayName: $type->name,
-                    isIndependent: $type->is_independent,
-                    isOwnerManaged: $type->is_owner_managed,
-                    isActive: $type->is_active,
+                    isIndependent: (bool) $type->is_independent,
+                    isOwnerManaged: (bool) $type->is_owner_managed,
+                    isActive: (bool) $type->is_active,
                 );
             }
+        }
 
-            return $result;
-        });
+        return $result;
     }
 }

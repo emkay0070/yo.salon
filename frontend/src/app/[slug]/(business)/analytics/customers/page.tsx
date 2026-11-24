@@ -13,33 +13,23 @@ import { providerRoutes } from '@/lib/routes';
 export default function SalonCustomerAnalytics({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/analytics/customers`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonCustomerAnalytics] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonCustomerAnalytics] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   // Fetch analytics data from API
   const { data: analyticsData, isLoading } = useQuery({
-    queryKey: ['analytics', providerId],
+    queryKey: ['analytics', 'customers', providerId],
     queryFn: () => apiClient.getAnalytics(providerId ? { provider_id: providerId } : undefined),
-    enabled: !!providerId,
+    enabled: isContextReady,
   });
 
   if (isLoading) {

@@ -467,8 +467,9 @@ function CustomerDrawer({
 export default function ProviderCustomersPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug, locationId } = useRole();
+  const { providerId, user, activeProvider, providerSlug, locationId, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -483,27 +484,13 @@ export default function ProviderCustomersPage({ params }: { params: Promise<{ sl
   const [invitationLink, setInvitationLink] = useState('');
   const [isCopyLinkModalOpen, setIsCopyLinkModalOpen] = useState(false);
 
-  // Verify user has access to this provider
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/customers`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[ProviderCustomersPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the provider slug matches the user's active provider
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[ProviderCustomersPage] Access denied: user provider does not match URL provider', {
-        userProviderSlug: activeProvider.slug,
-        urlSlug: slug,
-      });
-      router.push(`/${activeProvider.slug}/customers`);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -527,19 +514,19 @@ export default function ProviderCustomersPage({ params }: { params: Promise<{ sl
 
   // API call based on selected location category
   const { data, isLoading, error } = useQuery({
-    queryKey: ['customers', selectedLocationCategory],
+    queryKey: ['customers', providerId, selectedLocationCategory],
     queryFn: async () => {
       let result;
       if (selectedLocationCategory === 'all') {
-        result = await apiClient.getCustomers({});
+        result = await apiClient.getCustomers({ provider_id: providerId || undefined });
       } else if (selectedLocationCategory === 'unassigned') {
-        result = await apiClient.getCustomers({ location_filter: 'unassigned' });
+        result = await apiClient.getCustomers({ provider_id: providerId || undefined, location_filter: 'unassigned' });
       } else {
-        result = await apiClient.getCustomers({ location_id: selectedLocationCategory });
+        result = await apiClient.getCustomers({ provider_id: providerId || undefined, location_id: selectedLocationCategory });
       }
       return result;
     },
-    enabled: true,
+    enabled: isContextReady,
   });
 
   // Handle data response - update customers and counts
@@ -601,12 +588,12 @@ export default function ProviderCustomersPage({ params }: { params: Promise<{ sl
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Backend middleware injects provider_id and location_id from context
       const newCustomer = await apiClient.createCustomer({
         name: formData.name,
         phone: formData.phone,
         email: formData.email || undefined,
         notes: formData.notes || undefined,
+        provider_id: providerId || undefined,
       });
       setCustomers([newCustomer, ...customers]);
       setIsModalOpen(false);
@@ -630,6 +617,36 @@ export default function ProviderCustomersPage({ params }: { params: Promise<{ sl
       alert('Failed to generate invitation link. Please try again.');
     }
   };
+
+  if (providerAccessError) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mb-6">{providerAccessError}</p>
+          {user?.providers?.length > 0 && (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-xs text-neutral-400 font-medium uppercase tracking-wider">Switch to an authorized business</span>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {user.providers.map((p: any) => (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/${p.slug}/customers`)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:opacity-90 transition-opacity"
+                  >
+                    {p.name || p.display_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!mounted) return null;
 

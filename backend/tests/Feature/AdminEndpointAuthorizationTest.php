@@ -131,20 +131,28 @@ class AdminEndpointAuthorizationTest extends TestCase
             'status' => 'active',
         ]);
 
+        $organization = Organization::create([
+            'name' => 'Test Salon Org',
+            'slug' => 'test-salon-org-' . Str::random(6),
+            'type' => Organization::TYPE_BUSINESS,
+            'status' => Organization::STATUS_ACTIVE,
+            'owner_user_id' => $staffUser->id,
+        ]);
+
         $type = ProviderType::where('key', 'salon')->first();
         $provider = Provider::create([
+            'organization_id' => $organization->id,
             'display_name' => 'Test Salon',
             'slug' => 'test-salon-' . Str::random(6),
             'provider_type_id' => $type->id,
             'status' => 'active',
         ]);
 
-        ProviderUser::create([
-            'id' => Str::uuid(),
+        ProviderUser::factory()->create([
             'user_id' => $staffUser->id,
             'provider_id' => $provider->id,
             'role' => 'employee',
-            'authority_scope' => 'location_specific',
+            'authority_scope' => 'location_scoped',
         ]);
 
         Sanctum::actingAs($staffUser, ['*']);

@@ -50,7 +50,7 @@ function BookPageContent({ slug }: { slug: string }) {
   console.log('=== BookPageContent mounted ===');
   console.log('Slug:', salonSlug);
 
-  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'confirm' | 'success'>('service');
+  const [step, setStep] = useState<'service' | 'staff' | 'time' | 'details' | 'payment' | 'confirm' | 'success'>('service');
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
@@ -74,8 +74,11 @@ function BookPageContent({ slug }: { slug: string }) {
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [providerId, setProviderId] = useState<string>('');
+  const [primaryLocationId, setPrimaryLocationId] = useState<string>('');
   const [mounted, setMounted] = useState(false);
   const [showNearbySalons, setShowNearbySalons] = useState(false);
+  const [paymentInstruction, setPaymentInstruction] = useState<any>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<{ id: string; provider: string } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -90,6 +93,11 @@ function BookPageContent({ slug }: { slug: string }) {
         .then((provider) => {
           console.log('Provider fetched:', provider);
           setProviderId(provider.id);
+          // Server-resolved primary branch — submitted with the booking so it appears
+          // in the owner's location-scoped dashboard.
+          if (provider.primary_location_id) {
+            setPrimaryLocationId(provider.primary_location_id);
+          }
           return Promise.all([
             apiClient.get(`/providers/${salonSlug}/services`),
             apiClient.get(`/providers/${salonSlug}/assignable-specialists`),
@@ -146,7 +154,27 @@ function BookPageContent({ slug }: { slug: string }) {
       return;
     }
 
-    setStep('confirm');
+    // Fetch payment instructions to determine if payment is required
+    if (!providerId || selectedServices.length === 0) return;
+    setIsLoading(true);
+    try {
+      const instructions = await apiClient.getProviderServicePaymentInstructions(
+        providerId,
+        selectedServices[0].id
+      );
+      setPaymentInstruction(instructions);
+      if (instructions.customerAction === 'pay_now') {
+        setStep('payment');
+      } else {
+        setStep('confirm');
+      }
+    } catch (err: any) {
+      // If payment instructions fail, continue to confirm (pay at salon)
+      console.error('Failed to get payment instructions:', err);
+      setStep('confirm');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLookupCustomer = async () => {
@@ -199,11 +227,12 @@ function BookPageContent({ slug }: { slug: string }) {
       
       const result = await apiClient.createBookingWithAccount({
         provider_id: providerId,
+        location_id: primaryLocationId || undefined,
         customer_name: customerDetails.name,
         customer_phone: customerDetails.phone,
         customer_email: customerDetails.email || undefined,
         service_id: selectedServices.map(s => s.id),
-        staff_id: selectedStaff?.id,
+        specialist_id: selectedStaff?.id,
         date: formattedDate,
         time: selectedSlot.start,
         create_account: createAccount,
@@ -212,7 +241,23 @@ function BookPageContent({ slug }: { slug: string }) {
       });
 
       setBookingResult(result);
-      setStep('success');
+
+                      // If Flutterwave was selected, redirect to Flutterwave checkout instead of success page
+                      const isFlutterwave = selectedPaymentMethod?.provider === 'flutterwave';
+                      if (isFlutterwave && result.booking?.id) {
+                        const callbackUrl = `${window.location.origin}/payment/flutterwave/callback?booking_id=${encodeURIComponent(result.booking.id)}`;
+                        const params = new URLSearchParams({
+                          booking_id: result.booking.id,
+                          payment_method_id: selectedPaymentMethod.id,
+                          email: customerDetails.email,
+                          customer_name: customerDetails.name,
+                          customer_phone: customerDetails.phone,
+                          redirect_url: callbackUrl,
+                        });
+                        router.push(`/payment/flutterwave?${params.toString()}`);
+                      } else {
+                        setStep('success');
+                      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create booking. Please try again.');
     } finally {
@@ -225,6 +270,7 @@ function BookPageContent({ slug }: { slug: string }) {
     staff: '#a855f7',
     time: '#3b82f6',
     details: '#10b981',
+    payment: '#ef4444',
     confirm: '#10b981',
     success: '#10b981',
   };
@@ -315,8 +361,8 @@ function BookPageContent({ slug }: { slug: string }) {
       {/* Progress Steps */}
       <div className="max-w-4xl mx-auto px-4 py-8 relative z-10">
         <div className="flex items-center justify-between mb-12 bg-white/[0.02] border border-white/5 rounded-2xl p-4 backdrop-blur-md">
-          {['service', 'staff', 'time', 'details'].map((s, index) => {
-            const stepIndex = ['service', 'staff', 'time', 'details'].indexOf(step);
+          {['service', 'staff', 'time', 'details', 'payment'].map((s, index) => {
+            const stepIndex = ['service', 'staff', 'time', 'details', 'payment'].indexOf(step);
             const isCompleted = stepIndex > index || step === 'confirm' || step === 'success';
             const isActive = step === s;
             const stepNames = {
@@ -324,12 +370,14 @@ function BookPageContent({ slug }: { slug: string }) {
               staff: 'Stylist',
               time: 'Reserve Slot',
               details: 'Profile Details',
+              payment: 'Payment',
             };
             const stepSummaries = {
               service: selectedServices.length > 0 ? selectedServices.map(s => s.name).join(', ') : 'Select Treatment',
               staff: selectedStaff ? selectedStaff.name : 'Preferred Stylist',
               time: selectedSlot ? `${selectedDate.toLocaleDateString()} @ ${selectedSlot.start}` : 'Choose Time',
               details: customerDetails.name ? customerDetails.name : 'Your Info',
+              payment: paymentInstruction?.customerAction === 'pay_now' ? 'Payment' : '',
             };
 
             return (
@@ -359,7 +407,7 @@ function BookPageContent({ slug }: { slug: string }) {
                     </span>
                   </div>
                 </div>
-                {index < 3 && (
+                {index < 4 && (
                   <div
                     className={`flex-grow h-px mx-4 transition-all duration-700 ${
                       isCompleted
@@ -721,6 +769,72 @@ function BookPageContent({ slug }: { slug: string }) {
                   </button>
                 </div>
               </form>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 'payment' && (
+            <motion.div
+              key="payment-step"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            >
+              <div className="fixed inset-x-0 bottom-0 z-50 bg-[#0c0c0c] border-t border-white/10 rounded-t-3xl p-6 pt-8 h-[90vh] overflow-y-auto custom-scrollbar md:static md:bg-transparent md:border-none md:p-0 md:h-auto md:overflow-visible md:rounded-none">
+                <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 md:hidden" />
+                <div className="text-left mb-8">
+                  <h2 className="font-sora text-2xl md:text-3xl font-extrabold tracking-tight text-white mb-2">Payment</h2>
+                  <p className="text-white/50 text-sm">Complete payment to secure your booking</p>
+                </div>
+
+                {paymentInstruction && (
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 mb-8">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-white/70 font-medium">Amount Due Now</span>
+                      <span className="text-gold font-bold text-xl">
+                        {paymentInstruction.amountDueNow?.toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {paymentInstruction.currency || 'UGX'}
+                      </span>
+                    </div>
+                    <p className="text-white/60 text-sm mb-6">{paymentInstruction.message}</p>
+
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-bold tracking-wider font-mono text-white/40 uppercase block mb-2">Select Payment Method</span>
+                      {paymentInstruction.eligibleMethods?.map((method: any) => (
+                        <button
+                          key={method.id}
+                          onClick={() => setSelectedPaymentMethod({ id: method.id.toString(), provider: method.provider })}
+                          className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${
+                            selectedPaymentMethod?.id === method.id.toString()
+                              ? 'border-gold bg-gold/10 text-white'
+                              : 'border-white/10 bg-black/40 hover:bg-white/5 text-white/70'
+                          }`}
+                        >
+                          <span className="font-medium">{method.name}</span>
+                          {selectedPaymentMethod?.id === method.id.toString() && <CheckCircle2 className="w-5 h-5 text-gold" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center mt-8">
+                  <button
+                    type="button"
+                    onClick={() => setStep('details')}
+                    className="text-white/50 hover:text-white text-xs font-mono font-medium transition-colors cursor-pointer"
+                  >
+                    ← Back to details
+                  </button>
+                  <button
+                    onClick={() => setStep('confirm')}
+                    disabled={!selectedPaymentMethod}
+                    className="px-8 py-3 bg-gradient-to-r from-gold to-[#C9A227] hover:brightness-110 transition-all text-black font-semibold rounded-xl text-sm shadow-lg shadow-gold/10 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Continue to Confirm
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}

@@ -27,9 +27,10 @@ import ScheduleMigrationBanner from '@/components/settings/ScheduleMigrationBann
 export default function ProviderSettingsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { user, providerId, activeProvider, providerSlug, setActiveProvider } = useRole();
+  const { user, providerId, activeProvider, providerSlug, providerAccessError, isLoading: isRoleLoading, setActiveProvider } = useRole();
   const { terminology } = useCategory();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
   const [activeTab, setActiveTab] = useState('my-profile');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [accentColor, setAccentColor] = useState('#FFD700');
@@ -76,25 +77,14 @@ export default function ProviderSettingsPage({ params }: { params: Promise<{ slu
   const [galleryFile, setGalleryFile] = useState<File | null>(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
-  // Verify user has access to this salon
+  // Verify user has access to this provider
+  // Use activeProvider from RoleContext instead of API call to avoid network errors
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/settings`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonSettingsPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the provider slug matches the user's active provider
-    // Use activeProvider from RoleContext instead of API call to avoid network errors
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonSettingsPage] Access denied: user provider does not match URL provider');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   const { data: prefData } = useQuery({
     queryKey: ['notification-preferences'],

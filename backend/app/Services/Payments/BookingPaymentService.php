@@ -9,6 +9,7 @@ use App\Models\PaymentRequest;
 use App\Models\Transaction;
 use App\Services\FeeEngine;
 use App\Services\BookingConfigurationService;
+use App\Support\TenantBootstrap;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Event;
@@ -89,7 +90,8 @@ class BookingPaymentService
         string $paymentMethodId,
         string $customerEmail,
         string $customerName,
-        ?string $customerPhone = null
+        ?string $customerPhone = null,
+        ?string $redirectUrl = null
     ): array {
         $booking = Booking::with(['location', 'customer'])->find($bookingId);
 
@@ -148,7 +150,7 @@ class BookingPaymentService
                 'tax_amount' => $fees['tax_amount'],
                 'net_amount' => $fees['net_amount'],
             ],
-            'redirect_url' => config('app.url') . "/location/{$booking->location_id}/payment/callback",
+            'redirect_url' => $redirectUrl ?: config('app.url') . "/location/{$booking->location_id}/payment/callback",
         ];
 
         // Customize payment options based on payment method type
@@ -226,11 +228,58 @@ class BookingPaymentService
     /**
      * Verify a booking payment and create transaction.
      *
+     * The verification runs under the RLS context of the organization that owns
+     * the payment. Authenticated callers already execute inside an
+     * organization-contextualized transaction (SetOrganizationDatabaseContext),
+     * so their context is reused untouched. Public callers — the Flutterwave and
+     * MTN webhooks — arrive with no organization context, where bookings are
+     * deliberately invisible under RLS; for those the owning organization is
+     * resolved on the privileged bootstrap connection and the verification is
+     * scoped to it, mirroring the public checkout path. RLS policies are never
+     * weakened.
+     *
      * @param string $reference The provider's transaction reference
      * @param array|null $verificationResult Optional pre-verified result (for webhook-initiated verification)
      * @return array
      */
     public function verifyBookingPayment(string $reference, ?array $verificationResult = null): array
+    {
+        // An authenticated caller is already inside a tenant-scoped transaction;
+        // re-scoping would be redundant and could override its context.
+        if ($this->currentOrganizationContext() !== '') {
+            return $this->performBookingPaymentVerification($reference, $verificationResult);
+        }
+
+        $organizationId = $this->resolveOrganizationForPaymentReference($reference);
+
+        if ($organizationId === null) {
+            // Unknown reference: fall through so the verification returns its
+            // canonical "payment request not found" result.
+            return $this->performBookingPaymentVerification($reference, $verificationResult);
+        }
+
+        // SET LOCAL (set_config is_local = true) only applies inside a
+        // transaction block, so scope the organization context to every query
+        // performed by the verification. The context resets when the
+        // transaction completes.
+        return DB::transaction(function () use ($organizationId, $reference, $verificationResult) {
+            DB::statement(
+                "SELECT set_config('app.current_organization_id', ?, true)",
+                [(string) $organizationId]
+            );
+
+            return $this->performBookingPaymentVerification($reference, $verificationResult);
+        });
+    }
+
+    /**
+     * Perform the booking payment verification under the caller's RLS context.
+     *
+     * @param string $reference
+     * @param array|null $verificationResult
+     * @return array
+     */
+    private function performBookingPaymentVerification(string $reference, ?array $verificationResult = null): array
     {
         // Find payment request first to determine the correct payment provider
         $paymentRequest = PaymentRequest::where('provider_reference', $reference)->first();
@@ -765,5 +814,42 @@ class BookingPaymentService
             'status' => $rejectionReason,
             'message' => "Payment received late: {$rejectionReason}",
         ];
+    }
+
+    /**
+     * Read the active organization context on the connection Eloquent uses.
+     *
+     * Returns '' for guest/public callers (webhooks) that have no tenant
+     * context, and the organization id for authenticated callers whose context
+     * was set by SetOrganizationDatabaseContext.
+     */
+    private function currentOrganizationContext(): string
+    {
+        try {
+            $row = DB::selectOne("SELECT current_setting('app.current_organization_id', true) AS org_id");
+
+            return (string) ($row->org_id ?? '');
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Resolve the organization that owns a payment reference.
+     *
+     * Tenant discovery is an explicitly privileged, pre-tenant operation and is
+     * executed on the bootstrap connection (BYPASSRLS): without an organization
+     * context neither payment_requests nor providers is visible on the runtime
+     * role.
+     */
+    private function resolveOrganizationForPaymentReference(string $reference): ?string
+    {
+        $organizationId = DB::connection(TenantBootstrap::connectionName())
+            ->table('payment_requests')
+            ->join('providers', 'providers.id', '=', 'payment_requests.provider_id')
+            ->where('payment_requests.provider_reference', $reference)
+            ->value('providers.organization_id');
+
+        return $organizationId ? (string) $organizationId : null;
     }
 }

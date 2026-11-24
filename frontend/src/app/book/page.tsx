@@ -37,6 +37,7 @@ interface Provider {
   provider_type?: string; // Canonical Provider Type key supplied by the server
   active?: boolean; // Whether the provider is accepting bookings
   status?: string; // 'active' | 'pending' | 'inactive' | 'suspended'
+  primary_location_id?: string | null; // Server-resolved primary branch for this provider
 }
 
 interface TimeSlot {
@@ -86,7 +87,7 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [paymentInstruction, setPaymentInstruction] = useState<any>(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<{ id: string; provider: string } | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [specialists, setSpecialists] = useState<Specialist[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -1145,7 +1146,7 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
                     {paymentInstruction.eligibleMethods?.map((method: any) => (
                       <button
                         key={method.id}
-                        onClick={() => setSelectedPaymentMethod(method.id.toString())}
+                        onClick={() => setSelectedPaymentMethod({ id: method.id.toString(), provider: method.provider })}
                         className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${
                           selectedPaymentMethod === method.id.toString()
                             ? 'border-gold bg-gold/10 text-white'
@@ -1256,6 +1257,9 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
                     try {
                       const response = await apiClient.createBookingWithAccount({
                         provider_id: selectedProvider?.id,
+                        // Explicit branch so the booking is visible in the owner's
+                        // location-scoped dashboard. Backend resolves a fallback if absent.
+                        location_id: selectedProvider?.primary_location_id || undefined,
                         service_id: selectedServices.map(s => s.id),
                         specialist_id: selectedSpecialist?.id || null,
                         date: selectedDate,
@@ -1264,12 +1268,28 @@ function BookingPageContent({ preloadedProvider }: BookingPageContentProps = {})
                         customer_phone: customerDetails.phone,
                         customer_email: customerDetails.email,
                         create_account: false, // For now, just a guest booking
-                        payment_method_id: selectedPaymentMethod ? parseInt(selectedPaymentMethod) : null,
+                        payment_method_id: selectedPaymentMethod ? parseInt(selectedPaymentMethod.id) : null,
                         idempotency_key: crypto.randomUUID()
                       });
                       // Capture booking status from response
                       setBookingStatus(response.booking?.status || null);
-                      setStep('success');
+
+                      // If Flutterwave was selected, redirect to Flutterwave checkout instead of success page
+                      const isFlutterwave = selectedPaymentMethod?.provider === 'flutterwave';
+                      if (isFlutterwave && response.booking?.id) {
+                        const callbackUrl = `${window.location.origin}/payment/flutterwave/callback?booking_id=${encodeURIComponent(response.booking.id)}`;
+                        const params = new URLSearchParams({
+                          booking_id: response.booking.id,
+                          payment_method_id: selectedPaymentMethod.id,
+                          email: customerDetails.email,
+                          customer_name: customerDetails.name,
+                          customer_phone: customerDetails.phone,
+                          redirect_url: callbackUrl,
+                        });
+                        router.push(`/payment/flutterwave?${params.toString()}`);
+                      } else {
+                        setStep('success');
+                      }
                     } catch (err: any) {
                       console.error('Booking failed:', err);
                       setError(err.response?.data?.message || 'Failed to create booking. Please try again.');

@@ -772,6 +772,21 @@ class BookingController extends Controller
             'customer_phone.regex' => 'Please enter a valid phone number.',
         ]);
 
+        // ── Location ownership guard ─────────────────────────────────────────────
+        // When a location is explicitly supplied it must belong to the booking's provider
+        // and be active. Omitting location_id is allowed: BookingOrchestrator resolves the
+        // provider's primary active location (authoritative fallback for every client).
+        if (!empty($validated['location_id'])) {
+            $locationIsValid = \App\Models\Location::where('id', $validated['location_id'])
+                ->where('provider_id', $validated['provider_id'])
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$locationIsValid) {
+                return response()->json(['message' => 'Location does not belong to this provider or is inactive.'], 403);
+            }
+        }
+
         try {
             $result = app(\App\Services\BookingOrchestrator::class)->reserveAndBook($validated);
 

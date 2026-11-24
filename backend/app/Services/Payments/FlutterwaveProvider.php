@@ -16,6 +16,7 @@ class FlutterwaveProvider implements PaymentProviderInterface
     private ?string $publicKey;
     private string $baseUrl;
     private ?string $webhookSecret;
+    private ?string $scenarioKey;
 
     // OAuth 2.0 client credentials token cache
     private ?string $accessToken = null;
@@ -31,6 +32,7 @@ class FlutterwaveProvider implements PaymentProviderInterface
         $this->publicKey = config('services.flutterwave.public_key');
         $this->baseUrl = config('services.flutterwave.base_url', 'https://developersandbox-api.flutterwave.com');
         $this->webhookSecret = config('services.flutterwave.webhook_secret');
+        $this->scenarioKey = config('services.flutterwave.scenario_key');
     }
 
     /**
@@ -57,7 +59,7 @@ class FlutterwaveProvider implements PaymentProviderInterface
             $customerId = $this->getOrCreateCustomer($customerEmail, $customerName, $customerPhone);
 
             // Step 2: Create a payment method for the customer
-            $paymentMethodId = $this->createPaymentMethod($customerId);
+            $paymentMethodId = $this->createPaymentMethod($customerId, $customerPhone);
 
             // Step 3: Create the charge
             $chargePayload = [
@@ -70,11 +72,20 @@ class FlutterwaveProvider implements PaymentProviderInterface
                 'recurring' => false,
             ];
 
-            $response = Http::withHeaders([
+            $chargeHeaders = [
                 'Authorization' => 'Bearer ' . $this->getAccessToken(),
                 'Content-Type' => 'application/json',
                 'X-Idempotency-Key' => str_replace('-', '', uniqid('', true)),
-            ])->post($this->baseUrl . '/charges', $chargePayload);
+            ];
+
+            // Sandbox-only: force the mobile-money redirect flow so the customer
+            // is sent to Flutterwave's hosted authorization page instead of the
+            // default push-notification flow (which returns no redirect URL).
+            if (!empty($this->scenarioKey)) {
+                $chargeHeaders['X-Scenario-Key'] = $this->scenarioKey;
+            }
+
+            $response = Http::withHeaders($chargeHeaders)->post($this->baseUrl . '/charges', $chargePayload);
 
             $result = $response->json();
 
@@ -88,13 +99,24 @@ class FlutterwaveProvider implements PaymentProviderInterface
 
             $chargeData = $result['data'] ?? [];
             $nextAction = $chargeData['next_action'] ?? [];
+            $nextActionType = $nextAction['type'] ?? null;
             $redirectUrlFromResponse = $nextAction['redirect_url']['url'] ?? null;
+            $instruction = $nextAction['payment_instruction']['note'] ?? null;
+
+            // A redirect is required for the customer to authorize the payment.
+            // The push-notification flow (payment_instruction) cannot be driven
+            // from the browser, so surface it instead of returning a null link.
+            if ($redirectUrlFromResponse === null) {
+                throw new \Exception('Flutterwave did not return a redirect URL (next_action: ' . ($nextActionType ?? 'unknown') . '). ' . ($instruction ?? ''));
+            }
 
             return [
                 'success' => true,
                 'reference' => $chargeData['id'] ?? $txRef,
                 'provider_reference' => $chargeData['id'] ?? $txRef,
                 'payment_link' => $redirectUrlFromResponse,
+                'next_action' => $nextActionType,
+                'instruction' => $instruction,
                 'access_code' => null,
                 'data' => $chargeData,
             ];
@@ -443,14 +465,25 @@ class FlutterwaveProvider implements PaymentProviderInterface
     }
 
     /**
-     * Create a payment method for a Flutterwave customer.
+     * Create a mobile-money payment method for a Flutterwave customer.
+     *
+     * Flutterwave v4 charges require a concrete payment method. For Uganda the
+     * supported, UGX-capable rail is mobile money, which needs the customer's
+     * wallet number split into country code, network and local number.
      *
      * @param string $customerId
+     * @param string|null $phone Customer phone in any common UG format
      * @return string Payment method ID
      * @throws \Exception
      */
-    private function createPaymentMethod(string $customerId): string
+    private function createPaymentMethod(string $customerId, ?string $phone): string
     {
+        if (empty($phone)) {
+            throw new \Exception('Customer phone number is required for Flutterwave mobile money payment');
+        }
+
+        $localNumber = $this->normalizeUgandaPhone($phone);
+
         $headers = [
             'Authorization' => 'Bearer ' . $this->getAccessToken(),
             'Content-Type' => 'application/json',
@@ -459,8 +492,12 @@ class FlutterwaveProvider implements PaymentProviderInterface
 
         $response = Http::withHeaders($headers)->post($this->baseUrl . '/payment-methods', [
             'customer_id' => $customerId,
-            'type' => 'bank_account',
-            'details' => [],
+            'type' => 'mobile_money',
+            'mobile_money' => [
+                'country_code' => '256',
+                'network' => $this->inferUgandaNetwork($localNumber),
+                'phone_number' => $localNumber,
+            ],
         ]);
 
         if (!$response->successful()) {
@@ -480,6 +517,36 @@ class FlutterwaveProvider implements PaymentProviderInterface
         }
 
         return $paymentMethodId;
+    }
+
+    /**
+     * Normalise a Ugandan phone number to the 9-digit local format Flutterwave
+     * expects (country_code 256, phone_number 7XXXXXXXX).
+     */
+    private function normalizeUgandaPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone);
+
+        // Strip a leading country code (256) or trunk prefix (0).
+        if (str_starts_with($digits, '256')) {
+            $digits = substr($digits, 3);
+        } elseif (str_starts_with($digits, '0')) {
+            $digits = substr($digits, 1);
+        }
+
+        return $digits;
+    }
+
+    /**
+     * Infer the Ugandan mobile network from the local number prefix.
+     *
+     * MTN Uganda: 76, 77, 78, 39. Airtel Uganda: 70, 74, 75, 20.
+     */
+    private function inferUgandaNetwork(string $localNumber): string
+    {
+        $prefix = substr($localNumber, 0, 2);
+
+        return in_array($prefix, ['70', '74', '75', '20'], true) ? 'AIRTEL' : 'MTN';
     }
 
     private function generateReference(): string

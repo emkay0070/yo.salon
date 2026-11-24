@@ -88,6 +88,12 @@ class Customer extends Model
             return;
         }
 
+        // Placeholder sentinels must never be persisted as a phone number.
+        if (in_array(strtolower(trim($value)), ['tbd', 'n/a', 'na', 'none', 'null'], true)) {
+            $this->attributes['phone'] = null;
+            return;
+        }
+
         $normalized = \App\Services\PhoneNormalizer::normalize($value);
         $this->attributes['phone'] = $normalized ?? $value;
     }

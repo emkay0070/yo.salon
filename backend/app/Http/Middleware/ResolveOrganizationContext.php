@@ -7,6 +7,7 @@ use App\Models\OrganizationMembership;
 use App\Models\SpecialistAccount;
 use App\Models\User;
 use App\Services\OrganizationContext;
+use App\Support\TenantBootstrap;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,18 +40,15 @@ class ResolveOrganizationContext
 
         $headerOrgId = $request->header('X-Organization-Id');
 
+        // Tenant discovery is a pre-tenant operation: `organization_memberships`
+        // is RLS-protected and therefore unreadable until a context exists.
+        // TenantBootstrap performs that single privileged read; every query
+        // after this middleware runs on the RLS-scoped connection.
+        $memberships = TenantBootstrap::activeMemberships($principal);
+
         if (!empty($headerOrgId)) {
-            // Explicit header provided: validate active membership
-            $membershipQuery = OrganizationMembership::where('organization_id', $headerOrgId)
-                ->where('status', OrganizationMembership::STATUS_ACTIVE);
-
-            if ($principal instanceof User) {
-                $membershipQuery->where('user_id', $principal->id);
-            } else {
-                $membershipQuery->where('specialist_account_id', $principal->id);
-            }
-
-            $membership = $membershipQuery->first();
+            // Explicit header provided: principal MUST have an active membership in it
+            $membership = $memberships->firstWhere('organization_id', $headerOrgId);
 
             if (!$membership) {
                 return response()->json([
@@ -58,7 +56,7 @@ class ResolveOrganizationContext
                 ], 403);
             }
 
-            $organization = $membership->organization;
+            $organization = TenantBootstrap::organization($membership->organization_id);
 
             if (!$organization || !$organization->isActive()) {
                 return response()->json([
@@ -70,16 +68,6 @@ class ResolveOrganizationContext
             return $next($request);
         }
 
-        // No header provided: inspect principal's active memberships
-        $membershipsQuery = OrganizationMembership::where('status', OrganizationMembership::STATUS_ACTIVE);
-        if ($principal instanceof User) {
-            $membershipsQuery->where('user_id', $principal->id);
-        } else {
-            $membershipsQuery->where('specialist_account_id', $principal->id);
-        }
-
-        $memberships = $membershipsQuery->get();
-
         if ($memberships->count() > 1) {
             return response()->json([
                 'message' => 'Multiple organizations found. Organization context required (X-Organization-Id header).',
@@ -88,7 +76,7 @@ class ResolveOrganizationContext
 
         if ($memberships->count() === 1) {
             $membership = $memberships->first();
-            $organization = $membership->organization;
+            $organization = TenantBootstrap::organization($membership->organization_id);
 
             if ($organization && $organization->isActive()) {
                 $this->injectContext($request, $organization, $membership);

@@ -43,6 +43,8 @@ return [
         'encryption_key' => env('FLUTTERWAVE_ENCRYPTION_KEY'),
         'webhook_secret' => env('FLUTTERWAVE_WEBHOOK_SECRET'),
         'base_url' => env('FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3'),
+        // Sandbox-only testing hook: e.g. "scenario:auth_redirect" for mobile money.
+        'scenario_key' => env('FLUTTERWAVE_SCENARIO_KEY'),
     ],
 
     'mtn' => [

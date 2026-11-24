@@ -393,29 +393,19 @@ function PlanCard({ plan, isCurrent, onSelect }: { plan: Plan; isCurrent: boolea
 export default function SalonMembershipPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug, providerTypeContext } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerTypeContext, providerAccessError, isLoading: isRoleLoading } = useRole();
   const routes = providerRoutes(providerSlug);
   const queryClient = useQueryClient();
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/settings/membership`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonMembershipPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonMembershipPage] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   // Fetch subscription data
   const { data: subscriptionData, isLoading: subscriptionLoading } = useQuery({

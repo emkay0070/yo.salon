@@ -8,6 +8,7 @@ use App\Models\Provider;
 use App\Models\SpecialistAccount;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Support\RlsContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -30,7 +31,7 @@ class OrganizationService
             $name = $data['name'] ?? 'New Organization';
             $slug = $this->generateUniqueSlug($name);
 
-            $org = Organization::create([
+            $org = $this->createOrganizationUnderRls([
                 'name'                        => $name,
                 'slug'                        => $slug,
                 'type'                        => Organization::TYPE_BUSINESS,
@@ -72,7 +73,7 @@ class OrganizationService
             $name = $data['name'] ?? 'Independent Specialist';
             $slug = $this->generateUniqueSlug($name . '-personal');
 
-            $org = Organization::create([
+            $org = $this->createOrganizationUnderRls([
                 'name'                        => $name,
                 'slug'                        => $slug,
                 'type'                        => Organization::TYPE_PERSONAL,
@@ -382,6 +383,37 @@ class OrganizationService
     public function isOwner(Organization $organization, User|SpecialistAccount $principal): bool
     {
         return $organization->hasOwner($principal);
+    }
+
+    /**
+     * Persist a new Organization while satisfying the organizations RLS policy.
+     *
+     * The `organizations` table is protected by a row-level security policy whose
+     * WITH CHECK clause requires `id = current_setting('app.current_organization_id')`.
+     * When bootstrapping the principal's first Organization there is no Organization
+     * context yet, so the INSERT would be rejected. We therefore pre-generate the
+     * UUID and publish it as the transaction-local context before inserting.
+     *
+     * This keeps RLS fully enforced (no policy is relaxed or bypassed) and also
+     * establishes the context required by every subsequent tenant write in the same
+     * request/transaction (memberships, providers, locations, services, ...).
+     * The setting is transaction-local (`is_local = true`) and reverts automatically
+     * when the surrounding transaction ends.
+     */
+    private function createOrganizationUnderRls(array $attributes): Organization
+    {
+        $id = (string) Str::uuid();
+
+        DB::connection()->statement(
+            "SELECT set_config('" . RlsContext::SESSION_VAR . "', ?, true)",
+            [$id]
+        );
+
+        $organization = new Organization($attributes);
+        $organization->id = $id;
+        $organization->save();
+
+        return $organization;
     }
 
     /**

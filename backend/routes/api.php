@@ -42,6 +42,7 @@ use App\Http\Controllers\SpecialistPortalController;
 use App\Http\Controllers\Api\V1\BookingConfigurationController;
 use App\Http\Controllers\Api\V1\BookingRulesController;
 use App\Http\Controllers\Api\V1\BookingOrchestratorController;
+use App\Http\Controllers\Api\V1\CustomerPaymentController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use App\Http\Controllers\Api\V1\PlatformPaymentController;
 use App\Http\Controllers\Api\V1\BookingPaymentController;
@@ -86,6 +87,10 @@ Route::get('/providers/{providerId}/availability/batch', [AvailabilityController
 Route::get('/providers/{providerId}/availability/first-available', [AvailabilityController::class, 'firstAvailable']);
 Route::post('/providers/{providerId}/slots/lock', [AvailabilityController::class, 'lockSlot']);
 Route::delete('/providers/{providerId}/slots/lock/{lockId}', [AvailabilityController::class, 'releaseSlot']);
+
+// Public customer Flutterwave checkout initialization (guest booking payments)
+Route::post('/payments/customer/initialize', [CustomerPaymentController::class, 'initialize']);
+Route::get('/payments/customer/status', [CustomerPaymentController::class, 'status']);
 
 Route::prefix('v1')->group(function () {
     // Public webhook routes (no authentication required)
@@ -506,8 +511,13 @@ Route::prefix('v1')->group(function () {
             Route::post('/notify', [ScheduleMigrationController::class, 'sendNotifications']);
         });
 
-        // Protected routes requiring provider context
-        Route::middleware(['provider.context', 'location.context'])->group(function () {
+        // Protected routes requiring organization, provider and location context
+        Route::middleware([
+            'organization.context',
+            'organization.db_context',
+            'provider.context',
+            'location.context',
+        ])->group(function () {
         // Pulse Operational Center
         Route::get('/pulse', [PulseController::class, 'index']);
         Route::apiResource('providers', ProviderController::class)->except(['index']);

@@ -179,6 +179,7 @@ class ProviderController extends Controller
             'email' => $provider->email,
             'website' => $provider->website,
             'location' => $provider->location,
+            'primary_location_id' => $provider->location_id,
             'social_links' => $provider->social_links,
             'timezone' => $provider->timezone,
             'rating' => $provider->rating,

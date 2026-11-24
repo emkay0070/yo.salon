@@ -585,9 +585,10 @@ function ProfileDrawer({ member, onClose }: { member: StaffMember; onClose: () =
 export default function SalonStaffPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const router = useRouter();
-  const { providerId, user, activeProvider, providerSlug } = useRole();
+  const { providerId, user, activeProvider, providerSlug, providerAccessError, isLoading: isRoleLoading } = useRole();
   const { terminology } = useCategory();
   const routes = providerRoutes(providerSlug);
+  const isContextReady = !isRoleLoading && !!providerId && !providerAccessError && activeProvider?.slug?.toLowerCase() === slug.toLowerCase();
   const [staff, setStaff]               = useState<StaffMember[]>([]);
   const [searchTerm, setSearchTerm]     = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -603,24 +604,13 @@ export default function SalonStaffPage({ params }: { params: Promise<{ slug: str
   const [staffPhotoPreview, setStaffPhotoPreview] = useState<string | null>(null);
   const [inviteRole, setInviteRole] = useState<'staff' | 'specialist' | 'manager' | 'receptionist'>('staff');
 
-  // Verify user has access to this salon
+  // Verify user is authenticated
   useEffect(() => {
-    if (!user) {
+    if (!isRoleLoading && !user) {
       router.push(`/login?returnTo=/${slug}/staff`);
       return;
     }
-
-    if (!providerId) {
-      console.warn('[SalonStaffPage] User has no provider assignment');
-      return;
-    }
-
-    // Verify the salon slug matches the user's active salon
-    if (activeProvider && activeProvider.slug !== slug) {
-      console.error('[SalonStaffPage] Access denied: user salon does not match URL salon');
-      router.push(routes.dashboard);
-    }
-  }, [providerId, user, router, slug, activeProvider]);
+  }, [user, isRoleLoading, router, slug]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -710,8 +700,8 @@ export default function SalonStaffPage({ params }: { params: Promise<{ slug: str
   // For now, query provider-wide staff - backend location_scope will handle filtering when authorization is implemented
   const { data, isLoading } = useQuery({
     queryKey: ['staff', providerId],
-    queryFn: () => apiClient.getStaff({ provider_id: providerId }),
-    enabled: !!providerId,
+    queryFn: () => apiClient.getStaff({ provider_id: providerId || undefined }),
+    enabled: isContextReady,
   });
 
   useEffect(() => {
@@ -721,8 +711,8 @@ export default function SalonStaffPage({ params }: { params: Promise<{ slug: str
   // Fetch bookings to calculate real staff performance data
   const { data: bookings = [] } = useQuery({
     queryKey: ['bookings', providerId],
-    queryFn: () => apiClient.getBookings(),
-    enabled: !!providerId,
+    queryFn: () => apiClient.getBookings(providerId ? { provider_id: providerId } : undefined),
+    enabled: isContextReady,
   });
 
   useEffect(() => {
@@ -827,6 +817,36 @@ export default function SalonStaffPage({ params }: { params: Promise<{ slug: str
     }
     return result;
   }, [staff, searchTerm, activeFilter]);
+
+  if (providerAccessError) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 mb-4">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mb-6">{providerAccessError}</p>
+          {user?.providers?.length > 0 && (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-xs text-neutral-400 font-medium uppercase tracking-wider">Switch to an authorized business</span>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {user.providers.map((p: any) => (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/${p.slug}/staff`)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:opacity-90 transition-opacity"
+                  >
+                    {p.name || p.display_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!mounted) return null;
 

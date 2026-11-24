@@ -199,7 +199,13 @@ class FlutterwaveProviderTest extends TestCase
             if (str_contains($request->url(), '/charges') && $request->method() === 'POST') {
                 return Http::response([
                     'status' => 'success', 'message' => 'Charge created',
-                    'data' => ['id' => 'chg_cached', 'amount' => 5000, 'currency' => 'UGX', 'status' => 'pending'],
+                    'data' => [
+                        'id' => 'chg_cached', 'amount' => 5000, 'currency' => 'UGX', 'status' => 'pending',
+                        'next_action' => [
+                            'type' => 'redirect_url',
+                            'redirect_url' => ['url' => 'https://developersandbox.flutterwave.com/redirects?mobile_money&token=cached'],
+                        ],
+                    ],
                 ], 201);
             }
 
@@ -207,10 +213,10 @@ class FlutterwaveProviderTest extends TestCase
         });
 
         $result1 = $this->provider->initializePayment([
-            'amount' => 5000, 'currency' => 'UGX', 'email' => 'test@example.com',
+            'amount' => 5000, 'currency' => 'UGX', 'email' => 'test@example.com', 'phone' => '+256700000000',
         ]);
         $result2 = $this->provider->initializePayment([
-            'amount' => 6000, 'currency' => 'UGX', 'email' => 'test2@example.com',
+            'amount' => 6000, 'currency' => 'UGX', 'email' => 'test2@example.com', 'phone' => '+256700000000',
         ]);
 
         $this->assertTrue($result1['success']);
@@ -256,7 +262,13 @@ class FlutterwaveProviderTest extends TestCase
             if (str_contains($request->url(), '/charges') && $request->method() === 'POST') {
                 return Http::response([
                     'status' => 'success', 'message' => 'Charge created',
-                    'data' => ['id' => 'chg_refresh', 'amount' => 5000, 'currency' => 'UGX', 'status' => 'pending'],
+                    'data' => [
+                        'id' => 'chg_refresh', 'amount' => 5000, 'currency' => 'UGX', 'status' => 'pending',
+                        'next_action' => [
+                            'type' => 'redirect_url',
+                            'redirect_url' => ['url' => 'https://developersandbox.flutterwave.com/redirects?mobile_money&token=refresh'],
+                        ],
+                    ],
                 ], 201);
             }
 
@@ -264,7 +276,7 @@ class FlutterwaveProviderTest extends TestCase
         });
 
         $result1 = $this->provider->initializePayment([
-            'amount' => 5000, 'currency' => 'UGX', 'email' => 'test@example.com',
+            'amount' => 5000, 'currency' => 'UGX', 'email' => 'test@example.com', 'phone' => '+256700000000',
         ]);
         $this->assertTrue($result1['success']);
 
@@ -275,7 +287,7 @@ class FlutterwaveProviderTest extends TestCase
         $tokenProp->setValue($this->provider, time() - 100);
 
         $result2 = $this->provider->initializePayment([
-            'amount' => 6000, 'currency' => 'UGX', 'email' => 'test2@example.com',
+            'amount' => 6000, 'currency' => 'UGX', 'email' => 'test2@example.com', 'phone' => '+256700000000',
         ]);
         $this->assertTrue($result2['success']);
 

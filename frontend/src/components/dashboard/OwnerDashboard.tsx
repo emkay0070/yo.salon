@@ -40,7 +40,7 @@ function formatCurrency(val: number, currency = 'UGX'): string {
 }
 
 export default function OwnerDashboard({ userName, bookings = [], staff = [] }: OwnerDashboardProps) {
-  const { providerId, activeProvider, providerSlug } = useRole();
+  const { providerId, locationId, activeProvider, providerSlug } = useRole();
   const { terminology } = useCategory();
   const routes = providerRoutes(providerSlug);
   const currency = activeProvider?.currency || 'UGX';
@@ -73,7 +73,7 @@ export default function OwnerDashboard({ userName, bookings = [], staff = [] }: 
   };
 
   const { data: intelligence, isLoading } = useQuery({
-    queryKey: ['intelligence', providerId],
+    queryKey: ['intelligence', providerId, locationId],
     queryFn: () => apiClient.getIntelligence(),
     enabled: !!providerId,
   });

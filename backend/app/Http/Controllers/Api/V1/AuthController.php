@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Profile;
 use App\Services\ProviderTypeContext;
 use App\Services\ProviderUserAuthorityService;
+use App\Support\RlsContext;
+use App\Support\TenantBootstrap;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
@@ -161,14 +163,23 @@ class AuthController extends Controller
         $user = \App\Models\User::where('email', $validated['email'])->first();
         if ($user && Hash::check($validated['password'], $user->password)) {
             $token = $user->createToken('auth-token')->plainTextToken;
-            return response()->json([
+
+            // next_route and the eager-loaded providers are tenant-scoped reads:
+            // under RLS they are only visible inside the user's organization
+            // context, which must be discovered before it can be set.
+            $organizationId = TenantBootstrap::resolveOrganizationId(
+                $user,
+                $request->header('X-Organization-Id')
+            );
+
+            return $this->withTenantContext($organizationId, fn () => response()->json([
                 'account_type' => 'user',
                 'user' => $user->load(['providers.businessCategory']),
                 'token' => $token,
                 'status' => $user->status,
                 'current_step' => $user->onboardingSession?->current_step,
                 'next_route' => $this->resolveNextRoute($user),
-            ]);
+            ]), $user);
         }
 
         // No account found
@@ -187,46 +198,91 @@ class AuthController extends Controller
     public function user(Request $request): JsonResponse
     {
         $user = $request->user();
-        // Load providers relationship with logo media, cover image media, and primary location
-        $user->load(['providers.logoMedia', 'providers.coverImageMedia', 'providers.primaryLocation']);
-        // Get profile photo manually since profilePhoto() returns a query builder, not a relationship
-        $user->profile_photo = $user->profilePhoto()->first();
 
-        // Load provider user authority information
-        $providerAuthorities = [];
-        foreach ($user->providers as $provider) {
-            $providerUser = \App\Models\ProviderUser::where('user_id', $user->id)
-                ->where('provider_id', $provider->id)
-                ->first();
+        // Providers, memberships and the resolved contexts below are all
+        // tenant-scoped reads. Discover the organization first, then run the
+        // whole payload inside its RLS context.
+        $organizationId = TenantBootstrap::resolveOrganizationId(
+            $user,
+            $request->header('X-Organization-Id')
+        );
 
-            if ($providerUser) {
-                $providerAuthorities[] = $this->authorityService->resolveAuthority($providerUser);
+        return $this->withTenantContext($organizationId, function () use ($request, $user): JsonResponse {
+            // Load providers relationship with logo media, cover image media, locations, businessCategory, and organization
+            $user->load([
+                'providers.logoMedia',
+                'providers.coverImageMedia',
+                'providers.primaryLocation',
+                'providers.locations',
+                'providers.businessCategory',
+                'providers.organization',
+                'organizations',
+            ]);
+            // Get profile photo manually since profilePhoto() returns a query builder, not a relationship
+            $user->profile_photo = $user->profilePhoto()->first();
+
+            // Load provider user authority information
+            $providerAuthorities = [];
+            foreach ($user->providers as $provider) {
+                $providerUser = \App\Models\ProviderUser::where('user_id', $user->id)
+                    ->where('provider_id', $provider->id)
+                    ->first();
+
+                if ($providerUser) {
+                    $providerAuthorities[] = $this->authorityService->resolveAuthority($providerUser);
+                }
             }
+
+            // Phase 2B: expose the resolved provider type context to the
+            // application layer. Reuses ProviderTypeContext, which resolves the
+            // provider exclusively from server-side selection (middleware request
+            // attribute, then authenticated user's currentProvider()) — provider
+            // type is never derived from client-supplied input. Additive key;
+            // existing response fields are unchanged.
+            $providerTypeContext = app(ProviderTypeContext::class)
+                ->resolveFromRequest($request)
+                ->toArray();
+
+            $organizationContext = app(\App\Services\OrganizationContext::class)
+                ->resolveFromRequest($request)
+                ->toArray();
+
+            return response()->json([
+                'user' => $user,
+                'status' => $user->status,
+                'current_step' => $user->onboardingSession?->current_step,
+                'next_route' => $this->resolveNextRoute($user),
+                'provider_authorities' => $providerAuthorities,
+                'provider_type_context' => $providerTypeContext,
+                'organization_context' => $organizationContext,
+            ]);
+        }, $user);
+    }
+
+    /**
+     * Run the callback inside the principal's RLS tenant context when one could
+     * be resolved. Without a resolvable organization (e.g. onboarding users, or
+     * multi-organization users with no X-Organization-Id) the callback runs
+     * unchanged, matching the previous behaviour.
+     *
+     * Models hydrated on the default connection are pinned to it, so the
+     * principal is rebound to the RLS runtime connection inside the context —
+     * otherwise its tenant-scoped relations would keep querying the
+     * context-less default connection and return nothing under RLS.
+     */
+    protected function withTenantContext(?string $organizationId, callable $callback, ?\App\Models\User $principal = null): mixed
+    {
+        if ($organizationId === null || app()->environment('testing')) {
+            return $callback();
         }
 
-        // Phase 2B: expose the resolved provider type context to the
-        // application layer. Reuses ProviderTypeContext, which resolves the
-        // provider exclusively from server-side selection (middleware request
-        // attribute, then authenticated user's currentProvider()) — provider
-        // type is never derived from client-supplied input. Additive key;
-        // existing response fields are unchanged.
-        $providerTypeContext = app(ProviderTypeContext::class)
-            ->resolveFromRequest($request)
-            ->toArray();
+        return RlsContext::run($organizationId, function () use ($callback, $principal) {
+            if ($principal !== null) {
+                $principal->setConnection(RlsContext::TYBUEL_CONNECTION);
+            }
 
-        $organizationContext = app(\App\Services\OrganizationContext::class)
-            ->resolveFromRequest($request)
-            ->toArray();
-
-        return response()->json([
-            'user' => $user,
-            'status' => $user->status,
-            'current_step' => $user->onboardingSession?->current_step,
-            'next_route' => $this->resolveNextRoute($user),
-            'provider_authorities' => $providerAuthorities,
-            'provider_type_context' => $providerTypeContext,
-            'organization_context' => $organizationContext,
-        ]);
+            return $callback();
+        });
     }
 
     protected function resolveNextRoute(\App\Models\User $user, string $journey = 'salon'): string
