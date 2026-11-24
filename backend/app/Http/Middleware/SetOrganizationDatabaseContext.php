@@ -15,23 +15,37 @@ use Illuminate\Support\Facades\Log;
  * context management on the `pgsql_tybuel` runtime connection.
  *
  * Execution sequence (PgBouncer transaction-pooling safe):
- *   1. Begin transaction on `pgsql_tybuel`.
+ *   1. Begin transaction on `pgsql_tybuel` if we are not already inside one.
  *      In PgBouncer transaction-pooling mode, BEGIN pins a backend connection.
  *   2. Set Organization context INSIDE that transaction (is_local = true):
  *      SELECT set_config('app.current_organization_id', ?, true)
  *   3. Switch default connection to `pgsql_tybuel` so all downstream Eloquent
  *      models and queries automatically execute against `pgsql_tybuel`.
  *   4. Execute downstream middleware and controller actions ($next($request)).
- *   5. Defensively clear context before committing:
- *      SELECT set_config('app.current_organization_id', '', true)
- *   6. End transaction (commit).
- *      (If an exception occurs: clear context, roll back transaction, and rethrow).
- *   7. In finally block: restore previous default database connection.
+ *   5. Commit the transaction if WE started it.
+ *      (Transaction-local set_config is discarded automatically on commit.)
+ *   6. In finally block: restore previous default database connection.
  *
  * Failure policy:
  *   Universal FAIL CLOSED across all environments. If the connection cannot be
  *   established, transaction cannot begin, or context cannot be set, the request
- *   aborts immediately with HTTP 500. No queries are permitted to run without context.
+ *   aborts immediately with HTTP 500. No queries are permitted to run without
+ *   context.
+ *
+ * Transaction ownership:
+ *   The middleware ONLY begins, commits or rolls back a transaction it started
+ *   itself ($startedTransaction === true). A transaction owned by another
+ *   component (e.g. a test harness wrapping the request in RefreshDatabase) is
+ *   never touched by this middleware.
+ *
+ * Aborted-transaction safety:
+ *   If a statement fails inside the active transaction, PostgreSQL aborts the
+ *   transaction. In that state only ROLLBACK is permitted; any other statement
+ *   (including set_config) raises "cannot execute ... in a failed transaction".
+ *   Therefore the error path never issues set_config cleanup — it simply rolls
+ *   back the transaction WE started, which automatically discards the
+ *   transaction-local RLS context. This guarantees the connection is never left
+ *   open or in an aborted state for the next pooled request.
  */
 class SetOrganizationDatabaseContext
 {
@@ -49,26 +63,45 @@ class SetOrganizationDatabaseContext
         $previousDefault = DB::getDefaultConnection();
         $connectionName = app()->environment('testing') ? $previousDefault : self::TYBUEL_CONNECTION;
         $startedTransaction = false;
+        $connection = null;
 
+        // -----------------------------------------------------------------
+        // Step 1 & 2: Begin transaction (if we own it) and set RLS context.
+        // -----------------------------------------------------------------
         try {
             // Ensure default connection routes all model queries to the target connection
             DB::setDefaultConnection($connectionName);
             $connection = DB::connection($connectionName);
 
-            // Step 1: Begin transaction if not already inside one (e.g. testing with RefreshDatabase)
+            // Begin transaction if not already inside one (e.g. testing with RefreshDatabase).
+            // Only the component that begins a transaction may commit or roll it back.
             if ($connection->transactionLevel() === 0) {
                 $connection->beginTransaction();
                 $startedTransaction = true;
             }
 
-            // Step 2: Set Organization context INSIDE that transaction (is_local = true)
+            // Set Organization context INSIDE that transaction (is_local = true).
+            // Transaction-local: automatically discarded on commit or rollback.
             $connection->statement(
                 "SELECT set_config('app.current_organization_id', ?, true)",
                 [$orgId]
             );
 
         } catch (\Throwable $e) {
-            // Context initialization failure — MUST fail closed in EVERY environment
+            // Context initialization failure — MUST fail closed in EVERY environment.
+            // Roll back the transaction WE started (if any) so the connection is
+            // not left open or aborted for the next pooled request. Never roll back
+            // a transaction owned by another component.
+            if ($startedTransaction && $connection && $connection->transactionLevel() > 0) {
+                try {
+                    $connection->rollBack();
+                } catch (\Throwable $rollbackEx) {
+                    Log::warning('RLS rollback failed after context initialization exception.', [
+                        'error' => $rollbackEx->getMessage(),
+                    ]);
+                }
+            }
+
             Log::error('RLS context initialization failed — request aborted.', [
                 'connection' => $connectionName,
                 'has_org_id' => !empty($orgId),
@@ -92,39 +125,55 @@ class SetOrganizationDatabaseContext
             $principal->setConnection($connectionName);
         }
 
-        // Step 3: Execute all protected queries on that same connection inside transaction
+        // -----------------------------------------------------------------
+        // Step 3 & 4: Execute all protected queries on that same connection
+        // inside the transaction.
+        // -----------------------------------------------------------------
         try {
             $response = $next($request);
 
-            // Step 4: Clear context before committing
-            $connection->statement("SELECT set_config('app.current_organization_id', '', true)");
+            // Success path.
+            // Clear the transaction-local context before committing (belt and
+            // suspenders; commit automatically restores the previous value).
+            // Only safe because no exception occurred, so the transaction is
+            // not in an aborted state.
+            try {
+                if ($connection && $connection->transactionLevel() > 0) {
+                    $connection->statement("SELECT set_config('app.current_organization_id', '', true)");
+                }
+            } catch (\Throwable $clearEx) {
+                Log::warning('RLS context clear failed before commit.', [
+                    'error' => $clearEx->getMessage(),
+                ]);
+            }
 
-            // Step 5: End the transaction if this middleware started it
-            if ($startedTransaction && $connection->transactionLevel() > 0) {
+            // Commit the transaction if WE started it.
+            if ($startedTransaction && $connection && $connection->transactionLevel() > 0) {
                 $connection->commit();
             }
 
             return $response;
 
         } catch (\Throwable $e) {
-            // On failure: clear context before rolling back
-            try {
-                if ($connection->transactionLevel() > 0) {
-                    $connection->statement("SELECT set_config('app.current_organization_id', '', true)");
-                    if ($startedTransaction) {
-                        $connection->rollBack();
-                    }
+            // Failure path: roll back the transaction WE started, safely.
+            // Do NOT attempt set_config() cleanup here: if the failing statement
+            // aborted the PostgreSQL transaction, issuing set_config would raise
+            // "cannot execute SET in a failed transaction". Transaction-local
+            // RLS context is discarded automatically by rollback.
+            if ($startedTransaction && $connection && $connection->transactionLevel() > 0) {
+                try {
+                    $connection->rollBack();
+                } catch (\Throwable $rollbackEx) {
+                    Log::warning('RLS rollback failed after request exception.', [
+                        'error' => $rollbackEx->getMessage(),
+                    ]);
                 }
-            } catch (\Throwable $rollbackEx) {
-                Log::warning('RLS rollback failed after exception.', [
-                    'error' => $rollbackEx->getMessage(),
-                ]);
             }
 
             throw $e;
 
         } finally {
-            // Restore default connection for clean connection-pool recycling
+            // Step 6: Restore default connection for clean connection-pool recycling.
             DB::setDefaultConnection($previousDefault);
         }
     }

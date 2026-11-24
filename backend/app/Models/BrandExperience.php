@@ -11,7 +11,7 @@ class BrandExperience extends Model
     use HasUuids;
 
     protected $fillable = [
-        'salon_id',
+        'provider_id',
         'experience_family',
         // 'logo' - DEPRECATED: Brand Experience does not own identity assets. Use Provider.logo instead.
         'primary_color',
@@ -35,7 +35,7 @@ class BrandExperience extends Model
 
     public function provider()
     {
-        return $this->belongsTo(Provider::class, 'salon_id');
+        return $this->belongsTo(Provider::class, 'provider_id');
     }
 
     // logoMedia relationship removed - Brand Experience does not own identity assets
